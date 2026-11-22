@@ -507,6 +507,11 @@ int? _rowBeside(List<CanvasElement> elements, int index, int step) {
 /// _layerAnchor is the layer last clicked alone, where Shift-click starts.
 String? _layerAnchor;
 
+/// forgetLayerPickForTest lets go of the layer last clicked, as a new run
+/// has none.
+@visibleForTesting
+void forgetLayerPickForTest() => _layerAnchor = null;
+
 /// pickLayer is a click on layer [id]: alone, one layer; with Cmd or Ctrl,
 /// it toggled; with Shift, every layer listed from the last clicked to it.
 void pickLayer(CanvasController controller, String id) {

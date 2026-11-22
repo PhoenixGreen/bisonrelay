@@ -1,8 +1,9 @@
+import 'package:flutter/material.dart';
+
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
-import 'package:flutter/material.dart';
 
 // canvas_sidebar_host.dart puts the Canvas sidebar up for a test: the real
 // one (CanvasSidebar), as the Canvas page builds it, so that a test of a
@@ -43,7 +44,7 @@ class _CanvasSidebarHostState extends State<CanvasSidebarHost> {
         onOpen: (_, __) async {},
         onPublish: (_, __) {},
         onNew: (_, __) async {},
-        onChoosePreset: (_, __) {},
+        onChoosePreset: (_) {},
       );
 
   @override

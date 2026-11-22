@@ -252,7 +252,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (next == _selectionRevision) return;
     if (!mounted) return;
 
-    // Choosing something goes to the Design tab, where its settings are --
+    // Choosing something goes to the sidebar its settings are in --
     // only on a choice (clearing must not leave the file list), and only once
     // Design has been used this session (_designUsed).
     var chose = next.isNotEmpty && next != _selectionRevision;
@@ -384,7 +384,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var snackbar = SnackBarModel.of(context);
     if (!await _confirmDiscard()) return;
 
-    // The empty preset, so this and the Presets tab's "Empty canvas" match.
+    // The empty preset, so this and the Presets panel's "Empty canvas" match.
     _controller.load(emptyCanvas().copyWith(title: name));
     var saved = await _controller.saveAs(folder, name);
     if (!mounted) return;
@@ -393,7 +393,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       return;
     }
     _prefs.remember(folder, name);
-    // Straight to the elements tab, as a preset does.
+    // Straight to the Add panel, as a preset does.
     _showPanel(SidebarPanel.add);
     _openCanvasSettings();
   }
@@ -407,13 +407,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   /// _openPreset starts a new canvas from a preset, handed in already built
   /// so editing it cannot change the panel's thumbnail.
-  Future<void> _openPreset(
-      CanvasPreset? preset, CanvasDocument document) async {
+  Future<void> _openPreset(CanvasDocument document) async {
     if (!await _confirmDiscard()) return;
     _controller.load(document);
     if (mounted) {
       _prefs.remember("", "");
-      // Straight to the elements tab: the next thing is to add something.
+      // Straight to the Add panel: the next thing is to add something.
       _showPanel(SidebarPanel.add);
       // Only the empty preset: see startsWithSettingsOpen.
       if (startsWithSettingsOpen(document)) _openCanvasSettings();

@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:flutter/material.dart';
 
-// builtin_presets.dart is the Presets tab's starting canvases: each a
+// builtin_presets.dart is the Presets panel's starting canvases: each a
 // whole document copied in with no link back, so none depends on one.
 
 class CanvasPreset {

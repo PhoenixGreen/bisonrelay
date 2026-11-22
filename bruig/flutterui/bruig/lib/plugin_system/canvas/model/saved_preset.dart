@@ -67,6 +67,19 @@ class SavedPreset {
     this.madeOn,
   });
 
+  /// elementCount is how many elements a saved scene holds.
+  int get elementCount => switch (data["elements"]) {
+        List elements => elements.length,
+        _ => 0,
+      };
+
+  /// sceneCount is how many scenes a saved canvas holds: one where it does
+  /// not list them (see CanvasDocument.toJson).
+  int get sceneCount => switch (data["scenes"]) {
+        List scenes => scenes.length,
+        _ => 1,
+      };
+
   /// buildScene is a fresh scene from this preset under new ids: things
   /// sharing an id are one to Go to scene and selection.
   CanvasScene? buildScene({Size? on}) {

@@ -18,7 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 // canvas_strip_presets_test.dart is the Presets ▾ of a strip's own cards --
 // its EQ, compressor, the master's limiter, a Ducker -- as every device has
 // one in the chain prototype: starting points by name, Default, and the
-// ones saved, which the Presets sidebar puts back on a strip too.
+// ones saved, which the Presets panel puts back on a strip too.
 
 CanvasController _make() =>
     CanvasController(const CanvasDocument(frames: 100, elements: [

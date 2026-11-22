@@ -1,8 +1,9 @@
+import 'package:flutter/material.dart';
+
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
-import 'package:flutter/material.dart';
 
 // settings_panel.dart is the Settings panel of the sidebar: the settings of
 // whatever is selected. What they are for each selection (one element,
@@ -16,6 +17,11 @@ import 'package:flutter/material.dart';
 class SettingsPanelBody extends StatefulWidget {
   final CanvasController controller;
   const SettingsPanelBody({required this.controller, super.key});
+
+  /// forgetForTest lets go of where each element's settings were scrolled
+  /// to, as a new run has none.
+  @visibleForTesting
+  static void forgetForTest() => _SettingsBodyState._at.clear();
 
   @override
   State<SettingsPanelBody> createState() => _SettingsBodyState();

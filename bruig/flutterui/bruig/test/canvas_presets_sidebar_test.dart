@@ -10,8 +10,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/preset_lists.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/presets_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -74,8 +74,7 @@ void main() {
         width: 320,
         height: 900,
         child: body?.call(controller) ??
-            CanvasPresetsLibrary(
-                controller: controller, onChoose: (_, __) {}))));
+            CanvasPresetsPanel(controller: controller, onChoose: (_) {}))));
     await idle(tester);
     return controller;
   }
@@ -138,7 +137,7 @@ void main() {
         const CanvasScene(id: "s", name: "Title", elements: []).toJson()));
 
     var controller =
-        await sidebar(tester, body: (c) => ScenePresetsPanel(controller: c));
+        await sidebar(tester, body: (c) => ScenePresetList(controller: c));
     expect(find.text("Title card"), findsOneWidget);
 
     await tester.tap(find.text("Title card"));
@@ -158,7 +157,7 @@ void main() {
             fill: const Color(0xFFFF0000))));
 
     var controller =
-        await sidebar(tester, body: (c) => ElementPresetsPanel(controller: c));
+        await sidebar(tester, body: (c) => ElementPresetList(controller: c));
     await tester.tap(find.text("Big red"));
     await tester.pumpAndSettle();
 
@@ -169,7 +168,7 @@ void main() {
   testWidgets("a preset is renamed by clicking its name twice", (tester) async {
     await tester.runAsync(() => SavedPresetStore.scenes
         .save("Title card", const CanvasScene(id: "s").toJson()));
-    await sidebar(tester, body: (c) => ScenePresetsPanel(controller: c));
+    await sidebar(tester, body: (c) => ScenePresetList(controller: c));
 
     var name = find.text("Title card");
     var rename = find.byKey(const ValueKey("presetRename"));
@@ -192,7 +191,7 @@ void main() {
   testWidgets("and deleted from its own menu", (tester) async {
     await tester.runAsync(() => SavedPresetStore.scenes
         .save("Title card", const CanvasScene(id: "s").toJson()));
-    await sidebar(tester, body: (c) => ScenePresetsPanel(controller: c));
+    await sidebar(tester, body: (c) => ScenePresetList(controller: c));
 
     await tester.tap(byTip("More"));
     await tester.pumpAndSettle();
@@ -210,7 +209,7 @@ void main() {
     await tester.runAsync(() => ElementPresetStore.instance.save("Countdown",
         CounterElement(const ElementBase(id: "c", width: 40, height: 40))));
 
-    await sidebar(tester, body: (c) => ElementPresetsPanel(controller: c));
+    await sidebar(tester, body: (c) => ElementPresetList(controller: c));
     expect(find.text("Big red"), findsOneWidget);
     expect(find.text("Countdown"), findsOneWidget);
 
@@ -243,7 +242,7 @@ void main() {
     await tester.pumpWidget(canvasApp(SizedBox(
         width: 320,
         height: 900,
-        child: SavedCanvasPresets(
+        child: SavedCanvasList(
             controller: controller, onOpen: (d) => started = d))));
     await idle(tester);
 

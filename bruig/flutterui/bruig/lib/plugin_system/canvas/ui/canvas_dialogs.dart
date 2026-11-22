@@ -93,6 +93,14 @@ Future<String?> askForName(
           fieldKey: fieldKey),
     );
 
+/// askForPresetName asks what to call a preset, with [initial] filled in:
+/// everything that saves or renames one asks through here, so all ask in
+/// the same words and allow the same length.
+Future<String?> askForPresetName(BuildContext context, String title,
+        {String initial = ""}) =>
+    askForName(context,
+        title: title, label: "Name", initial: initial, maxLength: 60);
+
 class _NameDialog extends StatefulWidget {
   final String title, label, initial, ok;
   final int? maxLength;

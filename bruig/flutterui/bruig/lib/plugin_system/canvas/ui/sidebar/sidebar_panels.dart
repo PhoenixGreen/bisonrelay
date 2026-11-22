@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
-import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -16,9 +15,9 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/files_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/game_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/settings_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/settings_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
@@ -168,8 +167,7 @@ class SidebarPanelBodies {
   final Future<void> Function(String folder, String name) onOpen;
   final void Function(String folder, String name) onPublish;
   final Future<void> Function(String folder, String name) onNew;
-  final void Function(CanvasPreset? preset, CanvasDocument document)
-      onChoosePreset;
+  final ValueChanged<CanvasDocument> onChoosePreset;
 
   SidebarPanelBodies({
     required this.controller,
@@ -210,8 +208,8 @@ class SidebarPanelBodies {
             onNew: onNew,
             showing: showing,
           ),
-        SidebarPanel.presets => CanvasPresetsLibrary(
-            controller: controller, onChoose: onChoosePreset),
+        SidebarPanel.presets =>
+          CanvasPresetsPanel(controller: controller, onChoose: onChoosePreset),
         SidebarPanel.add => CanvasElementsPanel(controller: controller),
         SidebarPanel.scenes => CanvasScenesPanel(controller: controller),
         SidebarPanel.vocalCues => CanvasVocalCuesPanel(controller: controller),

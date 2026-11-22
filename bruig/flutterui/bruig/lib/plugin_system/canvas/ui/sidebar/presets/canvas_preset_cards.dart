@@ -1,46 +1,47 @@
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/preset_lists.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
 
-// presets_panel.dart is the canvases to start from, a preview each, in the
-// Presets panel (presets_library.dart). Previews are drawn by the renderer
-// from the preset itself, not a stored picture, so they cannot go stale.
+// canvas_preset_cards.dart is the canvases to start from, in the Presets
+// panel (presets_panel.dart): a card with a preview for each that ships,
+// and the saved ones as rows under them. Previews are drawn by the
+// renderer from the preset itself, not a stored picture, so they cannot go
+// stale.
 
-class CanvasPresetsPanel extends StatefulWidget {
+/// CanvasPresetCards is the canvases to start from.
+class CanvasPresetCards extends StatefulWidget {
   final CanvasController controller;
 
-  /// onChoose is given a fresh document built from the preset.
-  final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
+  /// onChoose is given a fresh document built from the preset; what to do
+  /// about unsaved work is the screen's decision.
+  final ValueChanged<CanvasDocument> onChoose;
 
   /// query keeps only the presets whose names have it in them.
   final String query;
-
-  /// embedded is the list inside another: see ScenePresetsPanel.embedded.
-  final bool embedded;
 
   /// only keeps only the built-in presets with these ids, and leaves the
   /// saved ones out; all of them where not given.
   final Set<String>? only;
 
-  const CanvasPresetsPanel(
+  const CanvasPresetCards(
       {required this.controller,
       required this.onChoose,
       this.query = "",
-      this.embedded = false,
       this.only,
       super.key});
 
   @override
-  State<CanvasPresetsPanel> createState() => _CanvasPresetsPanelState();
+  State<CanvasPresetCards> createState() => _CanvasPresetCardsState();
 }
 
-class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
+class _CanvasPresetCardsState extends State<CanvasPresetCards> {
   /// _thumbnails holds one built document per preset, for the previews, built
   /// once because some are costly (football lays out twenty-two players). Never
   /// edited, so safe to share: a tap hands over a newly built document.
@@ -49,8 +50,8 @@ class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
   };
 
   @override
-  Widget build(BuildContext context) => presetList(
-        embedded: widget.embedded,
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var preset in builtinPresets)
             if ((widget.only == null || widget.only!.contains(preset.id)) &&
@@ -58,14 +59,14 @@ class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
               _PresetCard(
                 preset: preset,
                 preview: _thumbnails[preset.id],
-                onTap: () => widget.onChoose(preset, preset.build()),
+                onTap: () => widget.onChoose(preset.build()),
               ),
           // Saved ones under the built-in, so the list's start never moves.
           if (widget.only == null)
-            SavedCanvasPresets(
+            SavedCanvasList(
               controller: widget.controller,
               query: widget.query,
-              onOpen: (document) => widget.onChoose(null, document),
+              onOpen: widget.onChoose,
             ),
         ],
       );

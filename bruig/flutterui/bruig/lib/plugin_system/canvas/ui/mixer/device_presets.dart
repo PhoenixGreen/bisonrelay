@@ -11,7 +11,7 @@ import 'package:flutter/widgets.dart';
 
 // device_presets.dart keeps a sound's devices as presets (one device or a
 // whole chain, with settings), one file each with the canvas's other presets
-// (Presets › Sound); they come back from a chain's "+" or the Presets sidebar.
+// (Presets › Sound); they come back from a chain's "+" or the Presets panel.
 
 SavedPresetStore get devicePresets => SavedPresetStore.devices;
 
@@ -90,7 +90,7 @@ String freshPresetName(String name, Set<String> taken) {
 
 /// saveDevicePreset keeps [devices] and [midi] as a preset named for
 /// [name] -- "Chorus", or "Chorus 2" where that is taken -- and says where
-/// it went. Nothing is asked: it can be renamed in the Presets sidebar.
+/// it went. Nothing is asked: it can be renamed in the Presets panel.
 Future<void> saveDevicePreset(BuildContext context, String name,
     {List<MixDevice> devices = const [],
     List<MidiEffect> midi = const []}) async {

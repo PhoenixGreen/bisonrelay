@@ -13,6 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/presets_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/settings_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
 import 'package:bruig/plugin_system/plugin_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,6 +32,11 @@ void betweenFiles() {
   forgetLooksForTest();
   forgetEffectsForTest();
   forgetDataEditorsForTest();
+  // The sidebar's panels: the Presets chip pressed, where each element's
+  // settings were scrolled to, the layer last clicked.
+  CanvasPresetsPanel.forgetForTest();
+  SettingsPanelBody.forgetForTest();
+  forgetLayerPickForTest();
   clearRenderCaches();
   CanvasLibrary.resetForTest();
   CanvasStorage.rootOverride = null;

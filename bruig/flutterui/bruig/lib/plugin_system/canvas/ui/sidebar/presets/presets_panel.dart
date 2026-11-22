@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -7,25 +9,25 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
-import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/canvas_preset_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/preset_lists.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
 
-// presets_library.dart is the Presets panel: every kind of preset in one
-// list, narrowed by chips and a search: canvases, scenes, elements, pitch
-// views, text styles, pictures' looks and brushes. The last four are for
-// what is picked; with nothing such picked, using one says what to pick.
+// presets_panel.dart is the Presets panel of the sidebar: every kind of
+// preset in one list, narrowed by chips and a search. Canvases
+// (canvas_preset_cards.dart), scenes and elements (preset_lists.dart), then
+// pitch views, text styles, pictures' actions, brushes and sound devices,
+// which are for what is picked: with nothing such picked, using one says
+// what to pick.
 
-/// PresetFilter is one of the chips along the top.
-enum PresetFilter {
+/// _Filter is one of the chips along the top.
+enum _Filter {
   all("All"),
   canvas("Canvas"),
   scene("Scene"),
@@ -37,30 +39,35 @@ enum PresetFilter {
   sound("Sound");
 
   final String label;
-  const PresetFilter(this.label);
+  const _Filter(this.label);
 }
 
-/// footballCanvases are the built-in canvases the Football chip shows.
-const footballCanvases = {"football"};
+/// _footballCanvases are the built-in canvases the Football chip shows.
+const _footballCanvases = {"football"};
 
-class CanvasPresetsLibrary extends StatefulWidget {
+/// CanvasPresetsPanel is the Presets panel's body.
+class CanvasPresetsPanel extends StatefulWidget {
   final CanvasController controller;
 
   /// onChoose starts a new document from a canvas preset; what to do about
   /// unsaved work is the screen's decision.
-  final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
+  final ValueChanged<CanvasDocument> onChoose;
 
-  const CanvasPresetsLibrary(
+  const CanvasPresetsPanel(
       {required this.controller, required this.onChoose, super.key});
 
+  /// forgetForTest puts the chips back on All, as a new run has them.
+  @visibleForTesting
+  static void forgetForTest() => _CanvasPresetsPanelState._kept = _Filter.all;
+
   @override
-  State<CanvasPresetsLibrary> createState() => _CanvasPresetsLibraryState();
+  State<CanvasPresetsPanel> createState() => _CanvasPresetsPanelState();
 }
 
-class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
-  /// _kept is the chip pressed, kept for the session.
-  static PresetFilter _kept = PresetFilter.all;
-  PresetFilter _filter = _kept;
+class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
+  /// _kept is the chip pressed, kept for the run of the app.
+  static _Filter _kept = _Filter.all;
+  _Filter _filter = _kept;
   final TextEditingController _search = TextEditingController();
 
   CanvasController get controller => widget.controller;
@@ -71,24 +78,24 @@ class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
     super.dispose();
   }
 
-  void _pick(PresetFilter f) => setState(() => _filter = _kept = f);
+  void _pick(_Filter f) => setState(() => _filter = _kept = f);
 
   @override
   Widget build(BuildContext context) {
     var colors = ThemeNotifier.of(context).colors;
     var query = _search.text;
-    bool shows(PresetFilter f) => _filter == PresetFilter.all || _filter == f;
+    bool shows(_Filter f) => _filter == _Filter.all || _filter == f;
     Widget heading(String text) => Padding(
           padding: const EdgeInsets.only(top: 10, bottom: 6),
           child: CanvasSubHeading(text),
         );
-    var football = _filter == PresetFilter.football;
+    var football = _filter == _Filter.football;
     return ListView(
       key: const ValueKey("presetsLibrary"),
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 14),
       children: [
         Wrap(spacing: 4, runSpacing: 4, children: [
-          for (var f in PresetFilter.values)
+          for (var f in _Filter.values)
             ChoiceChip(
               key: ValueKey("presetFilter-${f.name}"),
               label: Text(f.label, style: const TextStyle(fontSize: 11)),
@@ -120,47 +127,44 @@ class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
             ),
           ),
         ),
-        if (shows(PresetFilter.canvas) || football) ...[
+        if (shows(_Filter.canvas) || football) ...[
           heading(football ? "Canvases" : "Canvas"),
-          CanvasPresetsPanel(
+          CanvasPresetCards(
             controller: controller,
             onChoose: widget.onChoose,
             query: query,
-            embedded: true,
-            only: football ? footballCanvases : null,
+            only: football ? _footballCanvases : null,
           ),
         ],
-        if (shows(PresetFilter.scene)) ...[
+        if (shows(_Filter.scene)) ...[
           heading("Scene"),
-          ScenePresetsPanel(
-              controller: controller, query: query, embedded: true),
+          ScenePresetList(controller: controller, query: query),
         ],
-        if (shows(PresetFilter.element) || football) ...[
+        if (shows(_Filter.element) || football) ...[
           heading(football ? "Teams" : "Element"),
-          ElementPresetsPanel(
+          ElementPresetList(
             controller: controller,
             query: query,
-            embedded: true,
             kinds: football ? const {ElementKind.player} : null,
           ),
         ],
-        if (shows(PresetFilter.football)) ...[
+        if (shows(_Filter.football)) ...[
           heading("Pitch views"),
           _PitchViews(controller: controller, query: query),
         ],
-        if (shows(PresetFilter.text)) ...[
+        if (shows(_Filter.text)) ...[
           heading("Text styles"),
           _TextStyles(controller: controller, query: query),
         ],
-        if (shows(PresetFilter.looks)) ...[
+        if (shows(_Filter.looks)) ...[
           heading("Actions"),
           _Looks(controller: controller, query: query),
         ],
-        if (shows(PresetFilter.brushes)) ...[
+        if (shows(_Filter.brushes)) ...[
           heading("Brushes"),
           _Brushes(controller: controller, query: query),
         ],
-        if (shows(PresetFilter.sound)) ...[
+        if (shows(_Filter.sound)) ...[
           heading("Devices and chains"),
           _SoundPresets(controller: controller, query: query),
         ],
@@ -173,65 +177,6 @@ class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
 void _needs(BuildContext context, String what) =>
     SnackBarModel.of(context).error(what);
 
-/// _StoreList is a saved-preset store's presets as rows, kept up as it changes.
-class _StoreList extends StatefulWidget {
-  final SavedPresetStore store;
-  final String query;
-  final IconData icon;
-  final String empty;
-  final void Function(BuildContext context, SavedPresetRef preset) onUse;
-  const _StoreList(
-      {required this.store,
-      required this.query,
-      required this.icon,
-      required this.empty,
-      required this.onUse});
-
-  @override
-  State<_StoreList> createState() => _StoreListState();
-}
-
-/// SavedPresetRef is a saved preset as a row uses it.
-typedef SavedPresetRef = ({String id, String name, Map<String, dynamic> data});
-
-class _StoreListState extends State<_StoreList> {
-  @override
-  void initState() {
-    super.initState();
-    widget.store.load();
-  }
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: widget.store,
-        builder: (context, _) {
-          var shown = [
-            for (var p in widget.store.presets)
-              if (presetMatches(p.name, widget.query)) p
-          ];
-          if (shown.isEmpty) {
-            return widget.query.isEmpty
-                ? CanvasHint(widget.empty)
-                : const SizedBox.shrink();
-          }
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var p in shown)
-                  PresetRow(
-                    key: ValueKey("savedPreset:${p.id}"),
-                    name: p.name,
-                    icon: widget.icon,
-                    onUse: () => widget
-                        .onUse(context, (id: p.id, name: p.name, data: p.data)),
-                    onRename: (name) => widget.store.rename(p, name),
-                    onDelete: () => widget.store.remove(p),
-                  ),
-              ]);
-        },
-      );
-}
-
 /// _PitchViews are the pitch's saved views: used, the canvas is seen so.
 class _PitchViews extends StatelessWidget {
   final CanvasController controller;
@@ -239,7 +184,7 @@ class _PitchViews extends StatelessWidget {
   const _PitchViews({required this.controller, required this.query});
 
   @override
-  Widget build(BuildContext context) => _StoreList(
+  Widget build(BuildContext context) => StorePresetList(
         store: SavedPresetStore.pitchViews,
         query: query,
         icon: Icons.videocam_outlined,
@@ -309,7 +254,7 @@ class _Looks extends StatelessWidget {
   const _Looks({required this.controller, required this.query});
 
   @override
-  Widget build(BuildContext context) => _StoreList(
+  Widget build(BuildContext context) => StorePresetList(
         store: SavedPresetStore.looks,
         query: query,
         icon: Icons.auto_fix_high_outlined,
@@ -333,7 +278,7 @@ class _SoundPresets extends StatelessWidget {
   const _SoundPresets({required this.controller, required this.query});
 
   @override
-  Widget build(BuildContext context) => _StoreList(
+  Widget build(BuildContext context) => StorePresetList(
         store: devicePresets,
         query: query,
         icon: Icons.tune,

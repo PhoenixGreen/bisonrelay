@@ -1,37 +1,11 @@
-import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// preset_row.dart is one saved thing in the Presets sidebar: one row for an
-// element, scene or canvas, since all are used, renamed and deleted alike.
+import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
-/// askForPresetName asks what to call one, with [initial] filled in, shared
-/// by everything that saves a preset so all ask in the same words.
-Future<String?> askForPresetName(BuildContext context, String title,
-    {String initial = ""}) {
-  var text = TextEditingController(text: initial);
-  return showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: TextField(
-        controller: text,
-        autofocus: true,
-        maxLength: 60,
-        decoration: const InputDecoration(labelText: "Name"),
-        onSubmitted: (v) => Navigator.of(context).pop(v),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancel")),
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(text.text),
-            child: const Text("OK")),
-      ],
-    ),
-  );
-}
+// preset_row.dart is one preset in the Presets panel: the same row for an
+// element, a scene, a canvas, a brush or a device, since all are used,
+// renamed and deleted alike.
 
 /// PresetRow is a preset's name, what it is, and its own menu.
 class PresetRow extends StatefulWidget {

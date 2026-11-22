@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
@@ -502,11 +502,8 @@ void main() {
       await pump(
           tester,
           PanelStack(storageKey: "presetsHint", panels: [
-            canvasSidebarPanel(
-                SidebarPanel.presets,
-                controller,
-                CanvasPresetsLibrary(
-                    controller: controller, onChoose: (_, __) {})),
+            canvasSidebarPanel(SidebarPanel.presets, controller,
+                CanvasPresetsPanel(controller: controller, onChoose: (_) {})),
           ]));
       // One list of every kind now, under the files: a canvas to start
       // from, a scene to add, an element to drop on, and the rest.

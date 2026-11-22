@@ -10,7 +10,6 @@ import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
@@ -526,7 +525,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await CanvasStorage.saveOrder(_folder, entries);
   }
 
-  /// _newCanvas starts the empty preset (the Presets tab's "new canvas") and
+  /// _newCanvas starts the empty preset (the Presets panel's "Empty canvas") and
   /// names it at once: a canvas with a file saves itself from then on, and a
   /// taken name is found before the work rather than after.
   Future<void> _newCanvas() async {
@@ -626,7 +625,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     );
   }
 
-  /// _saveAsPreset keeps a saved canvas in the Presets sidebar, read from
+  /// _saveAsPreset keeps a saved canvas in the Presets panel, read from
   /// the file, so it is the saved version even while another is open.
   Future<void> _saveAsPreset(CanvasEntry entry) async {
     var snackbar = SnackBarModel.of(context);

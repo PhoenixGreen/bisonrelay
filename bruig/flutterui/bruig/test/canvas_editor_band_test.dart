@@ -296,7 +296,7 @@ void main() {
               onOpen: (_, __) async {},
               onPublish: (_, __) {},
               onNew: (_, __) async {},
-              onChoosePreset: (_, __) {},
+              onChoosePreset: (_) {},
             ),
             onCustomise: () {},
           ));

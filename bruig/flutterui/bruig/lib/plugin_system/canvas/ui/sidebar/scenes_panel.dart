@@ -9,7 +9,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/storyboard.dart';
 import 'package:flutter/material.dart';
@@ -512,7 +512,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         // Copied here, pasted into whichever canvas opens next: how a scene
         // moves between documents. No Rename: double-click the name.
         const PopupMenuItem(value: "copy", child: Text("Copy")),
-        // Kept in the Presets sidebar as a copy: later edits do not reach it.
+        // Kept in the Presets panel as a copy: later edits do not reach it.
         PopupMenuItem(
             value: "preset",
             child: Text("Save ${document.kind.one} as preset")),

@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
