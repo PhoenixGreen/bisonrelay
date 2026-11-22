@@ -844,162 +844,196 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _stagePainter is what paints the page, made afresh each build from the
-  /// controller and the stage's gestures.
-  StagePainter _stagePainter() {
-    var typed = switch (_editing) {
-      TextEdit edit => edit,
-      _ => null,
-    };
-    return StagePainter(
-      between: _between,
-      // A tile tried on under the pointer is drawn as a
-      // gesture is, then properly once picked or left.
-      drafting: controller.interacting || controller.trying,
-      backgrounds: _backgrounds,
-      page: _pageRect,
-      view: _view.viewRect,
-      levelShown: _view.levelShown,
-      facing: _facingPage,
-      facingFrame: _facingPage == null ? 0 : controller.frameOn(_facingPage!),
-      facingOnLeft: _view.facingOnLeft,
-      facingShown: _view.spread,
-      // A game's own view; playing, without guide paths.
-      document: controller.gaming || controller.playing
-          ? withoutGuides(controller.gameView ?? controller.spoken(document))
-          : controller.spoken(document),
-      frame: controller.frame,
-      previewAt: controller.previewAt,
-      previewing: controller.previewing,
-      markerNote: controller.holdingMarker,
-      markerNoteGrip: !controller.gaming,
-      anchors: _anchorsShown(),
-      scale: _scale,
-      origin: _view.origin,
-      images: controller.images,
-      hoveredButton: controller.hoveredButton,
-      counterValue: controller.counterValue,
-      liveMotion: controller.liveMotion,
-      motionTick: controller.motionTick,
-      directed: _directed,
-      counterPressed: (e) => e.id == _hoveredCounter ? _hoveredCounterAt : -1,
-      counterRunning: controller.counterRunning,
-      counterTick: controller.counterTicks,
-      audioState: controller.audioState,
-      videoShow: controller.videoShow,
-      audioRevision: controller.audioRevision,
-      keysTick: controller.keysHeld.value,
-      selection: {for (var e in _chosen) e.id},
-      // Trail and onion skin while the Chain shows motion.
-      trail: controller.motionTrail && controller.chainShowsMotion,
-      gameChange: controller.gameChange,
-      pickedCopies: controller.selected == null
-          ? const {}
-          : controller.pickedCopiesOf(controller.selected!.id),
-      showHelpers: controller.showHelpers,
-      // The scene's slow move while it plays (see
-      // SceneCamera); still while editing, so a press lands
-      // where the page looks to be. A game frames the page
-      // its own way, following the player.
-      camera: controller.gaming
-          ? controller.gameFraming
-          : _directed
-              // Its Camera, or its slow move: see sceneFraming.
-              ? sceneFraming(document, controller.frame,
-                  live: controller.liveMotion)
+  /// controller and the stage's gestures: one value for each subject (see
+  /// StageInputs), each made by its own builder below.
+  StagePainter _stagePainter() => StagePainter((
+        transform: _view,
+        shown: _shownOnStage(),
+        live: _liveOnStage(),
+        selection: _selectionMarks(),
+        elements: _elementMarks(),
+        tools: _toolMarks(),
+        retouch: _retouchMarks(),
+        guides: _guideMarks(),
+        text: switch (_editing) {
+          TextEdit edit => (element: edit.elementId, item: edit.itemId),
+          _ => null,
+        },
+      ));
+
+  /// _shownOnStage is which page the painter draws, at which frame, and how
+  /// it is being played.
+  StageShown _shownOnStage() => (
+        // A game's own view; playing, without guide paths.
+        document: controller.gaming || controller.playing
+            ? withoutGuides(controller.gameView ?? controller.spoken(document))
+            : controller.spoken(document),
+        frame: controller.frame,
+        facing: switch (_facingPage) {
+          var page? => (index: page, frame: controller.frameOn(page)),
+          null => null,
+        },
+        previewAt: controller.previewAt,
+        previewing: controller.previewing,
+        gameChange: controller.gameChange,
+        // The scene's slow move while it plays (see SceneCamera); still
+        // while editing, so a press lands where the page looks to be. A
+        // game frames the page its own way, following the player.
+        camera: controller.gaming
+            ? controller.gameFraming
+            : _directed
+                // Its Camera, or its slow move: see sceneFraming.
+                ? sceneFraming(document, controller.frame,
+                    live: controller.liveMotion)
+                : null,
+        directed: _directed,
+        markerNote: controller.holdingMarker,
+        markerNoteGrip: !controller.gaming,
+      );
+
+  /// _liveOnStage is what the painter draws from outside the document, each
+  /// closure with the tick that stands in for it.
+  StageLive _liveOnStage() => (
+        images: controller.images,
+        backgrounds: _backgrounds,
+        between: _between,
+        // A tile tried on under the pointer is drawn as a gesture is, then
+        // properly once picked or left.
+        drafting: controller.interacting || controller.trying,
+        hoveredButton: controller.hoveredButton,
+        counterHover: (id: _hoveredCounter, button: _hoveredCounterAt),
+        liveMotion: NotCompared(controller.liveMotion),
+        motionTick: controller.motionTick,
+        counterValue: NotCompared(controller.counterValue),
+        counterRunning: NotCompared(controller.counterRunning),
+        counterTick: controller.counterTicks,
+        audioState: NotCompared(controller.audioState),
+        videoShow: NotCompared(controller.videoShow),
+        audioRevision: controller.audioRevision,
+        keysTick: controller.keysHeld.value,
+        spritePaintTick: controller.spritePaint?.tick ?? -1,
+        tilePaintTick: controller.tilePaint?.tick ?? -1,
+      );
+
+  /// _selectionMarks is the selection as the painter marks it.
+  StageSelectionMarks _selectionMarks() => (
+        ids: EqualSet([for (var e in _chosen) e.id]),
+        bounds: _selectionBounds,
+        frame: _frameOfSelection,
+        showHandles: _selectionHasOwnGeometry,
+        showHelpers: controller.showHelpers,
+        pickedCopies: EqualSet(controller.selected == null
+            ? const <String>{}
+            : controller.pickedCopiesOf(controller.selected!.id)),
+        // Trail and onion skin while the Chain shows motion.
+        trail: controller.motionTrail && controller.chainShowsMotion,
+        anchors: EqualList(_anchorsShown()),
+      );
+
+  /// _elementMarks is what the painter marks on elements, besides the
+  /// selection's box.
+  StageElementMarks _elementMarks() => (
+        showAllBounds: controller.showAllBounds,
+        camerasShown: _camerasShown,
+        touchAreas: EqualList(_touchAreas()),
+        flowGrips: _flowGrips(),
+        flowLines: EqualList(_flowLines()),
+        flowDrag: _flowDragLine(),
+        chartLabels: EqualList(_selectedChartLabels()),
+        layout: _layoutMarks(),
+        tableColumns: EqualList(_selectedTableColumns()),
+        selectedPath: _selectedPath(),
+      );
+
+  /// _toolMarks is what the tool in hand has the painter draw.
+  StageToolMarks _toolMarks() => (
+        vector: _vectorMarks(),
+        layers: _layerBoxes(),
+        framing: _framingView(),
+        knife: EqualList(_knife),
+        caret: _caret(),
+        marquee: _marqueeDrawn,
+      );
+
+  /// _vectorMarks is the drawing being edited point by point, as the
+  /// painter draws it, or null.
+  StageVectorEdit? _vectorMarks() {
+    var v = controller.editingVector;
+    if (v == null) return null;
+    // While a box is dragged, all points show.
+    var boxing = _mode == _DragMode.vectorMarquee && _marquee != null;
+    return (
+      element: v,
+      shape: controller.vectorShape,
+      pick: controller.vectorPick,
+      picks: EqualSet(controller.vectorPicks),
+      // Points and their box are put away for tools that pick nothing (and
+      // the pencil, unless set to show them), and while a line's thickness
+      // is dragged, so the line can be watched.
+      bare: _mode == _DragMode.vectorScale ||
+          _picksShapes ||
+          !(controller.vectorTool.showsPoints ||
+              (controller.vectorTool == VectorTool.pencil &&
+                  controller.vectorPencilPoints)),
+      turnable: _picksShapes,
+      shapeBox: _picksShapes
+          ? itemsExtent(v, controller.vectorItems)
+          : controller.vectorTool == VectorTool.shapes &&
+                  controller.vectorShapeMade >= 0
+              ? groupExtent(
+                  v,
+                  groupStarts(v)
+                      .indexOf(groupOf(v, controller.vectorShapeMade)))
               : null,
-      camerasShown: _camerasShown,
-      selectedPath: _selectedPath(),
-      rulers: controller.rulers,
-      rulersApart: _viewport.width > _visible.width + 0.5 ||
-          _viewport.height > _visible.height + 0.5,
-      spritePaintTick: controller.spritePaint?.tick ?? -1,
-      tilePaintTick: controller.tilePaint?.tick ?? -1,
-      editingLayers: _layerBoxes(),
-      editingVector: switch (controller.editingVector) {
-        var v? => (
-            element: v,
-            shape: controller.vectorShape,
-            pick: controller.vectorPick,
-            picks: controller.vectorPicks,
-            // Points and their box are put away for tools
-            // that pick nothing (and the pencil, unless set
-            // to show them), and while a line's thickness
-            // is dragged, so the line can be watched.
-            bare: _mode == _DragMode.vectorScale ||
-                _picksShapes ||
-                !(controller.vectorTool.showsPoints ||
-                    (controller.vectorTool == VectorTool.pencil &&
-                        controller.vectorPencilPoints)),
-            turnable: _picksShapes,
-            shapeBox: _picksShapes
-                ? itemsExtent(v, controller.vectorItems)
-                : controller.vectorTool == VectorTool.shapes &&
-                        controller.vectorShapeMade >= 0
-                    ? groupExtent(
-                        v,
-                        groupStarts(v)
-                            .indexOf(groupOf(v, controller.vectorShapeMade)))
-                    : null,
-            mirror: controller.vectorTool == VectorTool.pencil
-                ? (
-                    across: controller.vectorMirrorAcross,
-                    down: controller.vectorMirrorDown
-                  )
-                : null,
-            combining: controller.vectorTool == VectorTool.boolean
-                ? controller.vectorCombining
-                : null,
-            // While a box is dragged, all points show.
-            boxing: _mode == _DragMode.vectorMarquee && _marquee != null,
-            boxed: _mode == _DragMode.vectorMarquee && _marquee != null
-                ? picksIn(v, _marquee!)
-                : const <VectorPick>{},
-          ),
-        null => null,
-      },
-      chartLabels: _selectedChartLabels(),
-      layoutMarks: _layoutMarks(),
-      tableColumns: _selectedTableColumns(),
-      editingText: typed?.elementId,
-      editingItem: typed?.itemId,
-      preview: _preview,
-      previewOn: _previewPlacement(),
-      liveStroke: switch (_gesture) {
-        _RetouchStroke s => s.canvasPoints,
-        _ => const [],
-      },
-      knife: _knife,
-      caret: _caret(),
-      liveStrokeRadius: switch (_gesture) {
-        _RetouchStroke s => s.radius,
-        _ => 0,
-      },
-      liveStrokeKeeps: controller.retouch.keeps,
-      selectionBounds: _selectionBounds,
-      framing: _framingView(),
-      // The grid and guides put away while the page plays (the rulers
-      // stay): see _guidesInView.
-      guides: _guidesInView
-          ? document.guides
-          : document.guides.copyWith(showGrid: false, showGuides: false),
-      // What a move or resize of the box is caught on, drawn so a snap is
-      // seen rather than felt as a jump.
-      snapped: switch (_gesture) {
-        _BoxDrag drag when _guidesInView => drag.snapped,
-        _ => null,
-      },
-      showHandles: _selectionHasOwnGeometry,
-      selectionRotation: _rotationOfSelection,
-      touchAreas: _touchAreas(),
-      selectionSkew: _skewOfSelection,
-      handleFor: _handlePosition,
-      flowGrips: _flowGrips(),
-      flowLines: _flowLines(),
-      showAllBounds: controller.showAllBounds,
-      flowDrag: _flowDragLine(),
-      marquee: _marqueeDrawn,
+      mirror: controller.vectorTool == VectorTool.pencil
+          ? (
+              across: controller.vectorMirrorAcross,
+              down: controller.vectorMirrorDown
+            )
+          : null,
+      combining: controller.vectorTool == VectorTool.boolean
+          ? EqualSet(controller.vectorCombining)
+          : null,
+      boxing: boxing,
+      boxed: EqualSet(boxing ? picksIn(v, _marquee!) : const <VectorPick>{}),
     );
   }
+
+  /// _retouchMarks is the retouching brush's held preview and the stroke
+  /// being drawn, as the painter draws them.
+  StageRetouchMarks _retouchMarks() {
+    var stroke = switch (_gesture) {
+      _RetouchStroke s => s,
+      _ => null,
+    };
+    var points = stroke?.canvasPoints ?? const <Offset>[];
+    return (
+      preview: switch ((_preview, _previewPlacement())) {
+        (var image?, var on?) => (image: image, src: on.src, dst: on.dst),
+        _ => null,
+      },
+      stroke: NotCompared(points),
+      strokeLength: points.length,
+      radius: stroke?.radius ?? 0.0,
+      keeps: controller.retouch.keeps,
+    );
+  }
+
+  /// _guideMarks is the grid, the guides, what a drag is caught on and the
+  /// rulers, as the painter draws them.
+  StageGuideMarks _guideMarks() => (
+        canvas: document.guides,
+        // The grid and guides put away while the page plays (the rulers
+        // stay): see _guidesInView.
+        inView: _guidesInView,
+        // What a move or resize of the box is caught on, drawn so a snap is
+        // seen rather than felt as a jump.
+        snapped: switch (_gesture) {
+          _BoxDrag drag when _guidesInView => drag.snapped,
+          _ => null,
+        },
+        rulers: controller.rulers,
+      );
 
   /// _overlays are the widgets laid over the painted page: the 3D gizmo, a
   /// carried synth cable, and whichever editors, carried tab, typing field,

@@ -68,10 +68,11 @@ void main() {
         .map((p) => p.painter)
         .whereType<StagePainter>()
         .single;
-    expect(painter().trail, isFalse, reason: "the Chain shut");
+    expect(painter().inputs.selection.trail, isFalse, reason: "the Chain shut");
     c.animationOpen = true;
     await tester.pumpAndSettle();
-    expect(painter().trail, isTrue, reason: "open on its motion");
+    expect(painter().inputs.selection.trail, isTrue,
+        reason: "open on its motion");
 
     // Ahead of it, where it will be in two seconds: its path, faint green.
     var ahead = key.currentState!.toStagePoint(const Offset(450, 320));
@@ -98,7 +99,8 @@ void main() {
     expect(await greenThere(), greaterThan(8), reason: "the dashed path");
     c.motionTrail = false;
     await tester.pumpAndSettle();
-    expect(painter().trail, isFalse, reason: "hidden from the ⋯");
+    expect(painter().inputs.selection.trail, isFalse,
+        reason: "hidden from the ⋯");
     expect(await greenThere(), lessThanOrEqualTo(8));
     expect(tester.takeException(), isNull);
   });

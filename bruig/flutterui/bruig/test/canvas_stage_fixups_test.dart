@@ -166,7 +166,8 @@ void main() {
       var stage = await pump(tester, c, onButtonLink: links.add);
       await awayAndBack(
           tester, stage.toStagePoint(e.center), const Offset(60, 0));
-      expect(painted(tester).snapped, isNull, reason: "no snap mark left");
+      expect(painted(tester).inputs.guides.snapped, isNull,
+          reason: "no snap mark left");
       expect(links, isEmpty, reason: "it was dragged, not clicked");
       settled(stage, c, "let go");
     });
@@ -295,16 +296,20 @@ void main() {
         await drag(
             tester, stage.toStagePoint(shape.center), const Offset(40, 0),
             cancel: cancel,
-            during: () => expect(painted(tester).snapped, isNotNull));
-        expect(painted(tester).snapped, isNull, reason: "moved, $how");
+            during: () =>
+                expect(painted(tester).inputs.guides.snapped, isNotNull));
+        expect(painted(tester).inputs.guides.snapped, isNull,
+            reason: "moved, $how");
         c.undo();
         await tester.pump();
         var handle = stage.handleAt(StageHandle.bottomRight);
         await drag(
             tester, handle, stage.toStagePoint(const Offset(728, 400)) - handle,
             cancel: cancel,
-            during: () => expect(painted(tester).snapped?.caught, isTrue));
-        expect(painted(tester).snapped, isNull, reason: "resized, $how");
+            during: () =>
+                expect(painted(tester).inputs.guides.snapped?.caught, isTrue));
+        expect(painted(tester).inputs.guides.snapped, isNull,
+            reason: "resized, $how");
       });
     }
   });
@@ -710,15 +715,44 @@ void main() {
       var g = await tester.startGesture(stage.pageRect.center);
       await tester.pump();
       var before = painted(tester);
-      expect(before.liveStroke, hasLength(1));
+      expect(before.inputs.retouch.stroke.value, hasLength(1));
       await g.moveBy(const Offset(40, 0));
       await tester.pump();
       var after = painted(tester);
-      expect(after.liveStroke.length, greaterThan(1));
+      expect(after.inputs.retouch.stroke.value.length, greaterThan(1));
       expect(after.shouldRepaint(before), isTrue,
           reason: "the stroke has grown, so it is drawn again");
       await g.up();
       await tester.pumpAndSettle();
+    });
+  });
+
+  group("a live counter's button under the pointer", () {
+    testWidgets("is drawn lit as the pointer comes onto it", (tester) async {
+      const e = CounterElement(
+          ElementBase(id: "n", x: 400, y: 200, width: 300, height: 160),
+          keyed: false,
+          buttons: [CounterButton.input],
+          looseButtons: true,
+          buttonAt: [Offset(0.3, 0.2)]);
+      expect(e.live, isTrue);
+      var c = CanvasController(const CanvasDocument().addElement(e));
+      addTearDown(c.dispose);
+      var stage = await pump(tester, c);
+      var at =
+          stage.toStagePoint(counterButtonRects(e, e.bounds).single.center);
+      var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(
+          location: stage.toStagePoint(const Offset(20, 20)));
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      var before = painted(tester);
+      await mouse.moveTo(at);
+      await tester.pump();
+      var after = painted(tester);
+      expect(identical(after, before), isFalse, reason: "the stage rebuilt");
+      expect(after.shouldRepaint(before), isTrue,
+          reason: "the button under the pointer is drawn lit");
     });
   });
 

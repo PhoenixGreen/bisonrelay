@@ -35,18 +35,19 @@ extension StagePictureFraming on CanvasStageState {
 
       var base =
           e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
-      return StageFraming(
-          image,
-          placement.whole,
-          placement.wholeDst,
-          _framingRect(e),
-          e.movedRotationAt(controller.frame, controller.document,
-                  live: controller.liveMotion) *
-              math.pi /
-              180,
-          pivot: _hit.posed(e).center,
-          flipX: base.flipX,
-          flipY: base.flipY);
+      return (
+        image: image,
+        src: placement.whole,
+        dst: placement.wholeDst,
+        frame: _framingRect(e),
+        rotation: e.movedRotationAt(controller.frame, controller.document,
+                live: controller.liveMotion) *
+            math.pi /
+            180,
+        pivot: _hit.posed(e).center,
+        flipX: base.flipX,
+        flipY: base.flipY,
+      );
     }
     return null;
   }

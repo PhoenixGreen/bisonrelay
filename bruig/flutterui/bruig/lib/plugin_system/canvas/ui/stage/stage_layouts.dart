@@ -45,30 +45,32 @@ extension StageLayouts on CanvasStageState {
           (_outOfLayout(e, t.from), _outOfLayout(e, t.to)),
       ],
     ];
-    var knobs = [
+    var knobs = <LayoutCutKnobs>[
       for (var c
           in free ? layoutCutLines(e, e.bounds) : const <LayoutCutLine>[])
         if (_cutKnobs(e, c) case var k?)
-          LayoutCutKnobs(
-              _outOfLayout(e, k.turn),
-              _outOfLayout(e, k.gutter),
-              (_outOfLayout(e, k.edgeA.$1), _outOfLayout(e, k.edgeA.$2)),
-              (_outOfLayout(e, k.edgeB.$1), _outOfLayout(e, k.edgeB.$2))),
+          (
+            turn: _outOfLayout(e, k.turn),
+            gutter: _outOfLayout(e, k.gutter),
+            edgeA: (_outOfLayout(e, k.edgeA.$1), _outOfLayout(e, k.edgeA.$2)),
+            edgeB: (_outOfLayout(e, k.edgeB.$1), _outOfLayout(e, k.edgeB.$2)),
+          ),
     ];
     // Reading numbers, at each cell's middle: the clicked ones while the
     // order is being set, else the layout's own.
     var ordering = controller.orderingLayout == e.id;
     var clicked = controller.orderClicked;
-    var badges = [
+    var badges = <LayoutBadge>[
       for (var p in layoutPlaces(e, e.bounds))
-        LayoutBadge(
-            _outOfLayout(e, _middleOf(p)),
-            ordering
-                ? (clicked.contains(p.cell.id)
-                    ? clicked.indexOf(p.cell.id) + 1
-                    : null)
-                : e.numberOf(p.cell.id),
-            ordering: ordering),
+        (
+          at: _outOfLayout(e, _middleOf(p)),
+          number: ordering
+              ? (clicked.contains(p.cell.id)
+                  ? clicked.indexOf(p.cell.id) + 1
+                  : null)
+              : e.numberOf(p.cell.id),
+          ordering: ordering,
+        ),
     ];
     Path? picked;
     var id = controller.layoutCell(e.id);
@@ -80,7 +82,13 @@ extension StageLayouts on CanvasStageState {
             : place.path.transform(_turnMatrix(e.bounds.center, e.rotation));
       }
     }
-    return LayoutMarks(lines, picked, knobs: knobs, badges: badges);
+    return (
+      lines: EqualList(lines),
+      picked: NotCompared(picked),
+      pickedCell: picked == null ? null : id,
+      knobs: EqualList(knobs),
+      badges: EqualList(badges),
+    );
   }
 
   /// _middleOf is the middle of a cell's outline: the mean of its corners,

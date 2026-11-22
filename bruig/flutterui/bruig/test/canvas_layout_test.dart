@@ -16,9 +16,11 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart' show SizedBox, GlobalKey, ValueKey;
+import 'package:flutter/material.dart'
+    show CustomPaint, SizedBox, GlobalKey, ValueKey;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
 
@@ -501,6 +503,35 @@ void main() {
       await tester.pumpAndSettle();
       expect(c.layoutCell("L"), "b");
       expect(c.selection, {"L"});
+    });
+
+    // The stage's painter as last built, to ask whether it would draw again.
+    StagePainter painted(WidgetTester tester) => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((p) => p.painter)
+        .whereType<StagePainter>()
+        .first;
+
+    testWidgets(
+        "a picked cell and the reading numbers are drawn as they change",
+        (tester) async {
+      var l = _two();
+      var (c, _) = await stage(tester, page(l));
+      c.selectOnly("L");
+      await tester.pumpAndSettle();
+      var before = painted(tester);
+      c.pickLayoutCell("L", "b");
+      await tester.pump();
+      expect(painted(tester).shouldRepaint(before), isTrue,
+          reason: "the picked cell's outline");
+      c.pickLayoutCell("L", null);
+      c.beginReadingOrder(l);
+      await tester.pumpAndSettle();
+      before = painted(tester);
+      c.clickReadingOrder("b");
+      await tester.pump();
+      expect(painted(tester).shouldRepaint(before), isTrue,
+          reason: "the clicked cell's number");
     });
 
     testWidgets("a cut is dragged to move it", (tester) async {

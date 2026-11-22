@@ -154,9 +154,9 @@ void main() {
 
   test("the stage's own libraries do not import the stage", () {
     // The keys, the hit test, the picked parts, the view and its scrolling,
-    // what is edited in place and the rulers are read by the stage; when one
-    // of them imported the stage back, neither could be read or changed
-    // alone.
+    // what is edited in place, the rulers and what the painter draws from
+    // are read by the stage; when one of them imported the stage back,
+    // neither could be read or changed alone.
     var own = [
       "ui/stage/stage_keys.dart",
       "ui/stage/stage_hit_test.dart",
@@ -165,6 +165,7 @@ void main() {
       "ui/stage/stage_scroll.dart",
       "ui/stage/in_place_edit.dart",
       "ui/stage/stage_rulers.dart",
+      "ui/stage/stage_painter_inputs.dart",
     ];
     var offenders = [
       for (var path in own)

@@ -490,7 +490,9 @@ void main() {
           .map((p) => p.painter)
           .whereType<StagePainter>()
           .single
-          .selectionBounds;
+          .inputs
+          .selection
+          .bounds;
       c.selectOnly("a");
       await tester.pumpAndSettle();
       expect(box(), isNull, reason: "selected: each copy outlined alone");

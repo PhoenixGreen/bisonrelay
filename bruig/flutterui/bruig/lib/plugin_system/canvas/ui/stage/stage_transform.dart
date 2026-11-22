@@ -108,6 +108,29 @@ class StageTransform {
     );
   }
 
+  /// _made is every value this is made from, as one record. Everything else
+  /// it answers follows from these, so two made from equal values are equal;
+  /// a field left out here would let two different views compare equal and
+  /// a change of view go unpainted.
+  (Size, Size, Size, CanvasFit, double, bool, bool, bool, Rect?) get _made => (
+        visible,
+        viewport,
+        page,
+        fit,
+        zoom,
+        spread,
+        facingOnLeft,
+        overspill,
+        level
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is StageTransform && other._made == _made;
+
+  @override
+  int get hashCode => _made.hashCode;
+
   /// fitScale is the scale at which the whole canvas fits, with [margin] to
   /// spare. It changes with the window and sidebar, which the controller
   /// does not know.
@@ -185,6 +208,13 @@ class StageTransform {
 
   /// levelShown is whether a game's level reaches past the page.
   bool get levelShown => level != null;
+
+  /// scrolls is whether the [viewport] is bigger than the room on screen, so
+  /// the page is in scroll views and the rulers are drawn in a layer of
+  /// their own over them, not by the stage's painter.
+  bool get scrolls =>
+      viewport.width > visible.width + 0.5 ||
+      viewport.height > visible.height + 0.5;
 
   /// contentSize is the room the canvas and margins need in [visible], the
   /// excess over it scrolled: what the stage lays the [viewport] out at.

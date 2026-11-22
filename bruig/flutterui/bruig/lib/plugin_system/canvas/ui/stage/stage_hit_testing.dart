@@ -393,21 +393,7 @@ extension StageHitTesting on CanvasStageState {
   }
 
   /// _handlePosition is where a grip is drawn, in stage space.
-  Offset _handlePosition(StageHandle handle, Rect bounds) {
-    var centre = _toStage(bounds.center);
-    var half = Offset(bounds.width, bounds.height) * _scale / 2;
-
-    var local = switch (handle) {
-      StageHandle.topLeft => Offset(-half.dx, -half.dy),
-      StageHandle.topCenter => Offset(0, -half.dy),
-      StageHandle.topRight => Offset(half.dx, -half.dy),
-      StageHandle.centerLeft => Offset(-half.dx, 0),
-      StageHandle.centerRight => Offset(half.dx, 0),
-      StageHandle.bottomLeft => Offset(-half.dx, half.dy),
-      StageHandle.bottomCenter => Offset(0, half.dy),
-      StageHandle.bottomRight => Offset(half.dx, half.dy),
-      StageHandle.rotate => Offset(0, -half.dy - rotateHandleGap),
-    };
-    return centre + _frameOfSelection.apply(local);
-  }
+  Offset _handlePosition(StageHandle handle, Rect bounds) =>
+      stageHandleAt(handle, bounds, _frameOfSelection,
+          scale: _scale, origin: _view.origin);
 }

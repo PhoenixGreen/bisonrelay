@@ -39,7 +39,7 @@ reason, as debts to pay off; nothing may be added to the list without one.
 |---|---|
 | (top) | `canvas_controller.dart` and what every part uses: `controls.dart`, `canvas_dialogs.dart`, `element_factory.dart`, `element_settings.dart`, `canvas_align.dart` (lining chosen elements or a picture's layers up with each other), presets, studio colours. |
 | `controller/` | The controller's own parts, as `extension` files (see below). |
-| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates` (the view made from the controller and layout, and the selection's box), `stage_hit_testing` (what is under the pointer), `stage_press` (every press, editing or playing, as a list of steps), `stage_synth_controls` (a synth module's keys, knobs, screens, jacks and cables, and the gestures on them), `stage_code_controls` (a Code or Run panel's controls, the gestures on them, and the editor and live preview over them), `stage_element_controls` (the other elements' controls: counter and its loose pieces, chart key, a chart's placed labels and a table's column rules as drawn and taken, video, speaker, metronome, a flow link dropped), `stage_gesture` (what the pointer is doing, as one value from press to release: see Gestures on the stage, below), `stage_pending_click` (the clicks that ride on a press, made if it is let go where it began), `stage_drag` (a move, resize, slant or turn, from its start; a chart's label, a table's column rule, an anchor and the held marker's note dragged), `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing` (a picture reframed inside its frame), `stage_guides` (guides taken, pulled from a ruler, moved and dropped), `stage_retouch` (the retouching stroke's preview and commit), `stage_team_players` (a team's players pressed and dragged), `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, six libraries beside it do not import it (`test/canvas_layers_test.dart` holds all seven to that): `stage_hit_test.dart`, what is at a point of the document now; `picked_parts.dart`, the parts picked inside one element, which the keys act on too; `stage_transform.dart`, where the page sits in the window and how a stage point becomes a document point; `stage_scroll.dart`, the scroll views kept in step with the controller's pan; `in_place_edit.dart`, the one thing open for typing on the page (a text, a cell or a counter's Set field); and `stage_rulers.dart`, the rulers: their strips, the gap between their numbers, and their drawing, in the painter or in a layer of their own over a page that scrolls. Drawing is `stage_painter.dart` and its parts. `stage_geometry.dart` is the sizes and places of what is grabbed, which the painter and the hit-testing share, and the steps a turn takes with Shift. |
+| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates` (the view made from the controller and layout, and the selection's box), `stage_hit_testing` (what is under the pointer), `stage_press` (every press, editing or playing, as a list of steps), `stage_synth_controls` (a synth module's keys, knobs, screens, jacks and cables, and the gestures on them), `stage_code_controls` (a Code or Run panel's controls, the gestures on them, and the editor and live preview over them), `stage_element_controls` (the other elements' controls: counter and its loose pieces, chart key, a chart's placed labels and a table's column rules as drawn and taken, video, speaker, metronome, a flow link dropped), `stage_gesture` (what the pointer is doing, as one value from press to release: see Gestures on the stage, below), `stage_pending_click` (the clicks that ride on a press, made if it is let go where it began), `stage_drag` (a move, resize, slant or turn, from its start; a chart's label, a table's column rule, an anchor and the held marker's note dragged), `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing` (a picture reframed inside its frame), `stage_guides` (guides taken, pulled from a ruler, moved and dropped), `stage_retouch` (the retouching stroke's preview and commit), `stage_team_players` (a team's players pressed and dragged), `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, seven libraries beside it do not import it (`test/canvas_layers_test.dart` holds all eight to that): `stage_hit_test.dart`, what is at a point of the document now; `picked_parts.dart`, the parts picked inside one element, which the keys act on too; `stage_transform.dart`, where the page sits in the window and how a stage point becomes a document point; `stage_scroll.dart`, the scroll views kept in step with the controller's pan; `in_place_edit.dart`, the one thing open for typing on the page (a text, a cell or a counter's Set field); `stage_rulers.dart`, the rulers: their strips, the gap between their numbers, and their drawing, in the painter or in a layer of their own over a page that scrolls; and `stage_painter_inputs.dart`, what the painter draws from (see Adding a mark to the stage, below). Drawing is `stage_painter.dart` and its parts. `stage_geometry.dart` is the sizes and places of what is grabbed, which the painter and the hit-testing share, and the steps a turn takes with Shift. |
 | `screen/` | The editor around the stage: settings bar, dock, play bar, publishing, the file player. |
 | `timeline/` | Rows, channels, scenes, markers, keys, automation. |
 | `mixer/` | The mixer, its strips and devices, the clip slots. |
@@ -395,6 +395,47 @@ argument to `Snapper(...)` at its two calls, `_beginTransform` and
 settings bar's snap menu both list, so neither needs touching.
 `test/canvas_snapping_test.dart` drags on a real stage; the arithmetic is
 tested in `test/canvas_guides_test.dart` and `test/canvas_align_test.dart`.
+
+### Adding a mark to the stage
+
+`StagePainter` (`ui/stage/stage_painter.dart`) draws from one record,
+`StageInputs`, of nine values, each a record of its own in
+`stage_painter_inputs.dart`: the transform (`StageTransform`), the page
+shown and how it plays (`StageShown`), what is live (`StageLive`), the
+selection's marks, the marks on elements, the tool's marks, the retouching
+brush, the guides with the snap lines and rulers, and the text being typed
+into. `_stagePainter` in `canvas_stage.dart` makes it from one short
+builder per value, written after it (`_shownOnStage`, `_liveOnStage`,
+`_selectionMarks`, `_elementMarks`, `_toolMarks`, `_retouchMarks`,
+`_guideMarks`). `shouldRepaint` compares the whole record, so nothing in it
+can be left out of the comparison.
+
+To add a mark:
+
+1. Give it a field, with its doc comment, in the value whose subject it is:
+   set by the same part of the stage and read by the same part of the
+   paint. A record compares field by field, so it is compared with nothing
+   more written. A list or set goes in as an `EqualList` or `EqualSet`,
+   compared by what it holds. What cannot be compared (a closure, a list
+   grown in place) goes in as a `NotCompared`, beside a tick, revision or
+   length that changes whenever its answers do, said in the doc. A class
+   without equality of its own is compared by identity, which repaints at
+   every build that makes it afresh: say so in its doc, as
+   `StageToolMarks.layers` does, or make it a record.
+2. Set it in that value's builder. The compiler asks for it there and in
+   `make` in `test/canvas_stage_painter_inputs_test.dart`, which gives every
+   field through `pick`: give the new one through `pick` too, so the test
+   changes it alone and expects the stage to repaint.
+3. Draw it in a method of the painter's parts, reading it through `inputs`
+   (`stage_painter_marks.dart` for the page's contents, the marks on
+   elements and the selection; `stage_painter_handles.dart` for the tools'
+   marks, guides and rulers), called from `_paint` or `_paintSelection`
+   where it should stack.
+4. If it can be pressed, its hit test uses the geometry it is drawn with:
+   the sizes and places go in `stage_geometry.dart`, called by both the
+   painter and the press, as `stageHandleAt` is for the selection's
+   handles, `tableColumnGrips` for a table's column rules and
+   `shapeTurnKnob` for a shape's turn knob.
 
 ## Preferences
 

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:flutter/painting.dart';
 
@@ -81,6 +82,29 @@ enum StageHandle {
   bool get movesTop => this == topLeft || this == topCenter || this == topRight;
   bool get movesBottom =>
       this == bottomLeft || this == bottomCenter || this == bottomRight;
+}
+
+/// stageHandleAt is where [handle] of the selection box [bounds] (document
+/// units), laid out by [frame] about its middle, is drawn and taken, in
+/// stage space: [scale] stage pixels to a unit, the document's top-left at
+/// [origin]. The painter and the hit test both ask this.
+Offset stageHandleAt(StageHandle handle, Rect bounds, BoxFrame frame,
+    {required double scale, required Offset origin}) {
+  var centre = bounds.center * scale + origin;
+  var half = Offset(bounds.width, bounds.height) * scale / 2;
+
+  var local = switch (handle) {
+    StageHandle.topLeft => Offset(-half.dx, -half.dy),
+    StageHandle.topCenter => Offset(0, -half.dy),
+    StageHandle.topRight => Offset(half.dx, -half.dy),
+    StageHandle.centerLeft => Offset(-half.dx, 0),
+    StageHandle.centerRight => Offset(half.dx, 0),
+    StageHandle.bottomLeft => Offset(-half.dx, half.dy),
+    StageHandle.bottomCenter => Offset(0, half.dy),
+    StageHandle.bottomRight => Offset(half.dx, half.dy),
+    StageHandle.rotate => Offset(0, -half.dy - rotateHandleGap),
+  };
+  return centre + frame.apply(local);
 }
 
 /// flowGripSize is a text box's flow grip size: smaller than a resize grip,

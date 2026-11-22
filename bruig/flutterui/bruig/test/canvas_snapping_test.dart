@@ -49,7 +49,8 @@ void main() {
       .first;
 
   /// caught is whether the stage shows a snap mark now.
-  bool caught(WidgetTester tester) => painted(tester).snapped?.caught ?? false;
+  bool caught(WidgetTester tester) =>
+      painted(tester).inputs.guides.snapped?.caught ?? false;
 
   /// drag presses at [from] and takes the pointer to [to], both on the
   /// stage, in two steps, then lets go or, with [cancel], has the system
@@ -341,7 +342,8 @@ void main() {
             cancel: cancel, during: () => during = caught(tester));
         expect(during, isTrue, reason: "shown while caught");
         expect(caught(tester), isFalse, reason: "gone, $how");
-        expect(painted(tester).snapped, isNull, reason: "nothing left, $how");
+        expect(painted(tester).inputs.guides.snapped, isNull,
+            reason: "nothing left, $how");
       });
 
       testWidgets("a resize caught shows it, and $how it goes", (tester) async {
@@ -362,7 +364,8 @@ void main() {
             during: () => during = caught(tester));
         expect(during, isTrue, reason: "shown while caught");
         expect(caught(tester), isFalse, reason: "gone, $how");
-        expect(painted(tester).snapped, isNull, reason: "nothing left, $how");
+        expect(painted(tester).inputs.guides.snapped, isNull,
+            reason: "nothing left, $how");
       });
     }
 

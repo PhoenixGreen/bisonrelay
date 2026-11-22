@@ -3623,7 +3623,7 @@ void main() {
       before = painter();
       controller.rulers = const CanvasRulers(left: true);
       await tester.pump();
-      expect(painter().rulers, const CanvasRulers(left: true));
+      expect(painter().inputs.guides.rulers, const CanvasRulers(left: true));
       expect(painter().shouldRepaint(before), isTrue);
       expect(controller.dirty, isFalse);
 

@@ -32,7 +32,7 @@ class RasterCache {
   /// drafting is set while the canvas is drawn during a gesture: what is
   /// rasterised is drawn no bigger than [draftSide] across, so a picture
   /// resized from the settings follows the pointer, and drawn again at its
-  /// full size the moment the gesture ends. See StagePainter.drafting.
+  /// full size the moment the gesture ends. See StageLive.drafting.
   static bool drafting = false;
   static const double draftSide = 1024;
 

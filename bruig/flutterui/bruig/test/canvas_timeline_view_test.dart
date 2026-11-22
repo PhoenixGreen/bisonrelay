@@ -969,8 +969,8 @@ void main() {
           .map((p) => p.painter)
           .whereType<StagePainter>()
           .single;
-      expect(painter.selectionBounds, isNull);
-      expect(painter.selection, isEmpty);
+      expect(painter.inputs.selection.bounds, isNull);
+      expect(painter.inputs.selection.ids, isEmpty);
       expect(c.selection, {"a"}, reason: "still selected, for its settings");
     });
 

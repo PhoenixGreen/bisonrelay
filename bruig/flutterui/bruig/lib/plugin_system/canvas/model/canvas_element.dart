@@ -906,6 +906,17 @@ class BoxFrame {
   const BoxFrame._(
       this.rotation, this.skewX, this.skewY, this.a, this.b, this.c, this.d);
 
+  // Equal when turned and slanted alike: a, b, c and d follow from those.
+  @override
+  bool operator ==(Object other) =>
+      other is BoxFrame &&
+      other.rotation == rotation &&
+      other.skewX == skewX &&
+      other.skewY == skewY;
+
+  @override
+  int get hashCode => Object.hash(rotation, skewX, skewY);
+
   bool get upright => rotation == 0 && skewX == 0 && skewY == 0;
 
   bool get slanted => skewX != 0 || skewY != 0;

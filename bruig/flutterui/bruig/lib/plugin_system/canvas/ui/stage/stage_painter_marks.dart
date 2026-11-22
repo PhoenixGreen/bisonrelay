@@ -13,13 +13,13 @@ extension _StagePainterMarks on StagePainter {
   /// canvas leaves out: a piece's id, textBodyWords for the paragraph, or
   /// null while the canvas draws them under a see-through field.
   String? _skippedWords(CanvasDocument document) {
-    var id = editingText;
+    var id = inputs.text?.element;
     if (id == null) return null;
     var e = document.elementById(id);
     if (e is! TextElement) return null;
     TextItem? item;
     for (var it in e.items) {
-      if (it.id == editingItem) item = it;
+      if (it.id == inputs.text?.item) item = it;
     }
     if (!editorDrawsWords(e, item)) return null;
     return item?.id ?? textBodyWords;
@@ -31,38 +31,39 @@ extension _StagePainterMarks on StagePainter {
       {CanvasPaintPart part = CanvasPaintPart.contents,
       (double, Offset)? camera,
       LiveMotion? live}) {
+    var hover = inputs.live.counterHover;
     paintCanvasDocument(canvas, document,
         frame: frame,
         part: part,
         camera: camera,
-        images: images,
-        hoveredButton: hoveredButton,
+        images: inputs.live.images,
+        hoveredButton: inputs.live.hoveredButton,
         // Only words the editor shows itself (see editorDrawsWords): the
         // box and the other pieces stay, and usually nothing is left out.
         skipTextItem: _skippedWords(document),
-        counterValue: counterValue,
-        liveMotion: live ?? liveMotion,
-        counterPressed: counterPressed,
-        counterRunning: counterRunning,
-        audioState: audioState,
-        videoShow: videoShow,
+        counterValue: inputs.live.counterValue.value,
+        liveMotion: live ?? _liveMotion,
+        counterPressed: (e) => e.id == hover.id ? hover.button : -1,
+        counterRunning: inputs.live.counterRunning.value,
+        audioState: inputs.live.audioState.value,
+        videoShow: inputs.live.videoShow.value,
         // Kept while design and size hold still: the editor repaints on
         // every pointer move.
-        backgrounds: backgrounds,
+        backgrounds: inputs.live.backgrounds,
         // Guide paths show only while editing.
         editing: true,
-        previewing: previewing);
+        previewing: inputs.shown.previewing);
   }
 
   /// _paintLayoutMarks shows a selected Layout's lines that can be dragged,
   /// and its picked cell outlined.
   void _paintLayoutMarks(Canvas canvas) {
-    var marks = layoutMarks;
+    var marks = inputs.elements.layout;
     if (marks == null) return;
     canvas.save();
-    canvas.translate(origin.dx, origin.dy);
-    canvas.scale(scale);
-    var thin = 1.5 / scale;
+    canvas.translate(_origin.dx, _origin.dy);
+    canvas.scale(_scale);
+    var thin = 1.5 / _scale;
     for (var (a, b) in marks.lines) {
       canvas.drawLine(
           a,
@@ -70,7 +71,7 @@ extension _StagePainterMarks on StagePainter {
           Paint()
             ..strokeWidth = thin * 2
             ..color = const Color(0x553D7EFF));
-      canvas.drawCircle(Offset.lerp(a, b, 0.5)!, 5 / scale,
+      canvas.drawCircle(Offset.lerp(a, b, 0.5)!, 5 / _scale,
           Paint()..color = const Color(0xFF3D7EFF));
     }
     // A cut's own knobs: a ring turns it, a square on its gutter's edge
@@ -87,20 +88,20 @@ extension _StagePainterMarks on StagePainter {
     for (var k in marks.knobs) {
       canvas.drawLine(k.edgeA.$1, k.edgeA.$2, edge);
       canvas.drawLine(k.edgeB.$1, k.edgeB.$2, edge);
-      canvas.drawCircle(k.turn, 5.5 / scale, white);
-      canvas.drawCircle(k.turn, 5.5 / scale, ring);
-      canvas.drawCircle(k.turn, 1.8 / scale, blue);
+      canvas.drawCircle(k.turn, 5.5 / _scale, white);
+      canvas.drawCircle(k.turn, 5.5 / _scale, ring);
+      canvas.drawCircle(k.turn, 1.8 / _scale, blue);
       var square = Rect.fromCenter(
-          center: k.gutter, width: 11 / scale, height: 11 / scale);
+          center: k.gutter, width: 11 / _scale, height: 11 / _scale);
       canvas.drawRect(square, white);
-      canvas.drawRect(square.deflate(1.5 / scale), blue);
+      canvas.drawRect(square.deflate(1.5 / _scale), blue);
     }
     // Each cell's place in the reading order: blue, or amber while it is
     // being clicked; a ring with a dash for one left out.
     for (var b in marks.badges) {
       var colour =
           b.ordering ? const Color(0xFFF2A33D) : const Color(0xFF3D7EFF);
-      var r = 13 / scale;
+      var r = 13 / _scale;
       if (b.number == null) {
         canvas.drawCircle(b.at, r, Paint()..color = const Color(0xDDFFFFFF));
         canvas.drawCircle(
@@ -117,7 +118,7 @@ extension _StagePainterMarks on StagePainter {
         text: TextSpan(
             text: b.number == null ? "–" : "${b.number}",
             style: TextStyle(
-                fontSize: 13 / scale,
+                fontSize: 13 / _scale,
                 fontWeight: FontWeight.w700,
                 color: b.number == null ? colour : const Color(0xFFFFFFFF))),
         textDirection: TextDirection.ltr,
@@ -125,7 +126,7 @@ extension _StagePainterMarks on StagePainter {
       label.paint(canvas, b.at - Offset(label.width / 2, label.height / 2));
       label.dispose();
     }
-    if (marks.picked case var path?) {
+    if (marks.picked.value case var path?) {
       canvas.drawPath(
           path,
           Paint()
@@ -140,15 +141,15 @@ extension _StagePainterMarks on StagePainter {
   /// not read as design, with a resize grip on the corner of each that
   /// resizes.
   void _paintChartLabels(Canvas canvas) {
-    if (chartLabels.isEmpty) return;
+    if (inputs.elements.chartLabels.isEmpty) return;
     var line = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
       ..color = const Color(0x883D7EFF);
 
-    for (var (:rect, :grip) in chartLabels) {
+    for (var (:rect, :grip) in inputs.elements.chartLabels) {
       var box = Rect.fromPoints(
-          rect.topLeft * scale + origin, rect.bottomRight * scale + origin);
+          rect.topLeft * _scale + _origin, rect.bottomRight * _scale + _origin);
       const dash = 5.0, gap = 4.0;
       for (var (from, to) in [
         (box.topLeft, box.topRight),
@@ -174,12 +175,12 @@ extension _StagePainterMarks on StagePainter {
   /// _paintTableColumns puts a short bar at the top and bottom of each inner
   /// column rule, which the table draws itself.
   void _paintTableColumns(Canvas canvas) {
-    if (tableColumns.isEmpty) return;
+    if (inputs.elements.tableColumns.isEmpty) return;
     var paint = Paint()..color = const Color(0xFF3D7EFF);
 
-    for (var (x, top, bottom) in tableColumns) {
-      for (var grip in tableColumnGrips(Offset(x, top) * scale + origin,
-          Offset(x, bottom) * scale + origin)) {
+    for (var (x, top, bottom) in inputs.elements.tableColumns) {
+      for (var grip in tableColumnGrips(Offset(x, top) * _scale + _origin,
+          Offset(x, bottom) * _scale + _origin)) {
         canvas.drawRRect(
             RRect.fromRectAndRadius(grip, const Radius.circular(2)), paint);
       }
@@ -189,12 +190,12 @@ extension _StagePainterMarks on StagePainter {
   /// _paintKnife draws the knife's line over a pale edge, so it shows on
   /// anything.
   void _paintKnife(Canvas canvas) {
-    if (knife.length < 2) return;
+    if (inputs.tools.knife.length < 2) return;
     var path = Path()
-      ..moveTo(knife.first.dx * scale + origin.dx,
-          knife.first.dy * scale + origin.dy);
-    for (var p in knife.skip(1)) {
-      path.lineTo(p.dx * scale + origin.dx, p.dy * scale + origin.dy);
+      ..moveTo(inputs.tools.knife.first.dx * _scale + _origin.dx,
+          inputs.tools.knife.first.dy * _scale + _origin.dy);
+    for (var p in inputs.tools.knife.skip(1)) {
+      path.lineTo(p.dx * _scale + _origin.dx, p.dy * _scale + _origin.dy);
     }
     canvas.drawPath(
         path,
@@ -215,8 +216,8 @@ extension _StagePainterMarks on StagePainter {
 
   /// _paintAnchors draws each anchor as a ring and cross, grey where locked.
   void _paintAnchors(Canvas canvas) {
-    for (var a in anchors) {
-      var c = a.at * scale + origin;
+    for (var a in inputs.selection.anchors) {
+      var c = a.at * _scale + _origin;
       var ink = a.locked ? const Color(0xFF9E9E9E) : const Color(0xFF3D7EFF);
       var halo = Paint()
         ..style = PaintingStyle.stroke
@@ -239,15 +240,15 @@ extension _StagePainterMarks on StagePainter {
 
   /// _paintTouchAreas outlines each element's game touch area.
   void _paintTouchAreas(Canvas canvas) {
-    if (touchAreas.isEmpty) return;
+    if (inputs.elements.touchAreas.isEmpty) return;
     var line = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
       ..color = const Color(0xCC5AA9FF);
-    for (var r in touchAreas) {
+    for (var r in inputs.elements.touchAreas) {
       canvas.drawRect(
           Rect.fromPoints(
-              r.topLeft * scale + origin, r.bottomRight * scale + origin),
+              r.topLeft * _scale + _origin, r.bottomRight * _scale + _origin),
           line);
     }
   }
@@ -256,18 +257,18 @@ extension _StagePainterMarks on StagePainter {
   /// stage says not (camerasShown): while looking through one, when the
   /// page is the frame, and on a 3D stage, where it is in the scene.
   void _paintCameras(Canvas canvas) {
-    if (!camerasShown) return;
-    for (var cam in document.elements.whereType<CameraElement>()) {
+    if (!inputs.elements.camerasShown) return;
+    for (var cam in _document.elements.whereType<CameraElement>()) {
       if (!cam.visible) continue;
-      var r = cameraFrame(cam, frame, document, live: liveMotion);
+      var r = cameraFrame(cam, _frame, _document, live: _liveMotion);
       var box = Rect.fromPoints(
-          r.topLeft * scale + origin, r.bottomRight * scale + origin);
+          r.topLeft * _scale + _origin, r.bottomRight * _scale + _origin);
       var ink = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5
         ..color = const Color(0xE6F2A33D);
       // Turned by its roll, as what it takes in is.
-      var roll = cameraLookAt(cam, frame, document, live: liveMotion).roll;
+      var roll = cameraLookAt(cam, _frame, _document, live: _liveMotion).roll;
       canvas.save();
       if (roll != 0) {
         canvas.translate(box.center.dx, box.center.dy);
@@ -308,9 +309,9 @@ extension _StagePainterMarks on StagePainter {
       canvas.restore();
       // Its name on a tab inside its corner, to take hold of where its edge
       // lies on the page's (see cameraTab).
-      var tab = cameraTab(cam, r, scale);
+      var tab = cameraTab(cam, r, _scale);
       var at = Rect.fromPoints(
-          tab.topLeft * scale + origin, tab.bottomRight * scale + origin);
+          tab.topLeft * _scale + _origin, tab.bottomRight * _scale + _origin);
       canvas.drawRRect(RRect.fromRectAndRadius(at, const Radius.circular(3)),
           Paint()..color = const Color(0xFFF2A33D));
       var label = TextPainter(
@@ -346,19 +347,19 @@ extension _StagePainterMarks on StagePainter {
   }
 
   /// _throughCamera paints [marks], drawn in stage space, moved as the
-  /// scene's [camera] moves the page: its middle to the camera's focus,
-  /// closer by its zoom.
+  /// scene's camera (StageShown.camera) moves the page: its middle to the
+  /// camera's focus, closer by its zoom.
   void _throughCamera(Canvas canvas, void Function() marks) {
-    if (camera case (var zoom, var focus)?) {
-      var mid = document.size.rect.center;
+    if (inputs.shown.camera case (var zoom, var focus)?) {
+      var mid = _document.size.rect.center;
       canvas.save();
-      canvas.translate(origin.dx, origin.dy);
-      canvas.scale(scale);
+      canvas.translate(_origin.dx, _origin.dy);
+      canvas.scale(_scale);
       canvas.translate(mid.dx, mid.dy);
       canvas.scale(zoom);
       canvas.translate(-focus.dx, -focus.dy);
-      canvas.scale(1 / scale);
-      canvas.translate(-origin.dx, -origin.dy);
+      canvas.scale(1 / _scale);
+      canvas.translate(-_origin.dx, -_origin.dy);
       try {
         marks();
       } finally {
@@ -370,7 +371,7 @@ extension _StagePainterMarks on StagePainter {
   }
 
   void _paintSelection(Canvas canvas) {
-    if (!showHelpers) return;
+    if (!inputs.selection.showHelpers) return;
 
     _paintCameras(canvas);
     _paintKeptBoxes(canvas);
@@ -382,16 +383,16 @@ extension _StagePainterMarks on StagePainter {
     _paintTableColumns(canvas);
     // A path shows points and handles, not a box: the box round a curve
     // cannot be usefully dragged.
-    var path = selectedPath;
+    var path = inputs.elements.selectedPath;
     if (path != null) {
       _paintPathControls(canvas, path);
       return;
     }
-    if (editingLayers case var layers?) {
+    if (inputs.tools.layers case var layers?) {
       _paintLayerBoxes(canvas, layers);
       return;
     }
-    if (editingVector case var editing?) {
+    if (inputs.tools.vector case var editing?) {
       // Bare while painting (tint, or the pencil with points hidden).
       if (editing.mirror case var m?) {
         _paintMirrorLines(canvas, editing.element, m.across, m.down);
@@ -407,7 +408,7 @@ extension _StagePainterMarks on StagePainter {
       return;
     }
 
-    var bounds = selectionBounds;
+    var bounds = inputs.selection.bounds;
     if (bounds == null) return;
 
     // Each element of a multi-selection outlined under the group's box,
@@ -417,15 +418,13 @@ extension _StagePainterMarks on StagePainter {
     _paintTrail(canvas);
     _paintCopies(canvas);
 
-    var centre = bounds.center * scale + origin;
-    var half = Offset(bounds.width, bounds.height) * scale / 2;
+    var centre = bounds.center * _scale + _origin;
+    var half = Offset(bounds.width, bounds.height) * _scale / 2;
 
     canvas.save();
     canvas.translate(centre.dx, centre.dy);
     // Turned and slanted with the selection, so handles sit on its corners.
-    BoxFrame(selectionRotation * 180 / math.pi, selectionSkew.dx,
-            selectionSkew.dy)
-        .applyTo(canvas, Offset.zero);
+    inputs.selection.frame.applyTo(canvas, Offset.zero);
     var box = Rect.fromCenter(
         center: Offset.zero, width: half.dx * 2, height: half.dy * 2);
     canvas.drawRect(
@@ -435,7 +434,7 @@ extension _StagePainterMarks on StagePainter {
           ..strokeWidth = 1
           ..color = const Color(0xFF3D7EFF));
     // The line out to the rotate ring, so it reads as attached.
-    if (showHandles) {
+    if (inputs.selection.showHandles) {
       canvas.drawLine(
           Offset(0, -half.dy),
           Offset(0, -half.dy - rotateHandleGap),
@@ -446,7 +445,7 @@ extension _StagePainterMarks on StagePainter {
     canvas.restore();
 
     // The outline alone for something placed by another element.
-    if (!showHandles) return;
+    if (!inputs.selection.showHandles) return;
 
     var fill = Paint()..color = const Color(0xFFFFFFFF);
     var edge = Paint()
@@ -455,7 +454,8 @@ extension _StagePainterMarks on StagePainter {
       ..color = const Color(0xFF3D7EFF);
 
     for (var handle in StageHandle.values) {
-      var at = handleFor(handle, bounds);
+      var at = stageHandleAt(handle, bounds, inputs.selection.frame,
+          scale: _scale, origin: _origin);
       if (handle == StageHandle.rotate) {
         canvas.drawCircle(at, handleSize / 2 + 1, fill);
         canvas.drawCircle(at, handleSize / 2 + 1, edge);
@@ -477,13 +477,14 @@ extension _StagePainterMarks on StagePainter {
       ..strokeWidth = 1
       ..color = const Color(0x993D7EFF);
 
-    for (var element in chosenOutlines(document, selection)) {
-      var box = element.movedBoundsAt(frame, document, live: liveMotion);
+    for (var element in chosenOutlines(_document, inputs.selection.ids)) {
+      var box = element.movedBoundsAt(_frame, _document, live: _liveMotion);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
               .corners(box);
       canvas.drawPath(
-          Path()..addPolygon([for (var p in corners) p * scale + origin], true),
+          Path()
+            ..addPolygon([for (var p in corners) p * _scale + _origin], true),
           paint);
     }
   }
@@ -491,19 +492,19 @@ extension _StagePainterMarks on StagePainter {
   /// _paintWholeChain draws the element previewed from a chain join faintly
   /// as its whole chain has it, to compare with where the join leaves it.
   void _paintWholeChain(Canvas canvas) {
-    if (liveMotion case MotionPreview(:var element, :var playing)) {
-      var e = document.elementById(element);
+    if (_liveMotion case MotionPreview(:var element, :var playing)) {
+      var e = _document.elementById(element);
       if (e == null) return;
       canvas.save();
-      canvas.translate(origin.dx, origin.dy);
-      canvas.scale(scale);
+      canvas.translate(_origin.dx, _origin.dy);
+      canvas.scale(_scale);
       canvas.saveLayer(null, Paint()..color = const Color(0x40000000));
-      paintElement(canvas, e, frame,
-          frameRate: math.max(1, document.frameRate),
-          images: images,
-          document: document,
+      paintElement(canvas, e, _frame,
+          frameRate: math.max(1, _document.frameRate),
+          images: inputs.live.images,
+          document: _document,
           liveMotion: playing,
-          backgrounds: backgrounds,
+          backgrounds: inputs.live.backgrounds,
           editing: true);
       canvas.restore();
       canvas.restore();

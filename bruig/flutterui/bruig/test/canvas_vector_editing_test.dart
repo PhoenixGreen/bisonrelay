@@ -1079,7 +1079,9 @@ void main() {
           .map((w) => w.painter)
           .whereType<StagePainter>()
           .single
-          .editingVector!
+          .inputs
+          .tools
+          .vector!
           .bare;
       expect(bare(), isTrue, reason: "the points hidden to start with");
       expect(
@@ -1605,7 +1607,9 @@ void main() {
           .map((w) => w.painter)
           .whereType<StagePainter>()
           .single
-          .editingVector!
+          .inputs
+          .tools
+          .vector!
           .bare;
       expect(bare(), isFalse, reason: "the points shown before the drag");
       // From beside the second point, not on it, along and past the third.

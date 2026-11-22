@@ -799,7 +799,8 @@ void main() {
     c.synthKeyDown(of(c, SynthModuleKind.keys), 69);
     await tester.pump(const Duration(milliseconds: 120));
     var after = painter();
-    expect(after.keysTick, greaterThan(before.keysTick));
+    expect(
+        after.inputs.live.keysTick, greaterThan(before.inputs.live.keysTick));
     expect(after.shouldRepaint(before), isTrue,
         reason: "each tick repaints, though nothing else has changed");
     c.synthKeyUp(of(c, SynthModuleKind.keys), 69);

@@ -12,21 +12,21 @@ extension _StagePainterHandles on StagePainter {
   /// Chain: its middle's path three seconds either side of now, dashed, and
   /// faint copies where it was a moment before. Nothing if it stands still.
   void _paintTrail(Canvas canvas) {
-    if (!trail || selection.length != 1) return;
-    var e = document.elementById(selection.first);
+    if (!inputs.selection.trail || inputs.selection.ids.length != 1) return;
+    var e = _document.elementById(inputs.selection.ids.first);
     if (e == null || e.base.motion.isEmpty || e is CameraElement) return;
-    var rate = math.max(1, document.frameRate);
-    var last = math.max(0, document.frames - 1);
-    Keyframe at(int f) => poseWithMotion(e, f, document,
-        live: liveMotion == null
+    var rate = math.max(1, _document.frameRate);
+    var last = math.max(0, _document.frames - 1);
+    Keyframe at(int f) => poseWithMotion(e, f, _document,
+        live: _liveMotion == null
             ? null
-            : liveShifted(liveMotion!, (f - frame) / rate));
+            : liveShifted(_liveMotion!, (f - _frame) / rate));
     var reach = rate * 3, step = math.max(1, rate ~/ 12);
     var points = <Offset>[
-      for (var f = math.max(0, frame - reach);
-          f <= math.min(last, frame + reach);
+      for (var f = math.max(0, _frame - reach);
+          f <= math.min(last, _frame + reach);
           f += step)
-        e.boundsWith(at(f)).center * scale + origin,
+        e.boundsWith(at(f)).center * _scale + _origin,
     ];
     if (points.length < 2) return;
     var moved = points.any((p) => (p - points.first).distance > 1);
@@ -58,21 +58,21 @@ extension _StagePainterHandles on StagePainter {
     // Where it was a moment before, fading the further back.
     var gap = math.max(1, (rate * 0.09).round());
     canvas.save();
-    canvas.translate(origin.dx, origin.dy);
-    canvas.scale(scale);
+    canvas.translate(_origin.dx, _origin.dy);
+    canvas.scale(_scale);
     for (var q = 4; q >= 1; q--) {
-      var f = frame - q * gap;
+      var f = _frame - q * gap;
       if (f < 0) continue;
       canvas.saveLayer(
           null, Paint()..color = Color.fromRGBO(0, 0, 0, 0.32 - q * 0.06));
       paintElement(canvas, e, f,
           frameRate: rate,
-          images: images,
-          document: document,
-          liveMotion: liveMotion == null
+          images: inputs.live.images,
+          document: _document,
+          liveMotion: _liveMotion == null
               ? null
-              : liveShifted(liveMotion!, (f - frame) / rate),
-          backgrounds: backgrounds,
+              : liveShifted(_liveMotion!, (f - _frame) / rate),
+          backgrounds: inputs.live.backgrounds,
           editing: true);
       canvas.restore();
     }
@@ -82,8 +82,8 @@ extension _StagePainterHandles on StagePainter {
   /// _paintCopies shows the selected reused element's copies: each outlined
   /// faintly, those picked (what its chain edits) ringed and numbered.
   void _paintCopies(Canvas canvas) {
-    if (selection.length != 1) return;
-    var e = document.elementById(selection.first);
+    if (inputs.selection.ids.length != 1) return;
+    var e = _document.elementById(inputs.selection.ids.first);
     var set = e?.base.motion.instances;
     if (e == null || set == null || set.count < 2) return;
     var faint = Paint()
@@ -96,16 +96,16 @@ extension _StagePainterHandles on StagePainter {
       ..color = const Color(0xFFE2B04A);
     for (var (i, copy) in set.items.indexed) {
       var box = e.boundsWith(
-          poseWithMotion(e, frame, document, live: liveMotion, instance: i));
+          poseWithMotion(e, _frame, _document, live: _liveMotion, instance: i));
       var r = Rect.fromLTRB(
-          box.left * scale + origin.dx,
-          box.top * scale + origin.dy,
-          box.right * scale + origin.dx,
-          box.bottom * scale + origin.dy);
-      var picked = pickedCopies.contains(copy.id);
+          box.left * _scale + _origin.dx,
+          box.top * _scale + _origin.dy,
+          box.right * _scale + _origin.dx,
+          box.bottom * _scale + _origin.dy);
+      var picked = inputs.selection.pickedCopies.contains(copy.id);
       // A lone pick has the selection's box instead (see CanvasStage's
       // _oneCopy), so only its number.
-      var boxed = picked && pickedCopies.length == 1;
+      var boxed = picked && inputs.selection.pickedCopies.length == 1;
       if (!boxed) {
         canvas.drawRRect(
             RRect.fromRectAndRadius(
@@ -130,26 +130,27 @@ extension _StagePainterHandles on StagePainter {
     }
   }
 
-  /// _paintKeptBoxes outlines every element when [showAllBounds] is set,
+  /// _paintKeptBoxes outlines every element when showAllBounds is set,
   /// quieter than the selection and under it.
   void _paintKeptBoxes(Canvas canvas) {
-    if (!showAllBounds) return;
+    if (!inputs.elements.showAllBounds) return;
     var paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
       ..color = const Color(0x803D7EFF);
 
-    for (var element in document.elements) {
+    for (var element in _document.elements) {
       if (!element.visible) continue;
-      if (selection.contains(element.id)) continue;
+      if (inputs.selection.ids.contains(element.id)) continue;
 
       // Its box as laid on the page, turned and slanted.
-      var box = element.movedBoundsAt(frame, document, live: liveMotion);
+      var box = element.movedBoundsAt(_frame, _document, live: _liveMotion);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
               .corners(box);
       canvas.drawPath(
-          Path()..addPolygon([for (var p in corners) p * scale + origin], true),
+          Path()
+            ..addPolygon([for (var p in corners) p * _scale + _origin], true),
           paint);
     }
   }
@@ -222,7 +223,7 @@ extension _StagePainterHandles on StagePainter {
   /// selection, before anything can return early: a link belongs to two
   /// boxes, and one asked to stay visible shows whatever is selected.
   void _paintFlowLines(Canvas canvas) {
-    for (var line in flowLines) {
+    for (var line in inputs.elements.flowLines) {
       // Red: the box the words leave has more than it can show.
       var colour =
           line.overflowing ? const Color(0xFFE5484D) : const Color(0xFF3D7EFF);
@@ -243,13 +244,13 @@ extension _StagePainterHandles on StagePainter {
     var white = Paint()..color = const Color(0xFFFFFFFF);
     var blue = const Color(0xFF3D7EFF);
 
-    var grips = flowGrips;
+    var grips = inputs.elements.flowGrips;
     if (grips == null) return;
 
     // Red is the only sign on the canvas of words the box is not showing.
     var out = grips.overflowing ? const Color(0xFFE5484D) : blue;
 
-    if (flowDrag case var dragged?) {
+    if (inputs.elements.flowDrag case var dragged?) {
       canvas.drawLine(
           dragged.from,
           dragged.to,
@@ -282,7 +283,7 @@ extension _StagePainterHandles on StagePainter {
   void _paintShapeBox(Canvas canvas, VectorElement e, Rect box,
       {bool turnable = false}) {
     var space = VectorSpace(e);
-    Offset screen(Offset p) => space.toCanvas(p) * scale + origin;
+    Offset screen(Offset p) => space.toCanvas(p) * _scale + _origin;
     var colour = e.handleColor;
     var corners = [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft]
         .map(screen)
@@ -328,12 +329,12 @@ extension _StagePainterHandles on StagePainter {
   /// outline round each layer that can be picked, and the picked one's box
   /// with its handles and turning knob.
   void _paintLayerBoxes(Canvas canvas, StageLayers layers) {
-    Offset screen(Offset p) => p * scale + origin;
+    Offset screen(Offset p) => p * _scale + _origin;
     if (layers.masking case var m? when m.view != MaskView.result) {
       canvas.save();
-      canvas.translate(origin.dx, origin.dy);
-      canvas.scale(scale);
-      paintMaskView(canvas, m.element, m.layer, images,
+      canvas.translate(_origin.dx, _origin.dy);
+      canvas.scale(_scale);
+      paintMaskView(canvas, m.element, m.layer, inputs.live.images,
           overlay: m.view == MaskView.overlay);
       canvas.restore();
     }
@@ -341,14 +342,14 @@ extension _StagePainterHandles on StagePainter {
       var colour = subtract ? const Color(0x66FF3030) : const Color(0x6630A0FF);
       var paint = Paint()
         ..color = colour
-        ..strokeWidth = radius * scale * 2
+        ..strokeWidth = radius * _scale * 2
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..style = PaintingStyle.stroke;
       var at = [for (var p in points) screen(p)];
       if (at.length == 1) {
         canvas.drawCircle(
-            at.single, radius * scale, paint..style = PaintingStyle.fill);
+            at.single, radius * _scale, paint..style = PaintingStyle.fill);
       } else {
         canvas.drawPath(Path()..addPolygon(at, false), paint);
       }
@@ -389,7 +390,7 @@ extension _StagePainterHandles on StagePainter {
     }
     if (layers.ring case (var centre, var radius)) {
       var at = screen(centre);
-      var r = radius * scale;
+      var r = radius * _scale;
       for (var (width, colour) in const [
         (3.0, Color(0xAA000000)),
         (1.2, Color(0xFFFFFFFF)),
@@ -474,8 +475,8 @@ extension _StagePainterHandles on StagePainter {
       ..color = e.handleColor.withValues(alpha: 0.7)
       ..strokeWidth = 1;
     void dashed(Offset a, Offset b) {
-      var from = space.toCanvas(a) * scale + origin;
-      var to = space.toCanvas(b) * scale + origin;
+      var from = space.toCanvas(a) * _scale + _origin;
+      var to = space.toCanvas(b) * _scale + _origin;
       var length = (to - from).distance;
       if (length == 0) return;
       var step = (to - from) / length;
@@ -502,20 +503,20 @@ extension _StagePainterHandles on StagePainter {
     if (shapes == null) return;
     var space = VectorSpace(e);
     var colour = e.handleColor;
-    Offset screen(Offset v) => space.toCanvas(v) * scale + origin;
+    Offset screen(Offset v) => space.toCanvas(v) * _scale + _origin;
 
     // Through the drawing's own placement and turn, so outlines lie on it.
     var place = e.placement(e.bounds, e.viewBox);
     var centre = e.bounds.center;
     canvas.save();
-    canvas.translate(origin.dx, origin.dy);
-    canvas.scale(scale);
+    canvas.translate(_origin.dx, _origin.dy);
+    canvas.scale(_scale);
     canvas.translate(centre.dx, centre.dy);
     canvas.rotate(e.rotation * math.pi / 180);
     canvas.translate(-centre.dx, -centre.dy);
     canvas.translate(place.dx, place.dy);
     canvas.scale(place.sx, place.sy);
-    var hair = 1 / (scale * math.max(1e-6, math.min(place.sx, place.sy)));
+    var hair = 1 / (_scale * math.max(1e-6, math.min(place.sx, place.sy)));
     // Combining picks whole shapes, so outlines only, with the picked ones
     // and every shape combined into them lit.
     if (combining != null) {
@@ -562,8 +563,8 @@ extension _StagePainterHandles on StagePainter {
     // The faint box round several picked points, where a press takes them
     // all.
     if (picksBox(e, picks) case var box?) {
-      var r = Rect.fromPoints(
-              box.topLeft * scale + origin, box.bottomRight * scale + origin)
+      var r = Rect.fromPoints(box.topLeft * _scale + _origin,
+              box.bottomRight * _scale + _origin)
           .inflate(e.handleSize);
       canvas.drawRect(r, Paint()..color = colour.withValues(alpha: 0.08));
       canvas.drawRect(
@@ -628,7 +629,7 @@ extension _StagePainterHandles on StagePainter {
   /// _paintPathControls draws a path's points, and handles where a node is
   /// bent (an unbent node's sit on it).
   void _paintPathControls(Canvas canvas, PathElement path) {
-    Offset at(Offset doc) => doc * scale + origin;
+    Offset at(Offset doc) => doc * _scale + _origin;
 
     var line = Paint()
       ..style = PaintingStyle.stroke
@@ -666,12 +667,12 @@ extension _StagePainterHandles on StagePainter {
   /// _paintFraming shows the rest of a picture moved inside its frame, faint
   /// outside the frame, so what comes into shot can be seen.
   void _paintFraming(Canvas canvas) {
-    var it = framing;
+    var it = inputs.tools.framing;
     if (it == null || it.dst.isEmpty) return;
 
     canvas.save();
-    canvas.translate(origin.dx, origin.dy);
-    canvas.scale(scale);
+    canvas.translate(_origin.dx, _origin.dy);
+    canvas.scale(_scale);
     if (it.rotation != 0) {
       var pivot = it.pivot ?? it.frame.center;
       canvas.translate(pivot.dx, pivot.dy);
@@ -702,7 +703,7 @@ extension _StagePainterHandles on StagePainter {
         it.frame,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5 / scale
+          ..strokeWidth = 1.5 / _scale
           ..color = const Color(0xFF3D7EFF));
     canvas.restore();
   }
@@ -712,22 +713,22 @@ extension _StagePainterHandles on StagePainter {
   /// selection, so handles stay findable.
   void _paintGuides(Canvas canvas) {
     canvas.save();
-    canvas.translate(origin.dx, origin.dy);
-    canvas.scale(scale);
+    canvas.translate(_origin.dx, _origin.dy);
+    canvas.scale(_scale);
 
     // In document units. [page] is the frame on screen; adding its offset
     // would shift every guide with the window.
-    var sheet = Offset.zero & document.size.size;
+    var sheet = Offset.zero & _document.size.size;
     var size = sheet.size;
     canvas.clipRect(sheet);
     // Hairlines: divided by the zoom, one pixel on screen at any zoom.
-    var thin = 1 / scale;
+    var thin = 1 / _scale;
 
-    if (guides.showGrid) {
-      var (majorX, minorX) =
-          gridLines(size.width, guides.gridSize, guides.subdivisions);
-      var (majorY, minorY) =
-          gridLines(size.height, guides.gridSize, guides.subdivisions);
+    if (inputs.guides.inView && inputs.guides.canvas.showGrid) {
+      var (majorX, minorX) = gridLines(size.width,
+          inputs.guides.canvas.gridSize, inputs.guides.canvas.subdivisions);
+      var (majorY, minorY) = gridLines(size.height,
+          inputs.guides.canvas.gridSize, inputs.guides.canvas.subdivisions);
       var minor = Paint()
         ..strokeWidth = thin
         ..color = const Color(0x22FFFFFF);
@@ -753,11 +754,11 @@ extension _StagePainterHandles on StagePainter {
       }
     }
 
-    if (guides.showGuides) {
+    if (inputs.guides.inView && inputs.guides.canvas.showGuides) {
       var paint = Paint()
         ..strokeWidth = thin
         ..color = const Color(0xAA35C4F0);
-      for (var guide in guides.guides) {
+      for (var guide in inputs.guides.canvas.guides) {
         if (guide.axis == GuideAxis.vertical) {
           canvas.drawLine(Offset(sheet.left + guide.at, sheet.top),
               Offset(sheet.left + guide.at, sheet.bottom), paint);
@@ -769,7 +770,7 @@ extension _StagePainterHandles on StagePainter {
     }
 
     // What the drag has caught, in a colour nothing else uses.
-    if (snapped case var it? when it.caught) {
+    if (inputs.guides.snapped case var it? when it.caught) {
       var paint = Paint()
         ..strokeWidth = thin * 1.5
         ..color = const Color(0xFFFF4081);
@@ -785,10 +786,18 @@ extension _StagePainterHandles on StagePainter {
     canvas.restore();
   }
 
-  /// _paintRulers draws the rulers along the page unless [rulersApart].
+  /// _paintRulers draws the rulers along the page, unless the page scrolls and
+  /// they are left to their own layer (StageTransform.scrolls).
   void _paintRulers(Canvas canvas, Size size) {
-    if (rulersApart) return;
-    paintStageRulers(canvas, size, rulers, guides.gridSize, document.size.size,
-        scale, origin, page);
+    if (inputs.transform.scrolls) return;
+    paintStageRulers(
+        canvas,
+        size,
+        inputs.guides.rulers,
+        inputs.guides.canvas.gridSize,
+        _document.size.size,
+        _scale,
+        _origin,
+        _page);
   }
 }

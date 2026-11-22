@@ -177,7 +177,7 @@ void main() {
         .map((p) => p.painter)
         .whereType<StagePainter>()
         .single;
-    expect(painter().rulers.drawn, isFalse);
+    expect(painter().inputs.guides.rulers.drawn, isFalse);
 
     await tester.tap(find.byTooltip("Grid, guides, rulers and snapping"));
     await tester.pump();
@@ -191,13 +191,13 @@ void main() {
     }
 
     await tap("guidesRulerLeft");
-    expect(painter().rulers, const CanvasRulers(left: true),
+    expect(painter().inputs.guides.rulers, const CanvasRulers(left: true),
         reason: "drawn at once");
     await tester.pump(const Duration(seconds: 1));
     expect(prefs.rulers, const CanvasRulers(left: true), reason: "and kept");
 
     await tap("guidesShowRulers");
-    expect(painter().rulers.drawn, isFalse);
+    expect(painter().inputs.guides.rulers.drawn, isFalse);
     await tester.pump(const Duration(seconds: 1));
     expect(prefs.rulers, const CanvasRulers(left: true, shown: false));
     await tap("guidesShowRulers");
@@ -207,7 +207,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     c.load(_document());
     await tester.pump(const Duration(seconds: 1));
-    expect(painter().rulers, const CanvasRulers(left: true));
+    expect(painter().inputs.guides.rulers, const CanvasRulers(left: true));
     expect(prefs.rulers, const CanvasRulers(left: true));
     await leave(tester, c, prefs);
 
@@ -215,7 +215,7 @@ void main() {
     var next = _controller();
     addTearDown(next.dispose);
     await show(tester, next, prefs);
-    expect(painter().rulers, const CanvasRulers(left: true));
+    expect(painter().inputs.guides.rulers, const CanvasRulers(left: true));
     await leave(tester, next, prefs);
   });
 

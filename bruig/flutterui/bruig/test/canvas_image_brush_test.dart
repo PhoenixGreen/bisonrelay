@@ -820,7 +820,7 @@ void main() {
         for (var w
             in tester.widgetList<CustomPaint>(find.byType(CustomPaint))) {
           if (w.painter case StagePainter p) {
-            if (p.editingLayers?.ring case (var at, _)) return at;
+            if (p.inputs.tools.layers?.ring case (var at, _)) return at;
           }
         }
         return null;
@@ -846,7 +846,7 @@ void main() {
         for (var w
             in tester.widgetList<CustomPaint>(find.byType(CustomPaint))) {
           if (w.painter case StagePainter p) {
-            if (p.editingLayers?.lasso case var l?) return l;
+            if (p.inputs.tools.layers?.lasso case var l?) return l;
           }
         }
         return null;

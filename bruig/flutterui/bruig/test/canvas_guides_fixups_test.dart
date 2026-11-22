@@ -292,7 +292,7 @@ void main() {
       var c = guided(const CanvasGuides(), [chart(locked: true)]);
       c.selectOnly("c");
       await pump(tester, c);
-      expect(painted(tester).chartLabels, isEmpty);
+      expect(painted(tester).inputs.elements.chartLabels, isEmpty);
     });
 
     testWidgets("with helpers hidden, are neither drawn nor taken",
@@ -302,7 +302,7 @@ void main() {
       c.selectOnly("c");
       c.showHelpers = false;
       var stage = await pump(tester, c);
-      expect(painted(tester).chartLabels, isEmpty);
+      expect(painted(tester).inputs.elements.chartLabels, isEmpty);
       var title = chartLabelPlaces(e, e.bounds)[ChartLabelPart.title]!;
       await tester.dragFrom(
           stage.toStagePoint(title.center), const Offset(60, 40));
@@ -334,7 +334,7 @@ void main() {
       c.selectOnly("t");
       c.showHelpers = false;
       var stage = await pump(tester, c);
-      expect(painted(tester).tableColumns, isEmpty);
+      expect(painted(tester).inputs.elements.tableColumns, isEmpty);
       var at = rule(c);
       await tester.dragFrom(
           stage.toStagePoint(Offset(at, 300)), const Offset(60, 0));

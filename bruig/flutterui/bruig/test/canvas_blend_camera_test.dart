@@ -173,12 +173,13 @@ void main() {
       var paint = find.byWidgetPredicate(
           (w) => w is CustomPaint && w.painter is StagePainter);
       var p = tester.widget<CustomPaint>(paint).painter as StagePainter;
-      var (zoom, focus) = p.camera!;
+      var (zoom, focus) = p.inputs.shown.camera!;
       expect(zoom, closeTo(2, 1e-6));
       // Where the camera shows the box's left edge.
       var mid = c.document.size.rect.center;
       Offset seen(Offset onPage) =>
-          (mid + (onPage - focus) * zoom) * p.scale + p.origin;
+          (mid + (onPage - focus) * zoom) * p.inputs.transform.scale +
+          p.inputs.transform.origin;
       var size = tester.getSize(paint);
       var rec = ui.PictureRecorder();
       p.paint(ui.Canvas(rec), size);
@@ -206,7 +207,10 @@ void main() {
       expect(blueNear(seen(const Offset(560, 325))), isTrue,
           reason: "the box's edge where the camera shows the element");
       // Not where the element is set on the page, unmoved by the camera.
-      expect(blueNear(const Offset(560, 325) * p.scale + p.origin), isFalse);
+      expect(
+          blueNear(const Offset(560, 325) * p.inputs.transform.scale +
+              p.inputs.transform.origin),
+          isFalse);
       await tester.pumpWidget(const SizedBox());
     });
 
