@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
+import 'package:bruig/plugin_system/canvas/storage/picture_import.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -126,40 +127,27 @@ Future<StockImport> importStockItem(
       );
     }
 
-    String? id;
+    LibraryAsset? asset;
     String? warning;
     switch (item.kind) {
       case AssetKind.picture || AssetKind.vector:
-        var bytes = await file.readAsBytes();
-        // A drawing (as an icon library's are) goes with the drawings,
-        // whatever the library called it.
-        if (String.fromCharCodes(bytes.take(4096))
-            .toLowerCase()
-            .contains("<svg")) {
-          id = await CanvasMedia.saveVector(bytes);
-          if (id == null) {
-            return (
-              asset: null,
-              problem: "${item.title} is too large a drawing for a canvas.",
-              notice: null,
-            );
-          }
-          await CanvasLibrary.addVector(id, item.title);
-          break;
+        // Kept as it arrives, by what it holds: a drawing (as an icon
+        // library's are) goes with the drawings, whatever the library
+        // called it.
+        var kept = await importPicture(await file.readAsBytes(),
+            name: item.title,
+            author: item.author,
+            license: item.license,
+            origin: item.page,
+            from: item.source.from);
+        if (kept.asset == null) {
+          return (asset: null, problem: kept.problem, notice: null);
         }
-        id = await CanvasAssets.save(bytes);
-        if (id == null) {
-          return (
-            asset: null,
-            problem: "${item.title} is not a picture the canvas can keep.",
-            notice: null,
-          );
-        }
-        await CanvasLibrary.addPicture(id, item.title, bytes);
+        asset = kept.asset;
       case AssetKind.video:
-        id = await addVideo!(file.path);
+        asset = await _credited(await addVideo!(file.path), item);
       case AssetKind.audio:
-        id = await addAudio!(file.path);
+        asset = await _credited(await addAudio!(file.path), item);
       case AssetKind.model:
         var added = await addCanvasModel(file.path, item.title);
         // Said even when the model was added: then it is a warning.
@@ -167,23 +155,14 @@ Future<StockImport> importStockItem(
         if (added.id == null) {
           return (asset: null, problem: warning, notice: null);
         }
-        id = added.id;
+        asset = await _credited(added.id, item);
     }
     // The video and audio imports have said why already.
-    if (id == null) return (asset: null, problem: warning, notice: null);
+    if (asset == null) return (asset: null, problem: warning, notice: null);
 
-    await CanvasLibrary.rename(id, item.title);
-    await CanvasLibrary.credit(id,
-        author: item.author,
-        license: item.license,
-        origin: item.page,
-        from: item.source.from);
     // NASA's pictures come with NASA's rules, said each time one is used.
     if (item.source == StockSource.nasa) warning ??= nasaRule;
-    for (var a in await CanvasLibrary.list(kind: item.kind)) {
-      if (a.id == id) return (asset: a, problem: null, notice: warning);
-    }
-    return (asset: null, problem: warning, notice: null);
+    return (asset: asset, problem: null, notice: warning);
   } catch (exception) {
     return (
       asset: null,
@@ -195,6 +174,20 @@ Future<StockImport> importStockItem(
       await scratch?.delete(recursive: true);
     } catch (_) {}
   }
+}
+
+/// _credited names stored asset [id] after [item] and credits its maker,
+/// for the kinds kept by a road of their own, which names the asset after
+/// its file; the asset as listed, or null for none.
+Future<LibraryAsset?> _credited(String? id, StockItem item) async {
+  if (id == null) return null;
+  await CanvasLibrary.rename(id, item.title);
+  await CanvasLibrary.credit(id,
+      author: item.author,
+      license: item.license,
+      origin: item.page,
+      from: item.source.from);
+  return CanvasLibrary.byId(id);
 }
 
 /// _mediaOf is where [item]'s file is: as it says, or for a Poly Haven

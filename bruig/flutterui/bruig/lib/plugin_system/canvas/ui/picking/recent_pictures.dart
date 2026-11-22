@@ -1,8 +1,7 @@
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
-import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -111,44 +110,10 @@ class _Thumbnail extends StatelessWidget {
           color: theme.colors.surfaceContainerLow,
         ),
         clipBehavior: Clip.antiAlias,
-        child: _StoredImage(id: id),
+        // Decoded small, as the Assets panel's tiles are: a tile is 120
+        // pixels, and a picture at full size is tens of megabytes a tile.
+        child: AssetThumb(key: ValueKey(id), id: id),
       ),
     );
-  }
-}
-
-class _StoredImage extends StatefulWidget {
-  final String id;
-  const _StoredImage({required this.id});
-
-  @override
-  State<_StoredImage> createState() => _StoredImageState();
-}
-
-class _StoredImageState extends State<_StoredImage> {
-  final CanvasImageStore _store = CanvasImageStore();
-
-  @override
-  void initState() {
-    super.initState();
-    _store.addListener(_onLoaded);
-  }
-
-  @override
-  void dispose() {
-    _store.removeListener(_onLoaded);
-    _store.dispose();
-    super.dispose();
-  }
-
-  void _onLoaded() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var image = _store.resolve(widget.id, const BackgroundRemoval());
-    if (image == null) return const SizedBox.shrink();
-    return RawImage(image: image, fit: BoxFit.cover);
   }
 }

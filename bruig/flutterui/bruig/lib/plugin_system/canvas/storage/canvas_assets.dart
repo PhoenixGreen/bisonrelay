@@ -39,6 +39,15 @@ Future<bool> idMatches(String id, List<int> bytes) async {
 /// isMaskId is whether [id] is a subject mask (CanvasAssets.saveMask).
 bool isMaskId(String id) => id.endsWith(".mask");
 
+/// looksLikeSvg is whether [bytes] hold an SVG drawing, judged by what they
+/// hold and never by the name they arrived under. A drawing has no magic
+/// number: it is XML, so the tag is looked for in the first 4 KB, past any
+/// declaration, doctype, licence comment and editor metadata an export puts
+/// before it. Here, beneath both the stores and the renderer, so everything
+/// that asks the question gets the same answer.
+bool looksLikeSvg(List<int> bytes) =>
+    String.fromCharCodes(bytes.take(4096)).toLowerCase().contains("<svg");
+
 /// maxAssetBytes bounds one picture: generous for photographs, but bounded,
 /// because the whole library is read when the sidebar opens.
 const int maxAssetBytes = 32 * 1024 * 1024;
@@ -139,11 +148,7 @@ class CanvasAssets {
         bytes[11] == 0x50) {
       return ".webp";
     }
-    // A vector has no magic number: it is XML, so look for the tag in the
-    // first few thousand bytes, past any declaration, doctype, licence comment
-    // and editor metadata.
-    var head = String.fromCharCodes(bytes.take(4096)).toLowerCase();
-    if (head.contains("<svg")) return ".svg";
+    if (looksLikeSvg(bytes)) return ".svg";
 
     // Something else: no extension, as a wrong one is worse than none.
     return "";

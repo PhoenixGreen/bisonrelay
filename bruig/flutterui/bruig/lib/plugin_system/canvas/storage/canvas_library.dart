@@ -352,13 +352,17 @@ class CanvasLibrary {
   static Future<void> addVector(String id, String name) => add(LibraryAsset(
       id: id, kind: AssetKind.vector, name: name, added: DateTime.now()));
 
-  /// named is what the library calls [id], or null where it is not an asset.
-  static Future<String?> named(String id) async {
+  /// byId is the asset whose stored file is [id], of whatever kind, or null
+  /// where that file is not an asset.
+  static Future<LibraryAsset?> byId(String id) async {
     for (var a in await list()) {
-      if (a.id == id) return a.name;
+      if (a.id == id) return a;
     }
     return null;
   }
+
+  /// named is what the library calls [id], or null where it is not an asset.
+  static Future<String?> named(String id) async => (await byId(id))?.name;
 
   static Future<void> rename(String id, String name) async {
     await _serial(() async {

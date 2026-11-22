@@ -3,10 +3,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/storage/picture_import.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/picture_options_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -79,8 +79,9 @@ String _mimeOf(List<int> bytes) =>
 
 /// pickCanvasImage asks for a picture, offers to compress it, stores it, and
 /// returns its asset id, or null if cancelled. [vectors] offers drawings
-/// (.svg) too, stored in the Vectors store, for where a drawing serves as a
-/// picture (a text's icon, a table cell's badge); off for the Image element.
+/// (.svg) too, for where a drawing serves as a picture (a text's icon, a
+/// table cell's badge); off for the Image element. Whatever a file is
+/// called, one holding an SVG is kept as a drawing, in the Vectors store.
 Future<String?> pickCanvasImage(BuildContext context,
     {bool vectors = true}) async {
   // The extensions rather than FileType.image, which leaves out SVG on macOS.
@@ -101,43 +102,29 @@ Future<String?> pickCanvasImage(BuildContext context,
 
   try {
     var file = File(chosen.trim());
+    var name = path.basenameWithoutExtension(file.path);
+    // Read whole, whatever its size: a picture past the limit can still be
+    // brought under it by the size controls below. What is kept is checked
+    // against the limit as it is kept (importPicture).
     var bytes = await file.readAsBytes();
-    var mime = lookupMimeType(chosen) ?? "image/png";
 
     // A vector has no pixels to scale: the compressor would make it a bitmap.
-    if (bytes.length > _compressAbove && !isSvgMime(mime)) {
+    if (bytes.length > _compressAbove && !looksLikeSvg(bytes)) {
       if (!context.mounted) return null;
       var result = await showCanvasPictureOptions(context,
-          original: bytes, mime: mime, title: "Add a picture");
+          original: bytes, mime: _mimeOf(bytes), title: "Add a picture");
       // Cancelled there is cancelled altogether, not "store the big one".
       if (result == null) return null;
       bytes = result;
     }
 
-    if (isSvgMime(mime)) {
-      var vector = await CanvasMedia.saveVector(bytes);
-      if (vector == null) {
-        if (context.mounted) {
-          _report(context, "That drawing is too large for a canvas.");
-        }
-        return null;
-      }
-      await CanvasLibrary.addVector(
-          vector, path.basenameWithoutExtension(chosen.trim()));
-      return vector;
-    }
-
-    var id = await CanvasAssets.save(bytes);
-    if (id == null) {
-      if (context.mounted) {
-        _report(context, "That picture is too large for a canvas.");
-      }
+    // In the library from now on, whether or not anything keeps using it.
+    var (:asset, :problem) = await importPicture(bytes, name: name);
+    if (asset == null) {
+      if (context.mounted) _report(context, problem!);
       return null;
     }
-    // In the library from now on, whether or not anything keeps using it.
-    await CanvasLibrary.addPicture(
-        id, path.basenameWithoutExtension(chosen.trim()), bytes);
-    return id;
+    return asset.id;
   } catch (exception) {
     if (context.mounted) {
       _report(context, "Unable to read ${path.basename(chosen)}: $exception");
@@ -159,25 +146,23 @@ Future<String?> pickCanvasVector(BuildContext context) async {
   var chosen = picked?.files.singleOrNull?.path;
   if (chosen == null || chosen.trim().isEmpty) return null;
   try {
-    var bytes = await File(chosen.trim()).readAsBytes();
-    if (!String.fromCharCodes(bytes.take(4096))
-        .toLowerCase()
-        .contains("<svg")) {
+    var file = File(chosen.trim());
+    var name = path.basenameWithoutExtension(file.path);
+    // Measured before it is read, as a drawing past the limit is refused
+    // however it is read.
+    if (await file.length() > MediaKind.vector.maxBytes) {
       if (context.mounted) {
-        _report(context, "${path.basename(chosen)} is not a drawing.");
+        _report(context, tooLargeToKeep(name, drawing: true));
       }
       return null;
     }
-    var id = await CanvasMedia.saveVector(bytes);
-    if (id == null) {
-      if (context.mounted) {
-        _report(context, "That drawing is too large for a canvas.");
-      }
+    var (:asset, :problem) = await importPicture(await file.readAsBytes(),
+        name: name, drawingOnly: true);
+    if (asset == null) {
+      if (context.mounted) _report(context, problem!);
       return null;
     }
-    await CanvasLibrary.addVector(
-        id, path.basenameWithoutExtension(chosen.trim()));
-    return id;
+    return asset.id;
   } catch (exception) {
     if (context.mounted) {
       _report(context, "Unable to read ${path.basename(chosen)}: $exception");

@@ -388,7 +388,7 @@ class CanvasImageStore extends ChangeNotifier
   Future<void> _loadVector(String assetId, String key) async {
     try {
       var bytes = await CanvasMedia.load(MediaKind.vector, assetId);
-      if (bytes == null || !_looksLikeSvg(Uint8List.fromList(bytes))) {
+      if (bytes == null || !looksLikeSvg(bytes)) {
         _failed.add(key);
         return;
       }
@@ -553,7 +553,7 @@ class CanvasImageStore extends ChangeNotifier
 /// once at [_vectorSize]: the drawn size changes per frame and per export
 /// and would put a decode inside the paint loop.
 Future<ui.Image?> _decode(Uint8List bytes) async {
-  if (_looksLikeSvg(bytes)) return _rasterise(bytes);
+  if (looksLikeSvg(bytes)) return _rasterise(bytes);
   try {
     // Measured before it is decoded, and decoded smaller where it is huge.
     var buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
@@ -580,11 +580,6 @@ Future<ui.Image?> _decode(Uint8List bytes) async {
 
 /// _vectorSize is how large a vector is rasterised on its longest side.
 const int _vectorSize = 512;
-
-/// _looksLikeSvg is whether `<svg` appears in the first 4KB: an export can
-/// carry most of a kilobyte of declarations and metadata before the tag.
-bool _looksLikeSvg(Uint8List bytes) =>
-    String.fromCharCodes(bytes.take(4096)).toLowerCase().contains("<svg");
 
 Future<ui.Image?> _rasterise(Uint8List bytes) async {
   try {

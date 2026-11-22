@@ -22,9 +22,9 @@ import 'package:bruig/plugin_system/canvas/presets/drawn_styles.dart';
 import 'package:bruig/plugin_system/canvas/presets/image_looks.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/storage/picture_import.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
@@ -393,8 +393,7 @@ class CanvasScripting {
   /// Assets panel does when one is clicked (a MIDI file becomes a MIDI
   /// channel, which has no element). Returns the new element's id.
   Future<({String? element, String? problem})> useAsset(String id) async {
-    var asset =
-        (await CanvasLibrary.list()).where((a) => a.id == id).firstOrNull;
+    var asset = await CanvasLibrary.byId(id);
     if (asset == null) {
       return (element: null, problem: "There is no file $id in the library.");
     }
@@ -405,29 +404,17 @@ class CanvasScripting {
   /// addSvg keeps [svg] in the library as a drawing called [name] and,
   /// when [place], puts it on the scene being edited as a Vector element.
   /// Refused if it is not an SVG, is too large, or carries a script or
-  /// outside content. Returns its id in the library and the element's.
+  /// outside content (importPicture's strict rule). Returns its id in the
+  /// library and the element's.
   Future<({String? asset, String? element, String? problem})> addSvg(
       String name, String svg,
       {bool place = true}) async {
-    ({String? asset, String? element, String? problem}) refused(String why) =>
-        (asset: null, element: null, problem: why);
-    var text = svg.trim();
-    var lower = text.toLowerCase();
-    if (!lower.contains("<svg")) return refused("That is not an SVG.");
-    if (lower.contains("<script") ||
-        lower.contains("<foreignobject") ||
-        RegExp(r"""(href|src)\s*=\s*["']\s*(https?:|file:|//)""")
-            .hasMatch(lower)) {
-      return refused(
-          "An SVG drawn for a canvas has no scripts, embedded pages or links "
-          "to outside files: draw everything in it.");
-    }
-    var id = await CanvasMedia.saveVector(utf8.encode(text));
-    if (id == null) return refused("That drawing is too large.");
-    await CanvasLibrary.addVector(id, name.trim().isEmpty ? "Drawing" : name);
-    if (!place) return (asset: id, element: null, problem: null);
-    var placed = await useAsset(id);
-    return (asset: id, element: placed.element, problem: placed.problem);
+    var (:asset, :problem) = await importPicture(utf8.encode(svg.trim()),
+        name: name, drawingOnly: true, strict: true);
+    if (asset == null) return (asset: null, element: null, problem: problem);
+    if (!place) return (asset: asset.id, element: null, problem: null);
+    var element = await placeAsset(controller, asset, select: false);
+    return (asset: asset.id, element: element, problem: null);
   }
 
   // ------------------------------------------------------------------------

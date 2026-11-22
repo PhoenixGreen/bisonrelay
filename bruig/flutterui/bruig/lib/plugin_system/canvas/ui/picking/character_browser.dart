@@ -59,8 +59,7 @@ class CharacterBrowserState extends State<CharacterBrowser> {
       setState(() => _said = "That character could not be kept.");
       return;
     }
-    var asset =
-        (await CanvasLibrary.list()).where((a) => a.id == id).firstOrNull;
+    var asset = await CanvasLibrary.byId(id);
     if (asset == null || !mounted) return;
     await placeAsset(c, asset);
     if (!mounted) return;
