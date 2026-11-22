@@ -39,6 +39,15 @@ extension StageDrag on CanvasStageState {
     if (next != null) controller.replaceElement(next, transient: true);
   }
 
+  /// _applyAnchor puts element [id]'s anchor point at [doc]. Transient: the
+  /// drag is one undo step.
+  void _applyAnchor(String id, Offset doc) {
+    if (document.elementById(id) case var e?) {
+      controller.replaceElement(e.withAnchorAt(doc, controller.frame),
+          transient: true);
+    }
+  }
+
   /// _pressMarkerNote takes a press on the held marker's canvas label.
   bool _pressMarkerNote(Offset doc) {
     var note = controller.holdingMarker;
@@ -76,6 +85,17 @@ extension StageDrag on CanvasStageState {
     replaceMarker(controller, next, transient: true);
   }
 
+  /// _hasTravelled is whether the press has gone far enough, to [stage], to
+  /// be a drag: once it has, it stays one.
+  bool _hasTravelled(Offset stage) {
+    if (_travelled) return true;
+    if ((stage - _pressedAt).distance <= CanvasStageState._dragThreshold) {
+      return false;
+    }
+    _travelled = true;
+    return true;
+  }
+
   void _onPointerMove(PointerMoveEvent event) {
     if (_inLive) return;
     _pointer = event;
@@ -102,31 +122,17 @@ extension StageDrag on CanvasStageState {
       _paintStrokeAt(_toDocument(event.localPosition));
       return;
     }
+    if (_gesture case var gesture?) {
+      _moveGesture(gesture, event.localPosition);
+      return;
+    }
     if (_mode == _DragMode.none) {
       _updateHover(event.localPosition);
       return;
     }
 
-    if (_mode == _DragMode.pan) {
-      var delta = event.localPosition - _panStartOnStage;
-      _setPan(Offset(_startPan.dx + delta.dx, _startPan.dy + delta.dy));
-      return;
-    }
-
-    if (_mode == _DragMode.flow) {
-      setState(() => _flowAt = event.localPosition);
-      return;
-    }
-
-    // Nothing moves until the press travels far enough to be a drag, except
-    // the marquee, drawn from the press itself.
-    if (!_travelled && _mode != _DragMode.marquee) {
-      if ((event.localPosition - _pressedAt).distance <=
-          CanvasStageState._dragThreshold) {
-        return;
-      }
-      _travelled = true;
-    }
+    // Nothing moves until the press travels far enough to be a drag.
+    if (!_hasTravelled(event.localPosition)) return;
 
     var doc = _toDocument(event.localPosition);
     var delta = doc - _dragStart;
@@ -159,13 +165,6 @@ extension StageDrag on CanvasStageState {
         _dragWarp(doc);
       case _DragMode.rotate:
         _applyRotate(doc);
-      case _DragMode.anchor:
-        if (document.elementById(_anchorOf ?? "") case var e?) {
-          controller.replaceElement(e.withAnchorAt(doc, controller.frame),
-              transient: true);
-        }
-      case _DragMode.marquee:
-        setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.player:
         _applyPlayerMove(doc);
       case _DragMode.stageOrbit:
@@ -275,10 +274,6 @@ extension StageDrag on CanvasStageState {
               withPenHandles(e, pick, pulled ? doc : _vectorFrom),
               transient: true);
         }
-      case _DragMode.node:
-        _applyNodeMove(doc, handle: false);
-      case _DragMode.handle:
-        _applyNodeMove(doc, handle: true);
       case _DragMode.chartLabel:
         _applyPart(doc, chartLabel: true);
       case _DragMode.tableColumn:
@@ -336,8 +331,6 @@ extension StageDrag on CanvasStageState {
         if (_maskOn case var on?) {
           setState(() => _quickTrail = [..._quickTrail, on.toPicture(doc)]);
         }
-      case _DragMode.guide:
-        _applyGuide(doc);
       default:
         break;
     }

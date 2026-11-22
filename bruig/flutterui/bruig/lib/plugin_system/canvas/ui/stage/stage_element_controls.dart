@@ -164,12 +164,11 @@ extension StageElementControls on CanvasStageState {
     controller.pressAudio(e, part, volume: volume);
   }
 
-  /// _dropFlow finishes a link drag: onto another text box it links there;
-  /// elsewhere it unlinks, so the gesture that made a chain undoes it.
-  void _dropFlow(Offset stage) {
-    var from = _flowFrom == null
-        ? null
-        : document.elementById(_flowFrom!) as TextElement?;
+  /// _dropFlow finishes a link drag from box [fromId], let go at [stage]:
+  /// onto another text box it links there; elsewhere it unlinks, so the
+  /// gesture that made a chain undoes it.
+  void _dropFlow(String fromId, Offset stage) {
+    var from = document.elementById(fromId) as TextElement?;
     if (from == null || controller.lockJoins) return;
 
     var doc = _toDocument(stage);

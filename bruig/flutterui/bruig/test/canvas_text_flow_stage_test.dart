@@ -101,6 +101,38 @@ void main() {
     expect(stage.textFlowGrips!.receiving, isTrue);
   });
 
+  testWidgets("carried, it links where it is let go, and nowhere if cancelled",
+      (tester) async {
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+    controller.selectOnly("a");
+    await tester.pumpAndSettle();
+    var from = stage.textFlowGrips!.outAt;
+    var onto = stage.toStagePoint(const Offset(190, 360));
+
+    var carry = await tester.startGesture(from);
+    await carry.moveTo(onto);
+    await tester.pump();
+    expect(stage.gestureUnderWay, isTrue);
+    await carry.cancel();
+    await tester.pumpAndSettle();
+    expect(boxIn(controller, "a").flowTo, "", reason: "no link made");
+    expect(stage.gestureUnderWay, isFalse);
+    expect(controller.interacting, isFalse);
+
+    carry = await tester.startGesture(from);
+    await carry.moveTo(onto);
+    await tester.pump();
+    await carry.up();
+    await tester.pumpAndSettle();
+    expect(boxIn(controller, "a").flowTo, "b");
+    expect(stage.gestureUnderWay, isFalse);
+    expect(controller.interacting, isFalse);
+    controller.undo();
+    expect(boxIn(controller, "a").flowTo, "", reason: "one undo step");
+  });
+
   testWidgets("and dragging it onto nothing takes the link away",
       (tester) async {
     var controller = twoBoxes();

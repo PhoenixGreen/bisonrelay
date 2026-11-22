@@ -147,9 +147,7 @@ extension StagePress on CanvasStageState {
     if (!controller.pageLocked &&
         ((controller.tool == CanvasTool.pan && !controller.onStage3d) ||
             event.buttons == kMiddleMouseButton)) {
-      _mode = _DragMode.pan;
-      _startPan = _clampedPan;
-      _panStartOnStage = stage;
+      _gesture = _Pan(startPan: _clampedPan, from: stage);
       return true;
     }
 
@@ -166,8 +164,7 @@ extension StagePress on CanvasStageState {
 
     // An anchor point shown and unlocked, before the element it sits on.
     if (_anchorUnder(stage) case var id?) {
-      _anchorOf = id;
-      _mode = _DragMode.anchor;
+      _gesture = _AnchorDrag(id);
       controller.beginInteraction();
       return true;
     }
@@ -249,9 +246,7 @@ extension StagePress on CanvasStageState {
       var grab = _hitPathControl(path, doc);
       if (grab != null) {
         var (index, isHandle, isOut) = grab;
-        _nodeIndex = index;
-        _nodeHandleOut = isOut;
-        _mode = isHandle ? _DragMode.handle : _DragMode.node;
+        _gesture = _PathPointDrag(index, isHandle: isHandle, handleOut: isOut);
         controller.beginInteraction();
         return true;
       }
@@ -312,11 +307,7 @@ extension StagePress on CanvasStageState {
                 ? flowSourceOf(selected, document)?.id
                 : null);
         if (from != null) {
-          setState(() {
-            _flowFrom = from;
-            _flowAt = stage;
-            _mode = _DragMode.flow;
-          });
+          setState(() => _gesture = _FlowLinkDrag(from, stage));
           return true;
         }
       }
@@ -464,8 +455,7 @@ extension StagePress on CanvasStageState {
     var element = held ?? _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
-      _mode = _DragMode.marquee;
-      setState(() => _marquee = Rect.fromPoints(doc, doc));
+      setState(() => _gesture = _ElementsMarquee(doc));
       return null;
     }
     return element;

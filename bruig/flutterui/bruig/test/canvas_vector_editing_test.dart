@@ -1139,6 +1139,39 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("a pen button set to pan slides the view, let go or cancelled",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.pencil;
+      c.setStylusButton(0, StylusAction.pan);
+      c.zoom = 3;
+      await settle(tester);
+      var count = now(c).shapes!.length;
+      var centre = Offset(viewport.width / 2, viewport.height / 2);
+      for (var cancel in [false, true]) {
+        var before = view.contentRect.left;
+        var g = await tester.startGesture(centre, buttons: kSecondaryButton);
+        await g.moveBy(const Offset(-40, 0));
+        await tester.pump();
+        expect(view.gestureUnderWay, isTrue);
+        if (cancel) {
+          await g.cancel();
+        } else {
+          await g.up();
+        }
+        await tester.pumpAndSettle();
+        // A cancel keeps what the drag did, as a release does.
+        expect(view.contentRect.left, lessThan(before));
+        expect(view.gestureUnderWay, isFalse);
+        expect(c.interacting, isFalse);
+        await settle(tester);
+      }
+      expect(now(c).shapes, hasLength(count), reason: "nothing drawn");
+      expect(c.vectorEditing, "v", reason: "still editing");
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("the tablet's pressure and eraser end reach the pencil",
         (tester) async {
       var tablet = TabletInput.instance;

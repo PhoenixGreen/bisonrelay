@@ -21,8 +21,7 @@ extension StageGuides on CanvasStageState {
       var at = axis == GuideAxis.vertical ? doc.dx : doc.dy;
       controller.beginInteraction();
       var next = guides.withGuide(CanvasGuide(axis: axis, at: at));
-      _guideIndex = next.guides.length - 1;
-      _mode = _DragMode.guide;
+      _gesture = _GuideDrag(next.guides.length - 1);
       controller.apply(document.copyWith(guides: next), transient: true);
       return true;
     }
@@ -34,8 +33,7 @@ extension StageGuides on CanvasStageState {
           ? (doc.dx - guide.at).abs()
           : (doc.dy - guide.at).abs();
       if (gap > reach) continue;
-      _guideIndex = i;
-      _mode = _DragMode.guide;
+      _gesture = _GuideDrag(i);
       controller.beginInteraction();
       return true;
     }
@@ -54,12 +52,12 @@ extension StageGuides on CanvasStageState {
         .axisAt(stage - _scrolled);
   }
 
-  /// _applyGuide moves the dragged guide, snapped so it can sit on a
-  /// gridline.
-  void _applyGuide(Offset doc) {
+  /// _applyGuide moves the guide at [index] to [doc], snapped so it can sit
+  /// on a gridline.
+  void _applyGuide(int index, Offset doc) {
     var guides = document.guides;
-    if (_guideIndex < 0 || _guideIndex >= guides.guides.length) return;
-    var guide = guides.guides[_guideIndex];
+    if (index < 0 || index >= guides.guides.length) return;
+    var guide = guides.guides[index];
 
     var at = guide.axis == GuideAxis.vertical ? doc.dx : doc.dy;
     if (!HardwareKeyboard.instance.isAltPressed) {
@@ -73,28 +71,23 @@ extension StageGuides on CanvasStageState {
       if (line != null) at = line;
     }
 
-    controller.apply(
-        document.copyWith(guides: guides.movedGuide(_guideIndex, at)),
+    controller.apply(document.copyWith(guides: guides.movedGuide(index, at)),
         transient: true);
   }
 
-  /// _finishGuide drops the guide, or removes it if dragged off the canvas.
-  void _finishGuide() {
+  /// _finishGuide drops the guide at [index], or removes it if dragged off
+  /// the canvas.
+  void _finishGuide(int index) {
     var guides = document.guides;
-    if (_guideIndex < 0 || _guideIndex >= guides.guides.length) {
-      _guideIndex = -1;
-      return;
-    }
-    var guide = guides.guides[_guideIndex];
+    if (index < 0 || index >= guides.guides.length) return;
+    var guide = guides.guides[index];
     var page = document.size.size;
     var off = guide.axis == GuideAxis.vertical
         ? guide.at < 0 || guide.at > page.width
         : guide.at < 0 || guide.at > page.height;
 
     if (off) {
-      controller
-          .apply(document.copyWith(guides: guides.withoutGuide(_guideIndex)));
+      controller.apply(document.copyWith(guides: guides.withoutGuide(index)));
     }
-    _guideIndex = -1;
   }
 }

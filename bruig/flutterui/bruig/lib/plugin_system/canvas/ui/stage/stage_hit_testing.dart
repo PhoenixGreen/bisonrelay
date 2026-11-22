@@ -123,11 +123,12 @@ extension StageHitTesting on CanvasStageState {
 
   /// _flowDragLine is the link being dragged, from its box to the pointer.
   FlowLine? _flowDragLine() {
-    if (_mode != _DragMode.flow) return null;
-    var at = _flowAt;
-    var from = _flowFrom == null ? null : document.elementById(_flowFrom!);
-    if (at == null || from == null) return null;
-    return FlowLine(_toStage(_flowPointOf(_hit.posed(from), top: false)), at);
+    if (_gesture case _FlowLinkDrag(:var fromId, :var at)) {
+      var box = document.elementById(fromId);
+      if (box == null) return null;
+      return FlowLine(_toStage(_flowPointOf(_hit.posed(box), top: false)), at);
+    }
+    return null;
   }
 
   /// _flowLines is every text link worth drawing: either box selected, or
@@ -144,7 +145,9 @@ extension StageHitTesting on CanvasStageState {
       if (into == null || !e.visible || !into.visible) continue;
 
       // Not the one in hand: that is drawn from the pointer.
-      if (_mode == _DragMode.flow && e.id == _flowFrom) continue;
+      if (_gesture case _FlowLinkDrag(:var fromId) when e.id == fromId) {
+        continue;
+      }
 
       var shown = controller.showAllBounds ||
           controller.selection.contains(e.id) ||

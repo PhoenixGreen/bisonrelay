@@ -4,7 +4,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/canvas_app.dart';
 
 // canvas_path_test.dart is the bezier tool: the curve, its timing, and the
 // thing that runs along it.
@@ -469,6 +473,104 @@ void main() {
       expect(path.nodes[1].frame, 3, reason: "untouched");
       expect(path.nodes[2].frame, 20);
       expect(path.nodes[3].frame, greaterThan(20));
+    });
+  });
+
+  group("its points dragged on the stage", () {
+    const viewport = Size(800, 600);
+
+    /// onStage is a selected path on a stage, its follower baked: a straight
+    /// run from (200, 200) to (600, 200), the first point's outgoing handle
+    /// pulled out to (300, 200).
+    Future<(CanvasController, CanvasStageState)> onStage(
+        WidgetTester tester) async {
+      var shape =
+          ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
+      var path = PathElement(
+        const ElementBase(id: "p", x: 200, y: 200, width: 400, height: 200),
+        nodes: const [
+          PathNode(x: 0, y: 0, frame: 0, outDx: 0.25),
+          PathNode(x: 1, y: 0, frame: 10),
+        ],
+        follow: const PathFollow(elementId: "s"),
+      );
+      var controller = CanvasController(
+          const CanvasDocument(frames: 24).addElement(shape).addElement(path));
+      addTearDown(controller.dispose);
+      controller.applyPathFollow(path);
+      controller.selectOnly("p");
+      var key = GlobalKey<CanvasStageState>();
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasStage(key: key, controller: controller))));
+      await tester.pumpAndSettle();
+      return (controller, key.currentState!);
+    }
+
+    PathElement pathIn(CanvasController c) =>
+        c.document.elementById("p") as PathElement;
+
+    /// arrival is where the follower is at the run's end.
+    Offset arrival(CanvasController c) {
+      var key = c.document.elementById("s")!.track!.at(10);
+      return Offset(key.dx, key.dy);
+    }
+
+    testWidgets("a point moves, and its follower is re-baked once let go",
+        (tester) async {
+      var (c, stage) = await onStage(tester);
+      var was = arrival(c);
+      var drag =
+          await tester.startGesture(stage.toStagePoint(const Offset(600, 200)));
+      await drag.moveBy(const Offset(0, 60));
+      await tester.pump();
+      expect(stage.gestureUnderWay, isTrue);
+      expect(c.interacting, isTrue);
+      expect(pathIn(c).nodes[1].y, greaterThan(0));
+      expect(arrival(c), was, reason: "not re-baked on every move");
+
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(arrival(c).dy, greaterThan(was.dy));
+      expect(stage.gestureUnderWay, isFalse);
+      expect(c.interacting, isFalse);
+      c.undo();
+      expect(pathIn(c).nodes[1].y, 0, reason: "one undo step");
+      expect(arrival(c), was);
+    });
+
+    testWidgets("a handle bends the curve", (tester) async {
+      var (c, stage) = await onStage(tester);
+      var drag =
+          await tester.startGesture(stage.toStagePoint(const Offset(300, 200)));
+      await drag.moveBy(const Offset(0, 40));
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(pathIn(c).nodes[0].outDy, greaterThan(0));
+      expect(pathIn(c).nodes[0].x, 0, reason: "the point itself stays");
+      expect(stage.gestureUnderWay, isFalse);
+      expect(c.interacting, isFalse);
+    });
+
+    testWidgets("cancelled, a point stays moved and its follower re-baked",
+        (tester) async {
+      // A cancel keeps what the drag did, as a release does.
+      var (c, stage) = await onStage(tester);
+      var was = arrival(c);
+      var drag =
+          await tester.startGesture(stage.toStagePoint(const Offset(600, 200)));
+      await drag.moveBy(const Offset(0, 60));
+      await tester.pump();
+      await drag.cancel();
+      await tester.pumpAndSettle();
+      expect(pathIn(c).nodes[1].y, greaterThan(0));
+      expect(arrival(c).dy, greaterThan(was.dy));
+      expect(stage.gestureUnderWay, isFalse);
+      expect(c.interacting, isFalse);
+      c.undo();
+      expect(pathIn(c).nodes[1].y, 0, reason: "one undo step");
     });
   });
 }

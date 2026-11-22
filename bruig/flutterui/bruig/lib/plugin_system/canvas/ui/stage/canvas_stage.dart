@@ -131,6 +131,7 @@ part 'stage_framing.dart';
 part 'stage_guides.dart';
 part 'stage_retouch.dart';
 part 'stage_team_players.dart';
+part 'stage_gesture.dart';
 part 'stage_drag.dart';
 part 'stage_release.dart';
 part 'stage_3d_view.dart';
@@ -201,17 +202,10 @@ enum _DragMode {
   warpScale,
   warpTurn,
   warpMarquee,
-
-  /// anchor is an element's anchor point dragged. See ElementBase.anchorX.
-  anchor,
   move,
   resize,
   rotate,
-  marquee,
-  pan,
   player,
-  node,
-  handle,
 
   /// spritePaint is a Sprite's frame being painted: see sprite_painting.dart.
   spritePaint,
@@ -260,12 +254,6 @@ enum _DragMode {
 
   /// imageBrush is a paint or retouching stroke being drawn.
   imageBrush,
-
-  /// flow is a link pulled from a text box's overflow grip to another box.
-  flow,
-
-  /// guide is a guide line moved, or a new one pulled from a ruler.
-  guide,
 
   /// vectorPoint is a drawing's point or handle dragged.
   vectorPoint,
@@ -338,6 +326,10 @@ class CanvasStageState extends State<CanvasStage>
   // reads them: most are read by several.
 
   _DragMode _mode = _DragMode.none;
+
+  /// _gesture is what the pointer is doing, for the kinds that are cases of
+  /// StageGesture; the kinds that are not yet are still told by [_mode].
+  StageGesture? _gesture;
 
   /// _playerIndex is which player of the selected team is dragged. The team
   /// stays selected: a player is a row of its list, not an element.
@@ -500,8 +492,6 @@ class CanvasStageState extends State<CanvasStage>
   List<Offset> _quickTrail = const [];
   bool _quickSubtract = false;
 
-  int _guideIndex = -1;
-
   /// _framingStart is the framing at the drag's start: no rounding builds up.
   ImageFraming _framingStart = const ImageFraming();
 
@@ -544,17 +534,7 @@ class CanvasStageState extends State<CanvasStage>
   /// text's words, a table's cell, or a counter's Set field.
   InPlaceEdit? _editing;
 
-  /// _nodeIndex is the selected path's point being dragged, and
-  /// _nodeHandleOut which handle, when a handle is. The path stays selected.
-  int _nodeIndex = -1;
-
-  bool _nodeHandleOut = false;
-
   StageHandle? _handle;
-
-  /// _flowFrom is the box a link is dragged from; _flowAt the pointer.
-  String? _flowFrom;
-  Offset? _flowAt;
 
   /// _dragStart is where the gesture began, in document space, and
   /// _startBounds the selection then: kept so rounding does not accumulate.
@@ -578,16 +558,23 @@ class CanvasStageState extends State<CanvasStage>
   Map<String, CanvasElement> _startElements = {};
   Map<String, double> _startRotation = {};
 
-  /// _startPan is the controller's pan when a pan began, and
-  /// _panStartOnStage where the pointer was then, in stage pixels: a pan
-  /// moves the view under the pointer, so its travel is measured on the
-  /// stage, not the document.
-  Offset _startPan = Offset.zero;
-  Offset _panStartOnStage = Offset.zero;
+  /// _marquee is the box dragged to pick a drawing's points or shapes, or a
+  /// warp's points. The box that selects elements is its gesture's own.
   Rect? _marquee;
 
+  /// _marqueeDrawn is the box being dragged, whichever kind it is, or null.
+  Rect? get _marqueeDrawn => switch (_gesture) {
+        _ElementsMarquee(:var box) => box,
+        _ => _marquee,
+      };
+
   @visibleForTesting
-  Rect? get marqueeForTest => _marquee;
+  Rect? get marqueeForTest => _marqueeDrawn;
+
+  /// gestureUnderWay is whether a press has begun something that its release
+  /// or cancel has not yet ended, for tests.
+  @visibleForTesting
+  bool get gestureUnderWay => _gesture != null || _mode != _DragMode.none;
 
   /// _visible is the room on screen the stage was laid out into.
   Size _visible = Size.zero;
@@ -907,8 +894,6 @@ class CanvasStageState extends State<CanvasStage>
   /// rather than felt as a jump.
   SnapResult? _snappedTo;
 
-  String? _anchorOf;
-
   /// _anchorsShown is each selected element's shown anchor and whether it
   /// is locked.
   List<({Offset at, bool locked})> _anchorsShown() => [
@@ -1211,7 +1196,7 @@ class CanvasStageState extends State<CanvasStage>
       flowLines: _flowLines(),
       showAllBounds: controller.showAllBounds,
       flowDrag: _flowDragLine(),
-      marquee: _marquee,
+      marquee: _marqueeDrawn,
     );
   }
 
@@ -1582,7 +1567,7 @@ class CanvasStageState extends State<CanvasStage>
         (controller.imageTool.masks || controller.imageTool.paints)) {
       return SystemMouseCursors.precise;
     }
-    if (_mode == _DragMode.pan) return SystemMouseCursors.grabbing;
+    if (_gesture is _Pan) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.stageOrbit || _mode == _DragMode.stagePan) {
       return SystemMouseCursors.grabbing;
     }
@@ -1609,7 +1594,7 @@ class CanvasStageState extends State<CanvasStage>
     }
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.move) return SystemMouseCursors.move;
-    if (_mode == _DragMode.guide) return SystemMouseCursors.grabbing;
+    if (_gesture is _GuideDrag) return SystemMouseCursors.grabbing;
     if (_rulerUnder(_hoverAt) case var axis?) {
       return axis == GuideAxis.vertical
           ? SystemMouseCursors.resizeLeftRight
@@ -1621,7 +1606,7 @@ class CanvasStageState extends State<CanvasStage>
           ? SystemMouseCursors.grabbing
           : SystemMouseCursors.grab;
     }
-    if (_mode == _DragMode.none && _hoverPressable) {
+    if (_mode == _DragMode.none && _gesture == null && _hoverPressable) {
       return SystemMouseCursors.click;
     }
     return SystemMouseCursors.basic;

@@ -531,6 +531,54 @@ void main() {
     expect(controller.document.elements.first.y, at.y);
   });
 
+  group("a pan", () {
+    var centre = Offset(viewport.width / 2, viewport.height / 2);
+
+    /// zoomedIn is a stage with the pan tool out, zoomed in so the page
+    /// overhangs and a pan has somewhere to go.
+    Future<(CanvasController, CanvasStageState)> zoomedIn(
+        WidgetTester tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      controller.tool = CanvasTool.pan;
+      await tester.sendEventToBinding(PointerScrollEvent(
+          position: centre, scrollDelta: const Offset(0, -120)));
+      await tester.pumpAndSettle();
+      return (controller, stage);
+    }
+
+    testWidgets("let go, leaves the view where it was dragged",
+        (tester) async {
+      var (controller, stage) = await zoomedIn(tester);
+      var before = stage.contentRect.left;
+      var pan = await tester.startGesture(centre);
+      await pan.moveBy(const Offset(-40, 0));
+      await tester.pump();
+      expect(stage.gestureUnderWay, isTrue);
+      expect(stage.contentRect.left, lessThan(before));
+      await pan.up();
+      await tester.pumpAndSettle();
+      expect(stage.contentRect.left, lessThan(before));
+      expect(stage.gestureUnderWay, isFalse);
+      expect(controller.interacting, isFalse, reason: "a pan is no change");
+    });
+
+    testWidgets("cancelled, leaves it there too", (tester) async {
+      // What a drag has done is kept by a cancel, as by a release.
+      var (controller, stage) = await zoomedIn(tester);
+      var before = stage.contentRect.left;
+      var pan = await tester.startGesture(centre);
+      await pan.moveBy(const Offset(-40, 0));
+      await tester.pump();
+      await pan.cancel();
+      await tester.pumpAndSettle();
+      expect(stage.contentRect.left, lessThan(before));
+      expect(stage.gestureUnderWay, isFalse);
+      expect(controller.interacting, isFalse);
+    });
+  });
+
   group("dragging a player", () {
     /// team fills the canvas with one side, so a player's document position
     /// and its position on screen are easy to reason about.
@@ -3595,6 +3643,60 @@ void main() {
       expect(controller.document.guides.guides, isEmpty);
     });
 
+    testWidgets("a guide moved is one undo step, closed when let go",
+        (tester) async {
+      var (controller, stage) = await withRulers(tester,
+          guides: const CanvasGuides(guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 400),
+          ]));
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var drag = await tester
+          .startGesture(stage.pageRect.topLeft + Offset(400 * scale, 120));
+      await drag.moveBy(const Offset(60, 0));
+      await tester.pump();
+      expect(stage.gestureUnderWay, isTrue);
+      expect(controller.interacting, isTrue);
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.single.at, greaterThan(400));
+      expect(stage.gestureUnderWay, isFalse);
+      expect(controller.interacting, isFalse);
+      controller.undo();
+      expect(controller.document.guides.guides.single.at, 400,
+          reason: "one undo puts it back");
+    });
+
+    testWidgets("cancelled, a guide is ended as if let go", (tester) async {
+      // A cancel keeps what the drag did: moved, a guide stays moved, and
+      // off the page it is thrown away all the same.
+      var (controller, stage) = await withRulers(tester,
+          guides: const CanvasGuides(guides: [
+            CanvasGuide(axis: GuideAxis.vertical, at: 30),
+            CanvasGuide(axis: GuideAxis.vertical, at: 400),
+          ]));
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var drag = await tester
+          .startGesture(stage.pageRect.topLeft + Offset(400 * scale, 120));
+      await drag.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await drag.cancel();
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.last.at, greaterThan(400));
+      expect(stage.gestureUnderWay, isFalse);
+      expect(controller.interacting, isFalse);
+
+      drag = await tester
+          .startGesture(stage.pageRect.topLeft + Offset(30 * scale, 120));
+      await drag.moveBy(Offset(-60 - 30 * scale, 0));
+      await tester.pump();
+      await drag.cancel();
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.map((g) => g.at),
+          [greaterThan(400)],
+          reason: "the one dragged off the page is gone");
+      expect(controller.interacting, isFalse);
+    });
+
     testWidgets("a hidden guide cannot be grabbed", (tester) async {
       // What cannot be seen cannot be aimed at, and must not be picked up by
       // a press that was meant for whatever is underneath it.
@@ -4061,6 +4163,51 @@ void main() {
       controller.undo();
       expect(controller.document.elementById("s")!.x, shape.x,
           reason: "one undo takes back the whole drag");
+    });
+  });
+
+  group("the gesture under way", () {
+    testWidgets("is gone when it is let go or cancelled, whatever it was",
+        (tester) async {
+      // A gesture left behind would take the next press's moves, and one
+      // that opened an undo step would merge it into the next change.
+      var controller = CanvasController(const CanvasDocument().copyWith(
+          guides: const CanvasGuides(guides: [
+        CanvasGuide(axis: GuideAxis.vertical, at: 400),
+      ])));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      Offset empty() => stage.pageRect.topLeft + const Offset(100, 100) * scale;
+      // Where the guide is now: each drag moves it.
+      Offset guide() =>
+          stage.pageRect.topLeft +
+          Offset(controller.document.guides.guides.single.at * scale, 120);
+
+      for (var cancel in [false, true]) {
+        for (var (what, from, tool) in [
+          ("a marquee", empty, CanvasTool.select),
+          ("a guide", guide, CanvasTool.select),
+          ("a pan", empty, CanvasTool.pan),
+        ]) {
+          controller.tool = tool;
+          var how = cancel ? "cancelled" : "let go";
+          var g = await tester.startGesture(from());
+          await g.moveBy(const Offset(40, 30));
+          await tester.pump();
+          expect(stage.gestureUnderWay, isTrue, reason: "$what under way");
+          expect(controller.interacting, what == "a guide",
+              reason: "only the guide is a change, an undo step");
+          if (cancel) {
+            await g.cancel();
+          } else {
+            await g.up();
+          }
+          await tester.pumpAndSettle();
+          expect(stage.gestureUnderWay, isFalse, reason: "$what $how");
+          expect(controller.interacting, isFalse, reason: "$what $how");
+        }
+      }
     });
   });
 

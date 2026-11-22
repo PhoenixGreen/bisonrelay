@@ -846,9 +846,7 @@ extension StageVectorTools on CanvasStageState {
           }
         }
       case StylusAction.pan:
-        _mode = _DragMode.pan;
-        _startPan = _clampedPan;
-        _panStartOnStage = event.localPosition;
+        _gesture = _Pan(startPan: _clampedPan, from: event.localPosition);
       case StylusAction.undo:
         controller.undo();
       case StylusAction.select:
@@ -1196,27 +1194,38 @@ extension StageVectorTools on CanvasStageState {
         transient: true);
   }
 
-  void _applyNodeMove(Offset doc, {required bool handle}) {
+  /// _applyNodeMove puts the selected path's point [index] at [doc], or,
+  /// with [handle], one of its handles: the outgoing one if [out].
+  void _applyNodeMove(Offset doc, int index,
+      {required bool handle, required bool out}) {
     var path = _selectedPath();
-    if (path == null || _nodeIndex < 0 || _nodeIndex >= path.nodes.length) {
+    if (path == null || index < 0 || index >= path.nodes.length) {
       return;
     }
     var w = path.width == 0 ? 1.0 : path.width;
     var h = path.height == 0 ? 1.0 : path.height;
     var fraction = Offset((doc.dx - path.x) / w, (doc.dy - path.y) / h);
-    var node = path.nodes[_nodeIndex];
+    var node = path.nodes[index];
 
     // Alt breaks the handle pair, making a corner.
     var next = handle
         ? (HardwareKeyboard.instance.isAltPressed
-            ? (_nodeHandleOut
+            ? (out
                 ? node.copyWith(
                     outDx: fraction.dx - node.x, outDy: fraction.dy - node.y)
                 : node.copyWith(
                     inDx: fraction.dx - node.x, inDy: fraction.dy - node.y))
-            : node.withMirroredHandle(out: _nodeHandleOut, to: fraction))
+            : node.withMirroredHandle(out: out, to: fraction))
         : node.copyWith(x: fraction.dx, y: fraction.dy);
 
-    controller.replaceElement(path.withNode(_nodeIndex, next), transient: true);
+    controller.replaceElement(path.withNode(index, next), transient: true);
+  }
+
+  /// _bakePathFollow lays the selected path's follower along it again, once
+  /// a drag of its points is done rather than every pixel: a route is
+  /// dozens of keyframes.
+  void _bakePathFollow() {
+    var path = _selectedPath();
+    if (path != null) controller.applyPathFollow(path);
   }
 }

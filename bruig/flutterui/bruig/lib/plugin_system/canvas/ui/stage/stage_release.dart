@@ -134,14 +134,12 @@ extension StageRelease on CanvasStageState {
       return;
     }
 
-    if (_mode == _DragMode.flow) {
-      if (!cancelled) _dropFlow(event.localPosition);
-      setState(() {
-        _flowFrom = null;
-        _flowAt = null;
-        _mode = _DragMode.none;
-      });
-      return;
+    // A gesture ends itself. A flow link's end is the whole of its release;
+    // the others go on to the resets at the end, which they reached when
+    // they were modes.
+    if (_gesture case var gesture?) {
+      _endGesture(gesture, event.localPosition, cancelled: cancelled);
+      if (gesture is _FlowLinkDrag) return;
     }
 
     if (_mode == _DragMode.vectorMarquee) {
@@ -212,31 +210,9 @@ extension StageRelease on CanvasStageState {
       }
     }
     if (_mode == _DragMode.warpMarquee) _finishWarpMarquee(pick: !cancelled);
-    if (_mode == _DragMode.marquee) {
-      var box = _marquee;
-      if (!cancelled && box != null && box.width > 3 && box.height > 3) {
-        // What the box is drawn round on screen: where each is drawn now.
-        var hit = _hit;
-        for (var e in document.elements) {
-          if (!e.locked && e.visible && box.overlaps(hit.posed(e))) {
-            controller.toggleSelected(e.id);
-          }
-        }
-      }
-      setState(() => _marquee = null);
-    }
-    if (_mode == _DragMode.node || _mode == _DragMode.handle) {
-      // Re-baked once at the end, not every pixel: a route is dozens of
-      // keyframes.
-      var path = _selectedPath();
-      if (path != null) controller.applyPathFollow(path);
-      controller.endInteraction();
-      _nodeIndex = -1;
-    }
     // Every mode that opened an interaction closes it here: beginInteraction
     // only takes the document if none is held, so one left open would merge
     // into the next gesture's undo step.
-    if (_mode == _DragMode.guide) _finishGuide();
     if (_mode == _DragMode.spritePaint) {
       if (controller.spritePaint case var session?) {
         unawaited(session.strokeEnd());
@@ -272,7 +248,6 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.layoutCellSize ||
         _mode == _DragMode.layoutCellTurn ||
         _mode == _DragMode.move ||
-        _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||
         _mode == _DragMode.skew ||
         _mode == _DragMode.warpMove ||
@@ -292,8 +267,7 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.imageMask ||
         _mode == _DragMode.imageBrush ||
         _mode == _DragMode.vectorPoint ||
-        _mode == _DragMode.player ||
-        _mode == _DragMode.guide) {
+        _mode == _DragMode.player) {
       controller.endInteraction();
     }
     if (_mode == _DragMode.imageQuick && _quickTrail.isNotEmpty && !cancelled) {
@@ -315,6 +289,20 @@ extension StageRelease on CanvasStageState {
     _maskOn = null;
     _strokeAt = null;
     if (_snappedTo != null) setState(() => _snappedTo = null);
+  }
+
+  /// _selectWithin toggles each unlocked, shown element that [box], an
+  /// elements' marquee let go, overlaps: unless the box is too small to be
+  /// more than a click.
+  void _selectWithin(Rect box) {
+    if (box.width <= 3 || box.height <= 3) return;
+    // What the box is drawn round on screen: where each is drawn now.
+    var hit = _hit;
+    for (var e in document.elements) {
+      if (!e.locked && e.visible && box.overlaps(hit.posed(e))) {
+        controller.toggleSelected(e.id);
+      }
+    }
   }
 
   /// _updateHover keeps the renderer told what is under the pointer.

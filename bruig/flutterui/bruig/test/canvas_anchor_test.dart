@@ -219,5 +219,53 @@ void main() {
       expect(now().anchorCentred, isTrue);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets("its drag is one undo step, let go or cancelled",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(const CanvasDocument().addElement(square()));
+      addTearDown(c.dispose);
+      c.selectOnly("s");
+      c.showAnchor("s", true);
+      setTestScreen(tester, const Size(1600, 1200));
+      await tester.pumpWidget(host(c, stage: true));
+      await tester.pumpAndSettle();
+      CanvasElement now() => c.document.elementById("s")!;
+      var view =
+          tester.state<CanvasStageState>(find.byKey(const ValueKey("stage")));
+      Offset onScreen(Offset doc) {
+        var page = view.pageRect;
+        var scale = page.width / c.document.size.size.width;
+        return tester.getTopLeft(find.byKey(const ValueKey("stage"))) +
+            page.topLeft +
+            doc * scale;
+      }
+
+      var from = onScreen(now().anchorAt(0));
+      var to = onScreen(const Offset(100, 100));
+
+      for (var cancel in [false, true]) {
+        var drag = await tester.startGesture(from);
+        await drag.moveTo(to);
+        await tester.pump();
+        expect(view.gestureUnderWay, isTrue);
+        expect(c.interacting, isTrue);
+        if (cancel) {
+          await drag.cancel();
+        } else {
+          await drag.up();
+        }
+        await tester.pumpAndSettle();
+        // A cancel keeps what the drag did, as a release does.
+        expect(now().base.anchorX, closeTo(0, 0.1));
+        expect(now().base.anchorY, closeTo(0, 0.1));
+        expect(view.gestureUnderWay, isFalse);
+        expect(c.interacting, isFalse);
+        c.undo();
+        await tester.pumpAndSettle();
+        expect(now().anchorCentred, isTrue, reason: "one undo step");
+      }
+      expect(tester.takeException(), isNull);
+    });
   });
 }
