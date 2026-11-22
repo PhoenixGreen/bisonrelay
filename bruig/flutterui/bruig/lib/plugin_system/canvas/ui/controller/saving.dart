@@ -73,6 +73,9 @@ extension CanvasSaving on CanvasController {
     _pickedSceneWith = const {};
     _joinPicked = _joinPress = false;
     _previewJoin = null;
+    // The editor's loop, round a stretch of that canvas's frames.
+    _playbackState.looping = false;
+    _playbackState.loop = null;
     _chainFocus = null;
     _sceneFrames.clear();
     _wordQuery = "";

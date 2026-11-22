@@ -127,7 +127,8 @@ extension _PianoRollToolbar on _PianoRollState {
           // timeline from the playhead; a slot's clip's, it alone, round its
           // loop, the timeline quiet -- as the clip editor's bar has it.
           if (widget.inClipEditor && c.pianoRoll?.row == null) ...[
-            pill(c.playing ? "■ Stop" : "▶ Play", c.playing, c.togglePlay,
+            pill(c.playing && !c.sessionOnly ? "■ Stop" : "▶ Play",
+                c.playing && !c.sessionOnly, c.togglePlay,
                 key: const ValueKey("partPlay")),
             const SizedBox(width: 8),
           ] else if (widget.inClipEditor) ...[

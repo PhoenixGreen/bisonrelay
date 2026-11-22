@@ -330,11 +330,29 @@ void main() {
       }
       expect(c.frame, 10);
       expect(c.holdingMarker?.label, "Get ready", reason: "the pause holds");
-      for (var i = 0; i < 5; i++) {
+      // Held on its frame for its four frames' time, then on.
+      for (var i = 0; i < 4; i++) {
         c.tickForTest();
+        expect(c.frame, 10, reason: "held, tick ${i + 1}");
+        expect(c.holdingMarker?.label, "Get ready");
       }
+      c.tickForTest();
+      expect(c.frame, 11);
       expect(c.holdingMarker, isNull, reason: "and goes on");
       c.pause();
+    });
+
+    test("a stop's label goes once the playhead moves off it, for good", () {
+      var c = held();
+      addTearDown(c.dispose);
+      c.play();
+      for (var i = 0; i < 3; i++) {
+        c.tickForTest();
+      }
+      expect(c.holdingMarker?.label, "Press to jump");
+      c.frame = 5;
+      c.frame = 3;
+      expect(c.holdingMarker, isNull, reason: "put back on it by hand");
     });
 
     test("hidden on the canvas: none", () {

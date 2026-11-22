@@ -344,11 +344,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             tooltip: timelinePlays ? "Pause" : "Play (Space)",
             on: timelinePlays,
             lit: const Color(0xFF3CCF7A),
-            onPressed: !playable
-                ? null
-                : controller.sessionOnly
-                    ? controller.play
-                    : controller.togglePlay,
+            onPressed: !playable ? null : controller.togglePlay,
           ),
           TransportButton(
             key: const ValueKey("stopPlaying"),

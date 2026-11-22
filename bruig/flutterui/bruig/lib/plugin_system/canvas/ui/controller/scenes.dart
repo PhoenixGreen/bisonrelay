@@ -37,6 +37,9 @@ extension CanvasScenes on CanvasController {
     if (document.editingMaster && !exact) index = 0;
     if (index < 0 || index >= scenes.length - 1) return;
 
+    // Anything else playing stops first, as for previewElement: only the
+    // slots playing, the timer would go on being theirs.
+    pause();
     var over = document.transitionAfter(index);
     var start = document.startOfScene(index + 1);
     _previewJoin = index;

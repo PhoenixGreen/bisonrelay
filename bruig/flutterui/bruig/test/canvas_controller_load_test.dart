@@ -96,6 +96,18 @@ void main() {
     expect(c.canvasView, isEmpty);
   });
 
+  test("opening another canvas lets go of the editor's loop", () {
+    // The loop is round a stretch of the last canvas's frames.
+    var c = CanvasController(const CanvasDocument(frames: 200));
+    addTearDown(c.dispose);
+    c.looping = true;
+    c.setLoop(100, 50);
+
+    c.load(const CanvasDocument(frames: 200));
+    expect(c.looping, isFalse);
+    expect(c.loopRange, (0, 200), reason: "where a first press would put it");
+  });
+
   test("coming back to the page finds the zoom as it was left", () {
     // The page puts the frame last chosen back each time it opens. The same
     // frame as now is no change, and must not send the view back to fit.

@@ -270,9 +270,11 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           IconButton(
             key: const ValueKey("canvasFilePlay"),
-            icon: Icon(c.playing ? Icons.pause : Icons.play_arrow),
-            tooltip: c.playing ? "Pause" : "Play",
-            onPressed: () => c.playing ? c.pause() : _start(c),
+            // The editor's Play button's: only the slots playing, it plays.
+            icon: Icon(
+                c.playing && !c.sessionOnly ? Icons.pause : Icons.play_arrow),
+            tooltip: c.playing && !c.sessionOnly ? "Pause" : "Play",
+            onPressed: c.togglePlay,
           ),
           IconButton(
             key: const ValueKey("canvasFileAgain"),

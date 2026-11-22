@@ -99,6 +99,8 @@ extension CanvasPlayback on CanvasController {
     }
     if (playing) return;
     _playbackState.playedFrom = (_document.at, _frame);
+    // A stop's label is shown until it plays again: see holdingMarker.
+    _playbackState.stoppedAt = null;
     // The session's clock from the playhead: see _sessionClock.
     _sessionClock = _frame / math.max(1, _document.frameRate);
     // Sounds that start by themselves start with the canvas, before the
@@ -150,6 +152,9 @@ extension CanvasPlayback on CanvasController {
             (500000 / _document.frameRate).round().clamp(4000, 500000));
     _playbackState.clockFrames = 0;
     _playbackState.clockShift = 0;
+    _playbackState.clockFrom = 0;
+    _playbackState.clockFromFrame = 0;
+    _playbackState.clockPace = math.max(1, _document.frameRate) * _clockRate;
     _playbackState.playWatch = Stopwatch()..start();
     // A periodic timer's tick counts the intervals that have passed, not the
     // callbacks that ran, so tick times interval is the time since Play, by
@@ -162,9 +167,9 @@ extension CanvasPlayback on CanvasController {
   /// frame at a time, so a marker on a frame passed over is still obeyed.
   void _tick(int elapsed) {
     var rate = math.max(1, _document.frameRate);
+    var raw = (clockForTest?.call() ?? elapsed) / 1000000;
     // Practising, the clock runs at the tempo set -- see practiceRate.
-    var seconds = (clockForTest?.call() ?? elapsed) / 1000000 * _clockRate +
-        _playbackState.clockShift;
+    var seconds = raw * _clockRate + _playbackState.clockShift;
     // Only the slots: their clock goes on, the playhead does not.
     if (_sessionOnly) {
       _sessionSeconds = seconds;
@@ -184,7 +189,18 @@ extension CanvasPlayback on CanvasController {
       if (_clipChannels.isNotEmpty) _applyMix();
       return;
     }
-    var now = seconds * rate;
+    // Another frame rate or practice speed since the last tick: counted from
+    // here at the new pace, as the whole time since Play at the new pace
+    // would leave the playhead stalled or leaping.
+    var pace = rate * _clockRate;
+    if (pace != _playbackState.clockPace) {
+      _playbackState
+        ..clockPace = pace
+        ..clockFrom = raw
+        ..clockFromFrame = _playbackState.clockFrames
+        ..clockShift = 0;
+    }
+    var now = _clockAt(raw);
     var due = now.floor() - _playbackState.clockFrames;
     // A long stall -- the window dragged, the machine asleep -- is let go
     // rather than raced through: past a few frames behind, it carries on
@@ -213,12 +229,18 @@ extension CanvasPlayback on CanvasController {
   double get betweenFrames {
     // Only the slots playing, the playhead stands still.
     if (_playback == null || clockForTest != null || _sessionOnly) return 0;
-    var rate = math.max(1, _document.frameRate);
-    var now =
-        (_playbackState.playWatch.elapsedMicroseconds / 1000000 * _clockRate +
-                _playbackState.clockShift) *
-            rate;
+    var now = _clockAt(_playbackState.playWatch.elapsedMicroseconds / 1000000);
     return (now - _playbackState.clockFrames).clamp(0.0, 0.999);
+  }
+
+  /// _clockAt is the frame, with its fraction, the clock says the playhead
+  /// has reached [raw] seconds after Play: counted on from where it was at
+  /// the last change of pace (see _tick).
+  double _clockAt(double raw) {
+    var s = _playbackState;
+    var rate = math.max(1, _document.frameRate);
+    return s.clockFromFrame +
+        ((raw - s.clockFrom) * _clockRate + s.clockShift) * rate;
   }
 
   /// playsDrift is whether the stage's scene has a drift (a picture's or a
@@ -303,7 +325,19 @@ extension CanvasPlayback on CanvasController {
     notifyListeners();
   }
 
-  void togglePlay() => playing ? pause() : play();
+  /// togglePlay is the play bar's Play button, and Space, MIDI's play, a
+  /// button element's Play or pause and the piano roll's pill with it: the
+  /// timeline plays or pauses. Only the slots playing, it plays the
+  /// timeline rather than stopping them. In a game, a pause holds the game
+  /// too, and Play lets both go; the timeline stopped on a marker in a game
+  /// still only plays on.
+  void togglePlay() {
+    if (gaming && (_gamePaused || playing)) {
+      gamePaused = !_gamePaused;
+      return;
+    }
+    playing && !_sessionOnly ? pause() : play();
+  }
 
   /// stopPlaying is the control bar's Stop: playing, back to where Play
   /// started, to go over a take again; stopped, back to the very start.
@@ -313,9 +347,17 @@ extension CanvasPlayback on CanvasController {
       pause();
       return;
     }
+    // Watching a join: back on the scene it was watched from, as its own
+    // end would put it, not where an earlier Play began.
+    if (_previewAt != null && _previewFrom != null) {
+      stopPreview();
+      return;
+    }
     var from = _playbackState.playedFrom;
     if (!playing || from == null) {
       stop();
+      // Every scene playing: the start of the whole run.
+      if (_runsScenes) goToRunFrame(0);
       return;
     }
     pause();
@@ -341,10 +383,12 @@ extension CanvasPlayback on CanvasController {
 
   void _syncMetronome() {
     var sheet = _clicking;
+    // Not while one element or one join is previewed; every scene playing
+    // also runs on _previewAt, told apart by having no _previewFrom.
     var on = playing &&
         (_playbackState.metronome || sheet != null) &&
         _previewing == null &&
-        _previewAt == null;
+        (_previewAt == null || _previewFrom == null);
     if (!on && _audio == null) return;
     // A sheet's: on its score's beat, from its part's start, at its speed.
     if (sheet case (_, var score, var ch)?) {
@@ -732,13 +776,30 @@ extension CanvasPlayback on CanvasController {
       // playhead, and a scene told to hold stops it there.
       if (_playAll) {
         var place = placeInSequence(_document, next);
+        // A range to play on the scene it was asked on (a button's Play to
+        // frame, a sheet's bars): it stops at its end.
+        if (_rangeEnd case var end?
+            when place.scene == _document.at && place.frame >= end) {
+          _rangeEnd = null;
+          pause();
+          return;
+        }
         if (place.scene != _document.at) {
           var last = _document.allScenes[_document.at];
           if (last.holds) {
             stopPreview();
             return;
           }
+          // As a turn by hand (goToScene): the frame the scene was left on
+          // kept, and nothing on it left picked. The next scene plays from
+          // the run's frame, not the one it was last left on.
+          if (!_document.editingMaster) {
+            _sceneFrames[_document.scene.id] = _frame;
+          }
           _document = _document.goToScene(place.scene);
+          _selection = {};
+          _backgroundSelected = false;
+          _focusedPlayer = null;
           turned = true;
           _audioFollowsPage(turned: true);
           _autoplayAudio();
@@ -762,6 +823,21 @@ extension CanvasPlayback on CanvasController {
       _notifyView();
       return;
     }
+    // Held at a pause marker: the playhead stays on it a tick at a time, as
+    // a countdown rather than a sleep, so the window stays responsive and
+    // the playhead can be dragged out of it.
+    for (var action in _document.actions) {
+      if (action.kind != TimelineActionKind.pause || action.frame != _frame) {
+        continue;
+      }
+      var held = _playbackState.loopCounts[action.frame];
+      if (held == null) continue;
+      if (held < action.holdFrames) {
+        _playbackState.loopCounts[action.frame] = held + 1;
+        return;
+      }
+      _playbackState.loopCounts.remove(action.frame);
+    }
     var next = _frame + 1;
     // Round the loop: from its end back to its start -- but only from inside
     // it, so a playhead put past the loop plays on from there.
@@ -770,7 +846,10 @@ extension CanvasPlayback on CanvasController {
       var end = from + length;
       if (_frame < end && next >= end) next = from;
     }
-    if (next >= _document.frames) next = 0;
+    // Off the end and round to the start: the scene begins again, where the
+    // loop going round does not.
+    var wrapped = next >= _document.frames;
+    if (wrapped) next = 0;
     var was = _frame;
     // Playing a sheet's range of bars: it stops at the end of the last.
     if (_rangeEnd case var end? when next >= end || next < was) {
@@ -791,14 +870,9 @@ extension CanvasPlayback on CanvasController {
           _playbackState.stoppedAt = next;
           if (action.waitsFor.isNotEmpty) _waitForAction(action.waitsFor);
         case TimelineActionKind.pause:
-          // The hold steps the playhead back to where it is for as many ticks
-          // as it asks, as a countdown rather than a sleep, so the window
-          // stays responsive and the playhead can be dragged out of it.
-          var held = _playbackState.loopCounts
-              .update(action.frame, (v) => v + 1, ifAbsent: () => 1);
-          if (held < action.holdFrames) _frame = next - 1 < 0 ? 0 : next;
-          if (held >= action.holdFrames) {
-            _playbackState.loopCounts.remove(action.frame);
+          // Arrived: held here from the next tick, for as many as it asks.
+          if (action.holdFrames > 0) {
+            _playbackState.loopCounts[action.frame] = 0;
           }
         case TimelineActionKind.loop:
           var count = _playbackState.loopCounts
@@ -815,6 +889,7 @@ extension CanvasPlayback on CanvasController {
     _syncTimeline();
     _synthLanesLive();
     _notifyPlayhead(false);
+    if (wrapped) _sceneBegins();
   }
 
   /// holdingMarker is the marker playback is held at, whose label is shown
@@ -1037,7 +1112,13 @@ extension CanvasPlayback on CanvasController {
         frame = action.frame;
         play();
       case ButtonActionKind.playToFrame:
+        // Stopping on its frame, as a published canvas does; from the start
+        // where the playhead is already there or past it.
+        var to =
+            action.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+        if (_frame >= to) frame = 0;
         play();
+        if (playing) _rangeEnd = to + 1;
       case ButtonActionKind.play:
         play();
       case ButtonActionKind.pause:
@@ -1118,6 +1199,14 @@ class _PlaybackState {
   /// started. It keeps time by the clock, not by counting ticks, which come
   /// late when the app is busy and would leave it behind the sound.
   int clockFrames = 0;
+
+  /// clockPace is the frames a second of the clock the playhead is counted
+  /// at (frame rate times practice speed); clockFrom and clockFromFrame are
+  /// the clock's seconds since Play and clockFrames when it was last set,
+  /// counted on from there (see _clockAt).
+  double clockPace = 0;
+  double clockFrom = 0;
+  int clockFromFrame = 0;
 
   /// playWatch is the time since Play, read between ticks (betweenFrames).
   Stopwatch playWatch = Stopwatch();

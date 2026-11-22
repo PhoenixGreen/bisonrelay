@@ -1047,6 +1047,8 @@ class CanvasController extends ChangeNotifier {
     }
     if (next == _frame) return;
     if (!playing) _forgetCodePicks();
+    // Moved off a stop it stopped on: its label goes (see holdingMarker).
+    _playbackState.stoppedAt = null;
     _frame = next;
     _syncTimeline();
     notifyListeners();
