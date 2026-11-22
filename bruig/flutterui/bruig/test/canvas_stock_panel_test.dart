@@ -271,6 +271,25 @@ void main() {
     });
   }
 
+  // Saved filters under a library this build does not know were read as
+  // Pixabay's pictures', and the last one read won: Pixabay's own were lost.
+  testWidgets("filters saved for an unknown library leave Pixabay's alone",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      "canvasApiKey:pixabay.com": "abc",
+      "canvasStock.filters": jsonEncode({
+        "pixabayPictures": {"image_type": "photo"},
+        "gone": {"image_type": "vector"},
+      }),
+    });
+    await show(tester, key: false);
+    await tester.enterText(find.byKey(const ValueKey("stockSearch")), "fox");
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await idle(tester);
+    expect(fake.asked.single.source, StockSource.pixabayPictures);
+    expect(fake.asked.single.filters["image_type"], "photo");
+  });
+
   testWidgets(
       "an answer still on its way when the library changes is not shown "
       "as the new library's", (tester) async {
@@ -377,8 +396,9 @@ void main() {
     // A minute long: a loaded machine can take a second or more over the
     // steps below, and a one-second video had finished by the time it was
     // looked for.
+    var frames = StockPanel.videoFrames;
     StockPanel.videoFrames = FakeFrames(60);
-    addTearDown(() => StockPanel.videoFrames = FakeFrames(0));
+    addTearDown(() => StockPanel.videoFrames = frames);
     SharedPreferences.setMockInitialValues({
       "canvasApiKey:pixabay.com": "abc",
       "canvasStock.source": "pixabayVideos",

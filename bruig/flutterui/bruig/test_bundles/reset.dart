@@ -3,6 +3,7 @@
 
 import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -13,10 +14,12 @@ import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/settings_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_extras.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:bruig/plugin_system/plugin_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +40,10 @@ void betweenFiles() {
   CanvasPresetsPanel.forgetForTest();
   SettingsPanelBody.forgetForTest();
   forgetLayerPickForTest();
+  // The asset thumbnails kept for the session, and the decoder of stock
+  // video previews a test may have swapped for a fake.
+  AssetThumb.forgetForTest();
+  StockPanel.videoFrames = FfmpegFrames(ffmpegPath);
   clearRenderCaches();
   CanvasLibrary.resetForTest();
   CanvasStorage.rootOverride = null;

@@ -32,12 +32,12 @@ enum MediaKind {
   audio(canvasAudioFolder, 512 * 1024 * 1024),
   video(canvasVideoFolder, 4 * 1024 * 1024 * 1024),
 
-  /// vector is the drawings: .svg files, bounded as pictures are.
+  /// vector is the drawings: .svg files.
   vector(canvasVectorFolder, 20 * 1024 * 1024),
 
-  /// model is the 3D objects' models: .glb and .gltf files. An imported model
-  /// is a library asset and stays; one nothing uses (a received canvas's,
-  /// the canvas gone) is swept with the rest.
+  /// model is the 3D objects' models, imported as .glb files. An imported
+  /// model is a library asset and stays; one nothing uses (a received
+  /// canvas's, the canvas gone) is swept with the rest.
   model(canvasModelFolder, 256 * 1024 * 1024);
 
   final String folder;

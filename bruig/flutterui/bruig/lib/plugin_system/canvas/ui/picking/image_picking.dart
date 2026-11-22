@@ -13,9 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart' as path;
 
-// image_picking.dart is how a picture gets onto the canvas: through the
-// app's own picture controls (width, quality, format), since a canvas is
-// sent under the same payload limit as everything else Bison Relay sends.
+// image_picking.dart is how a picture is chosen from a file: a large one is
+// offered the app's own picture controls (width, quality, format), since a
+// canvas is sent under the same payload limit as everything else Bison Relay
+// sends.
 // The bytes go to CanvasAssets, which is content-addressed: a picture used
 // on eleven canvases is stored once.
 

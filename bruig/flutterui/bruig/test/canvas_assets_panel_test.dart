@@ -90,8 +90,7 @@ void main() {
   Widget sidebar(CanvasController c) =>
       SizedBox(width: 280, child: assetsSidebar(c));
 
-  testWidgets("three sections, each with what is in the library",
-      (tester) async {
+  testWidgets("the sections show what is in the library", (tester) async {
     await show(tester, sidebar);
     for (var label in ["PICTURES", "VIDEOS", "AUDIO"]) {
       expect(find.text(label), findsOneWidget);
@@ -177,7 +176,10 @@ void main() {
         width: 280,
         child: SizedBox(
             height: 800,
-            child: AssetSection(controller: c, kind: AssetKind.picture))));
+            child: AssetSection(
+                key: const ValueKey("assets-picture"),
+                controller: c,
+                kind: AssetKind.picture))));
     await check(
         (c) => SizedBox(width: 280, child: CanvasElementsPanel(controller: c)));
   });

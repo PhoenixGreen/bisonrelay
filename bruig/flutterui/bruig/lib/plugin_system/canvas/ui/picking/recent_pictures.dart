@@ -28,7 +28,8 @@ class _RecentPicturesDialog extends StatefulWidget {
 }
 
 class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
-  /// _ids is the store's contents, newest first; null while being read.
+  /// _ids is the store's contents, pictures newest first and drawings in no
+  /// order; null while being read.
   List<String>? _ids;
 
   @override

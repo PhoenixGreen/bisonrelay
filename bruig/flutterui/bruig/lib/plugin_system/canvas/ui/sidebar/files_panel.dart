@@ -285,10 +285,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       controller.detachFromFile();
     }
     // What only that canvas used goes with it; assets stay in the library.
-    unawaited(CanvasLibrary.tidy(open: {
-      ...controller.document.assetIds,
-      ...controller.document.mediaIds,
-    }));
+    unawaited(CanvasLibrary.tidy(open: controller.document.storedIds));
     await _reload();
   }
 
@@ -380,10 +377,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       return;
     }
     await CanvasStorage.deleteFolder(entry.name);
-    unawaited(CanvasLibrary.tidy(open: {
-      ...controller.document.assetIds,
-      ...controller.document.mediaIds,
-    }));
+    unawaited(CanvasLibrary.tidy(open: controller.document.storedIds));
     await _reload();
   }
 
@@ -664,7 +658,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     var bottomRight =
         box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay);
 
-    var choice = await showMenu<String>(
+    var choice = await showMenu<_RowAction>(
       context: buttonContext,
       position: RelativeRect.fromLTRB(
         topLeft.dx,
@@ -674,38 +668,55 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       ),
       items: entry.isFolder
           ? const [
-              PopupMenuItem(value: "renameFolder", child: Text("Rename…")),
-              PopupMenuItem(value: "deleteFolder", child: Text("Delete")),
+              PopupMenuItem(
+                  value: _RowAction.renameFolder, child: Text("Rename…")),
+              PopupMenuItem(
+                  value: _RowAction.deleteFolder, child: Text("Delete")),
             ]
           : const [
-              PopupMenuItem(value: "publish", child: Text("Publish…")),
+              PopupMenuItem(value: _RowAction.publish, child: Text("Publish…")),
               // A copy of the file now: later edits leave the preset be.
               PopupMenuItem(
-                  value: "preset", child: Text("Save canvas as preset")),
-              PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
-              PopupMenuItem(value: "rename", child: Text("Rename…")),
-              PopupMenuItem(value: "move", child: Text("Move to…")),
-              PopupMenuItem(value: "delete", child: Text("Delete")),
+                  value: _RowAction.preset,
+                  child: Text("Save canvas as preset")),
+              PopupMenuItem(
+                  value: _RowAction.duplicate, child: Text("Duplicate")),
+              PopupMenuItem(value: _RowAction.rename, child: Text("Rename…")),
+              PopupMenuItem(value: _RowAction.move, child: Text("Move to…")),
+              PopupMenuItem(value: _RowAction.delete, child: Text("Delete")),
             ],
     );
-    if (!mounted) return;
+    if (!mounted || choice == null) return;
     switch (choice) {
-      case "publish":
+      case _RowAction.publish:
         widget.onPublish(entry.folder, entry.name);
-      case "preset":
+      case _RowAction.preset:
         await _saveAsPreset(entry);
-      case "duplicate":
+      case _RowAction.duplicate:
         await _duplicate(entry);
-      case "rename":
+      case _RowAction.rename:
         await _rename(entry);
-      case "move":
+      case _RowAction.move:
         await _move(entry);
-      case "delete":
+      case _RowAction.delete:
         await _delete(entry);
-      case "renameFolder":
+      case _RowAction.renameFolder:
         await _renameFolder(entry);
-      case "deleteFolder":
+      case _RowAction.deleteFolder:
         await _deleteFolder(entry);
     }
   }
+}
+
+/// _RowAction is a choice on a row's menu: the first six a canvas's, the
+/// last two a folder's.
+enum _RowAction {
+  publish,
+  preset,
+  duplicate,
+  rename,
+  move,
+  delete,
+  renameFolder,
+  deleteFolder,
 }

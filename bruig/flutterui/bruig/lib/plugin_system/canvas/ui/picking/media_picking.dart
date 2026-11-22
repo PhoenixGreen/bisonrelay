@@ -42,8 +42,8 @@ Future<MediaSource?> pickCanvasAudio(
   return addCanvasAudio(context, controller, chosen);
 }
 
-/// addCanvasAudio stores the sound at [file]. Its own function so a file
-/// dropped on the canvas can take the same road as one chosen.
+/// addCanvasAudio stores the sound at [file]. Its own function so a stock
+/// result, fetched to a file, takes the same road as one chosen.
 Future<MediaSource?> addCanvasAudio(
     BuildContext context, CanvasController controller, String file) async {
   var name = path.basenameWithoutExtension(file);

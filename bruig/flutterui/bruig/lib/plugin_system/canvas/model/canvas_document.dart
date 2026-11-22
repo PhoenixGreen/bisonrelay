@@ -692,6 +692,11 @@ class CanvasDocument {
         ],
       };
 
+  /// storedIds is everything this document keeps in the stores, pictures
+  /// and media both: what a tidy of the stores must leave alone while it is
+  /// open.
+  Set<String> get storedIds => {...assetIds, ...mediaIds};
+
   /// lastAnimatedFrame is the furthest frame any keyframe, clip or marker is
   /// on, so the settings bar can warn of a scene shorter than its animation.
   int get lastAnimatedFrame {

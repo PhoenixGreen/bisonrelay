@@ -137,9 +137,13 @@ with no default); the rest are not, and are marked.
    (`ui/element_settings.dart`) and its panel in
    `ui/settings/<kind>_settings.dart`, built from the panel kit
    (`ui/settings/README.md`).
-7. **Its icon**, in `iconForKind` (`ui/element_factory.dart`), and, to
-   offer it on the Add panel, its place in `_addable`
-   (`ui/sidebar/elements_panel.dart`). *The second is not asked for.*
+7. **Its icon**, in `iconForKind` (`ui/element_factory.dart`), and what
+   the Add panel offers for it, in `addOffersFor` (`ui/element_offers.dart`):
+   usually the kind itself, or nothing, with a comment saying how it is made
+   instead. Where it stands in the grid is `_gridOrder` in the same file,
+   the one list kept by hand; the Add panel's tests in
+   `test/canvas_editor_layers_test.dart` fail if a kind that offers
+   something is missing from it.
 8. **Tests.** `elementSamples` (`test/support/element_samples.dart`) makes
    one of every kind through the factory, so the round trip, the hostile
    reading and the panel sweep cover it without being told. Add tests for

@@ -29,10 +29,12 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 
-// stock_panel.dart is the Stock section of the Assets sidebar: search Pixabay,
-// the Noun Project, Freesound and Jamendo, preview, and use what fits. Nothing
-// connects until somebody searches, so the app does not tell four companies
-// whenever it is opened; after a search, a filter change searches again. A
+// stock_panel.dart is the Stock section of the Assets sidebar: search the
+// libraries of StockSource (some need a key of the user's own), or browse
+// Kenney's sprites, KayKit's characters and those drawn here; preview, and
+// use what fits. Nothing connects until somebody searches, so the app does
+// not tell those sites whenever it is opened; after a search, a filter change
+// searches again. A
 // result is a preview until it is used (clicked, dragged, or added with its +);
 // then it is fetched, stored and credited: see stock_import.dart.
 
@@ -134,11 +136,15 @@ class _StockPanelState extends State<StockPanel> {
     var browser = _browsers.contains(saved) ? saved : null;
     var source = StockSource.fromName(browser != null ? null : saved);
     try {
-      var saved = jsonDecode(await StorageManager.readString(_filtersKey));
-      if (saved is Map) {
-        for (var e in saved.entries) {
-          if (e.value is! Map) continue;
-          _filters[StockSource.fromName(e.key as String?)] = {
+      var filters = jsonDecode(await StorageManager.readString(_filtersKey));
+      if (filters is Map) {
+        for (var e in filters.entries) {
+          // A source this build does not know is skipped, not read as the
+          // default one, whose own filters it would overwrite.
+          var known =
+              StockSource.values.where((s) => s.name == e.key).firstOrNull;
+          if (known == null || e.value is! Map) continue;
+          _filters[known] = {
             for (var f in (e.value as Map).entries) "${f.key}": "${f.value}",
           };
         }
@@ -569,8 +575,7 @@ class _StockPanelState extends State<StockPanel> {
 
   Widget _draggable(StockItem item, Widget body) => Draggable<PendingAsset>(
         key: ValueKey("stock-${item.key}"),
-        data: PendingAsset(
-            kind: item.kind, name: item.title, fetch: () => _fetch(item)),
+        data: PendingAsset(kind: item.kind, fetch: () => _fetch(item)),
         dragAnchorStrategy: pointerDragAnchorStrategy,
         feedback: Material(
           color: Colors.transparent,

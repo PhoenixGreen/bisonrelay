@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_offers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
@@ -40,49 +41,67 @@ void main() {
       pumpCanvasApp(tester, child, size: const Size(1400, 900), prefs: prefs);
 
   group("the design elements panel", () {
-    testWidgets("offers every kind, and adding one selects it", (tester) async {
+    test("offers each kind's offers once, and nothing else", () {
+      // Labels name the offers: each is made afresh when asked for.
+      var all = [for (var o in addOffers) o.label];
+      var wanted = [
+        for (var kind in ElementKind.values)
+          for (var o in addOffersFor(kind)) o.label,
+      ];
+      expect(all.toSet(), hasLength(all.length), reason: "each one once");
+      expect(all.toSet(), wanted.toSet());
+      expect(all, hasLength(wanted.length));
+    });
+
+    testWidgets("has a chip for every offer of every kind", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
       await pump(tester, CanvasElementsPanel(controller: controller));
 
-      // All but the 3D stage and parallax, which are chosen in a
-      // background's Pattern layers rather than added, and a 3D character,
-      // made in the Character Studio and placed from Assets.
       for (var kind in ElementKind.values) {
-        if (kind == ElementKind.stage ||
-            kind == ElementKind.parallax ||
-            kind == ElementKind.character3d ||
-            // Placed from the library's 3D objects, with its model.
-            kind == ElementKind.object3d) {
-          continue;
+        for (var offer in addOffersFor(kind)) {
+          var chip =
+              find.byKey(ValueKey("add${offer.label.replaceAll(" ", "")}"));
+          expect(chip, findsOneWidget, reason: offer.label);
+          expect(find.descendant(of: chip, matching: find.text(offer.label)),
+              findsOneWidget,
+              reason: offer.label);
+          expect(find.descendant(of: chip, matching: find.byIcon(offer.icon)),
+              findsOneWidget,
+              reason: offer.label);
         }
-        // Synth modules are put down as a rack, by the Synth chip, and a
-        // task card from a module's settings, beside its rack.
-        if (kind == ElementKind.synth || kind == ElementKind.synthTask) {
-          expect(find.text("Synth"), findsOneWidget);
-          continue;
-        }
-        // A Run panel is put down with the Code panel it runs, by the Code
-        // chip; a task card from a Code panel's settings.
-        if (kind == ElementKind.codeRun || kind == ElementKind.codeTask) {
-          expect(find.text("Code"), findsWidgets);
-          continue;
-        }
-        // Tables and charts are one Data element (Ken, 2026-11-15): its
-        // chip puts down a table, made a chart in its quick settings.
-        if (kind == ElementKind.table || kind == ElementKind.chart) {
-          expect(find.text("Data"), findsOneWidget);
-          continue;
-        }
-        expect(find.text(kind.label), findsWidgets, reason: kind.name);
       }
+    });
+
+    testWidgets("each chip pressed adds something, selected", (tester) async {
+      for (var offer in addOffers) {
+        var controller = CanvasController(const CanvasDocument());
+        await pump(tester, CanvasElementsPanel(controller: controller));
+        var chip =
+            find.byKey(ValueKey("add${offer.label.replaceAll(" ", "")}"));
+        await tester.ensureVisible(chip);
+        await tester.tap(chip);
+        await tester.pumpAndSettle();
+
+        var ids = {for (var e in controller.document.elements) e.id};
+        expect(ids, isNotEmpty, reason: offer.label);
+        expect(controller.selection, isNotEmpty, reason: offer.label);
+        expect(ids.containsAll(controller.selection), isTrue,
+            reason: offer.label);
+        await tester.pumpWidget(const SizedBox());
+        controller.dispose();
+      }
+    });
+
+    testWidgets("the Data chip puts down a table", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasElementsPanel(controller: controller));
 
       await tester.tap(find.text("Data").first);
       await tester.pumpAndSettle();
 
-      expect(controller.document.elements.length, 1);
       expect(controller.document.elements.single.kind, ElementKind.table);
-      expect(controller.selection, {controller.document.elements.single.id});
     });
 
     testWidgets("a new element lands inside the canvas", (tester) async {

@@ -17,7 +17,6 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/code_run_host.dart';
 import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/web_link.dart';
@@ -30,7 +29,7 @@ import 'package:bruig/plugin_system/canvas/ui/code/code_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/data/data_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_tool_hint.dart';
-import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_offers.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
@@ -735,19 +734,16 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   // stage's state and stops it painting and being hit.
                   child: Offstage(
                     offstage: !_shown,
-                    // The whole canvas area is a drop target: an element
-                    // dragged from the sidebar lands where it was let go.
-                    child: DragTarget<ElementKind>(
+                    // The whole canvas area is a drop target: a chip
+                    // dragged from the Add panel lands where it was let go.
+                    child: DragTarget<AddOffer>(
                       onAcceptWithDetails: (details) {
                         var stage = _stageKey.currentState;
                         var box = _stageKey.currentContext?.findRenderObject();
                         if (stage == null || box is! RenderBox) return;
                         var local = box.globalToLocal(details.offset);
-                        _controller.addElement(newElement(
-                          details.data,
-                          _controller.document,
-                          center: stage.toDocumentPoint(local),
-                        ));
+                        details.data.add(_controller,
+                            center: stage.toDocumentPoint(local));
                       },
                       builder: (context, candidate, rejected) =>
                           // An asset or stock result (fetched as it lands)

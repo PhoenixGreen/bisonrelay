@@ -102,10 +102,8 @@ AudioElement channelClip(
 /// takes it. Nothing is downloaded for a drag that is abandoned.
 class PendingAsset {
   final AssetKind kind;
-  final String name;
   final Future<LibraryAsset?> Function() fetch;
-  const PendingAsset(
-      {required this.kind, required this.name, required this.fetch});
+  const PendingAsset({required this.kind, required this.fetch});
 }
 
 /// droppedKind is what a drag carries, for a target deciding whether to take

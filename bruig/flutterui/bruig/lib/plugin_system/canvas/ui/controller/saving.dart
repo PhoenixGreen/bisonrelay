@@ -141,8 +141,7 @@ extension CanvasSaving on CanvasController {
     // Tidying the stores is bookkeeping a save need not wait for, and need
     // not do every time: see CanvasLibrary.tidySoon.
     if (ok) {
-      CanvasLibrary.tidySoon(
-          open: {..._document.assetIds, ..._document.mediaIds});
+      CanvasLibrary.tidySoon(open: _document.storedIds);
     }
     if (ok) {
       _savedEdits = at;

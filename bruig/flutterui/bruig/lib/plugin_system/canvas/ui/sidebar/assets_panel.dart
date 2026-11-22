@@ -22,7 +22,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 // (AssetSection). An asset is clicked to put it
 // in the middle of the canvas, or dragged to where it is let go (a timeline
 // channel, for a sound); its name is double-clicked to rename it. Assets
-// leave the library only from here: see CanvasLibrary.
+// are deleted from the library only from here: see CanvasLibrary.
 
 /// audioTypeOf is what kind of file stored sound [id] is: ".mid", ".mp3".
 String audioTypeOf(String id) {
@@ -51,7 +51,9 @@ IconData assetKindIcon(AssetKind kind) => switch (kind) {
 /// AssetView is how a section shows its assets.
 enum AssetView { icons, list }
 
-/// AssetSection is one of the three: Add, the view switch, and the assets.
+/// AssetSection is the panel of one kind's assets: Add, the view switch,
+/// and the assets. It is for one kind for its whole life, so it must be
+/// keyed by that kind wherever panels can swap places.
 class AssetSection extends StatefulWidget {
   final CanvasController controller;
   final AssetKind kind;
@@ -82,27 +84,32 @@ class _AssetSectionState extends State<AssetSection> {
   }
 
   @override
-  void didUpdateWidget(AssetSection old) {
-    super.didUpdateWidget(old);
-    if (old.kind != widget.kind) {
-      _assets = null;
-      _load();
-      _readView();
-    }
-  }
-
-  @override
   void dispose() {
     CanvasLibrary.changes.removeListener(_load);
     super.dispose();
   }
 
   Future<void> _load() async {
-    var kind = widget.kind;
-    var found = await CanvasLibrary.list(kind: kind);
-    // Only if it is still this kind by the time the list arrives.
-    if (mounted && widget.kind == kind) setState(() => _assets = found);
+    var found = await CanvasLibrary.list(kind: widget.kind);
+    if (!mounted) return;
+    setState(() {
+      _assets = found;
+      // A filter whose last file has gone shows them all again.
+      if (_type.isNotEmpty && !_typesOf(found).contains(_type)) _type = "";
+    });
   }
+
+  /// _typesOf is the sound file types among [assets], for the filter, MIDI
+  /// first; none for any other kind.
+  List<String> _typesOf(List<LibraryAsset>? assets) =>
+      widget.kind != AssetKind.audio || assets == null
+          ? const <String>[]
+          : ({for (var a in assets) audioTypeOf(a.id)}.toList()
+            ..sort((a, b) => a == ".mid"
+                ? -1
+                : b == ".mid"
+                    ? 1
+                    : a.compareTo(b)));
 
   Future<void> _readView() async {
     var saved = await StorageManager.readString(_viewKey);
@@ -157,16 +164,7 @@ class _AssetSectionState extends State<AssetSection> {
     var theme = ThemeNotifier.of(context);
     var all = _assets;
     var kind = widget.kind.name;
-    // The sound file types present, for the filter, MIDI first.
-    var types = widget.kind != AssetKind.audio || all == null
-        ? const <String>[]
-        : ({for (var a in all) audioTypeOf(a.id)}.toList()
-          ..sort((a, b) => a == ".mid"
-              ? -1
-              : b == ".mid"
-                  ? 1
-                  : a.compareTo(b)));
-    if (_type.isNotEmpty && !types.contains(_type)) _type = "";
+    var types = _typesOf(all);
     var assets = all == null || _type.isEmpty
         ? all
         : [
@@ -594,6 +592,14 @@ String clipLength(double seconds) {
 class AssetThumb extends StatefulWidget {
   final String id;
   const AssetThumb({required this.id, super.key});
+
+  /// forgetForTest empties the thumbnails kept for the session, as a new
+  /// run starts without them.
+  @visibleForTesting
+  static void forgetForTest() {
+    _AssetThumbState._cache.clear();
+    _AssetThumbState._cached = 0;
+  }
 
   @override
   State<AssetThumb> createState() => _AssetThumbState();
