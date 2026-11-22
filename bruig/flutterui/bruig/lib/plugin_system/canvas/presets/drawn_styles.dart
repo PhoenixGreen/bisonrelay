@@ -35,6 +35,15 @@ class DrawnStyles {
       _loading = null;
     }
   }
+
+  /// forgetForTest forgets the styles and any read of them under way, so
+  /// the next test file reads afresh: a read begun under one file's clock
+  /// never finishes under the next's, and its load would wait for ever.
+  @visibleForTesting
+  static void forgetForTest() {
+    _styles = const {};
+    _loading = null;
+  }
 }
 
 /// keepDrawnCharacter keeps [character] in the library as a drawing called
