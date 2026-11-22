@@ -37,7 +37,7 @@ Future<LibraryAsset?> fetchStockItem(
     BuildContext context, CanvasController controller, StockItem item) async {
   var snacks = SnackBarModel.of(context);
   var allowFetching = context.read<CanvasPreferences>().allowFetching;
-  var (asset, problem) = await importStockItem(item,
+  var (:asset, :problem, :notice) = await importStockItem(item,
       allowFetching: allowFetching,
       proxied: await networkIsProxied(),
       addVideo: (file) async => context.mounted
@@ -46,22 +46,26 @@ Future<LibraryAsset?> fetchStockItem(
       addAudio: (file) async => context.mounted
           ? (await addCanvasAudio(context, controller, file))?.assetId
           : null);
-  if (problem != null) {
-    // NASA's rules, with the picture kept, are said plainly, not as a
-    // failure.
-    asset != null && item.source == StockSource.nasa
-        ? snacks.success(problem)
-        : snacks.error(problem);
-  }
+  if (problem != null) snacks.error(problem);
+  // NASA's rules, with the picture kept, are said plainly, not as a
+  // failure.
+  if (notice != null) snacks.success(notice);
   return asset;
 }
 
-/// importStockItem fetches [item] into the library: the asset, or why not.
+/// StockImport is what importing a stock result came to: the [asset] in
+/// the library, or the [problem] that kept it out (null when an import on
+/// screen has said why already); and with an asset, a [notice] to pass on
+/// to whoever used it, such as NASA's rules or a model's warning.
+typedef StockImport = ({LibraryAsset? asset, String? problem, String? notice});
+
+/// importStockItem fetches [item] into the library: the asset, or why not
+/// (see StockImport).
 /// A video or a sound is added through [addVideo] or [addAudio], which ask
 /// on screen and say why themselves if they cannot (the problem is then
 /// null); without them, those kinds are refused. Needs no BuildContext, so
 /// an assistant can use it too.
-Future<(LibraryAsset?, String?)> importStockItem(
+Future<StockImport> importStockItem(
   StockItem item, {
   required bool allowFetching,
   required bool proxied,
@@ -70,13 +74,15 @@ Future<(LibraryAsset?, String?)> importStockItem(
 }) async {
   var refused =
       StockClient.refusal(allowFetching: allowFetching, proxied: proxied);
-  if (refused != null) return (null, refused);
+  if (refused != null) return (asset: null, problem: refused, notice: null);
   if ((item.kind == AssetKind.video && addVideo == null) ||
       (item.kind == AssetKind.audio && addAudio == null)) {
     return (
-      null,
-      "A ${item.kind == AssetKind.video ? "video" : "sound"} from stock is "
-          "added from the Stock panel."
+      asset: null,
+      problem:
+          "A ${item.kind == AssetKind.video ? "video" : "sound"} from stock "
+              "is added from the Stock panel.",
+      notice: null,
     );
   }
 
@@ -114,8 +120,9 @@ Future<(LibraryAsset?, String?)> importStockItem(
             proxied: proxied);
     if (!got) {
       return (
-        null,
-        "${item.title} could not be fetched from ${item.source.from}."
+        asset: null,
+        problem: "${item.title} could not be fetched from ${item.source.from}.",
+        notice: null,
       );
     }
 
@@ -131,14 +138,22 @@ Future<(LibraryAsset?, String?)> importStockItem(
             .contains("<svg")) {
           id = await CanvasMedia.saveVector(bytes);
           if (id == null) {
-            return (null, "${item.title} is too large a drawing for a canvas.");
+            return (
+              asset: null,
+              problem: "${item.title} is too large a drawing for a canvas.",
+              notice: null,
+            );
           }
           await CanvasLibrary.addVector(id, item.title);
           break;
         }
         id = await CanvasAssets.save(bytes);
         if (id == null) {
-          return (null, "${item.title} is not a picture the canvas can keep.");
+          return (
+            asset: null,
+            problem: "${item.title} is not a picture the canvas can keep.",
+            notice: null,
+          );
         }
         await CanvasLibrary.addPicture(id, item.title, bytes);
       case AssetKind.video:
@@ -149,11 +164,13 @@ Future<(LibraryAsset?, String?)> importStockItem(
         var added = await addCanvasModel(file.path, item.title);
         // Said even when the model was added: then it is a warning.
         warning = added.problem;
-        if (added.id == null) return (null, warning);
+        if (added.id == null) {
+          return (asset: null, problem: warning, notice: null);
+        }
         id = added.id;
     }
     // The video and audio imports have said why already.
-    if (id == null) return (null, warning);
+    if (id == null) return (asset: null, problem: warning, notice: null);
 
     await CanvasLibrary.rename(id, item.title);
     await CanvasLibrary.credit(id,
@@ -164,11 +181,15 @@ Future<(LibraryAsset?, String?)> importStockItem(
     // NASA's pictures come with NASA's rules, said each time one is used.
     if (item.source == StockSource.nasa) warning ??= nasaRule;
     for (var a in await CanvasLibrary.list(kind: item.kind)) {
-      if (a.id == id) return (a, warning);
+      if (a.id == id) return (asset: a, problem: null, notice: warning);
     }
-    return (null, warning);
+    return (asset: null, problem: warning, notice: null);
   } catch (exception) {
-    return (null, "Unable to add ${item.title}: $exception");
+    return (
+      asset: null,
+      problem: "Unable to add ${item.title}: $exception",
+      notice: null,
+    );
   } finally {
     try {
       await scratch?.delete(recursive: true);

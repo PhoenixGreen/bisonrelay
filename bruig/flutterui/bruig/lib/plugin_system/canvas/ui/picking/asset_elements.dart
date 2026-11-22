@@ -16,8 +16,11 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:flutter/painting.dart';
 
 // asset_elements.dart makes a library asset into the element that shows it:
-// picture to Image, video to Video, sound to Audio. One place, so an asset
-// clicked in the sidebar and one dropped on the canvas arrive the same.
+// picture to Image, video to Video, sound to Audio, drawing to Vector, model
+// to 3D object. It makes the element and adds nothing: placeAsset (in
+// asset_placing.dart) is what puts an asset on the canvas, and decides that
+// a MIDI file becomes a MIDI channel instead. Also here: a sound as a
+// timeline clip, what a drag carries, and a model's own clips.
 
 /// elementForAsset is [asset] as a new element on [document], centred on
 /// [center] (the page's middle without one), shaped like the asset.

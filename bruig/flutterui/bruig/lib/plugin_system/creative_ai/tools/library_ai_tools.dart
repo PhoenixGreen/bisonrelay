@@ -167,12 +167,14 @@ List<McpTool> libraryAiTools(CreativeAi ai) {
         "place": {"type": "boolean"},
       },
       (args) async => changing((a) async {
-        var (:asset, :problem) = await a.stockUse("${args["id"]}",
+        var (:asset, :problem, :notice) = await a.stockUse("${args["id"]}",
             place: args["place"] != false, allowFetching: fetching());
         if (asset == null) return McpResult.error(problem!);
-        return McpResult.json(
-            {...asset, if (problem != null) "warning": problem},
-            summary: "Added ${asset["name"]} from stock");
+        return McpResult.json({
+          ...asset,
+          if (problem != null) "warning": problem,
+          if (notice != null) "notice": notice,
+        }, summary: "Added ${asset["name"]} from stock");
       }),
       required: ["id"],
     ),

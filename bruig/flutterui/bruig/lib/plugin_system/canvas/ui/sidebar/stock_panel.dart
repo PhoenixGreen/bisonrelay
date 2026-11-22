@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/character_browser.dart';
@@ -178,6 +179,9 @@ class _StockPanelState extends State<StockPanel> {
       _items = const [];
       _last = null;
       _problem = null;
+      // A search still on its way was for the library left: its answer is
+      // set aside when it comes (see _run), so nothing is waited for.
+      _loading = false;
     });
     if (_query != null && hasKey) unawaited(_run());
   }
@@ -230,7 +234,8 @@ class _StockPanelState extends State<StockPanel> {
     });
     var page = await StockClient.instance.search(q,
         allowFetching: prefs.allowFetching, proxied: _proxied ?? true);
-    if (!mounted || _query != q) return;
+    // Dropped if another search has begun, or another library been chosen.
+    if (!mounted || _query != q || q.source != _source) return;
     setState(() {
       _loading = false;
       _last = page;
@@ -263,8 +268,7 @@ class _StockPanelState extends State<StockPanel> {
   Future<void> _use(StockItem item) async {
     var asset = await _fetch(item);
     if (asset == null) return;
-    var c = widget.controller;
-    c.addElement(elementForAsset(asset, c.document));
+    await placeAsset(widget.controller, asset);
   }
 
   Future<void> _add(StockItem item) async {
@@ -306,45 +310,15 @@ class _StockPanelState extends State<StockPanel> {
 
     if (_proxied == null) return const SizedBox.shrink();
 
-    // The two gates first: say why there is no search, not a box saying no.
-    if (!prefs.allowFetching) {
-      return ListView(padding: const EdgeInsets.all(8), children: [
-        note(
-            key: const ValueKey("stockOff"),
-            "Searching Pixabay, the Noun Project, Freesound and Jamendo "
-            "connects to them directly -- not through the proxy in Settings "
-            "> Network -- so they see your connection. Nothing is sent until "
-            "you search, and nothing is downloaded until you use a result. "
-            "Each needs a free key of your own."),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            key: const ValueKey("stockAllowFetching"),
-            onPressed: () => prefs.allowFetching = true,
-            child: const Text("Allow fetching"),
-          ),
-        ),
-        note("The same switch is in Settings > Plugins > Canvas, as "
-            "\"${CanvasPreferences.allowFetchingLabel}\"."),
-      ]);
-    }
-    if (_proxied == true) {
-      return ListView(padding: const EdgeInsets.all(8), children: [
-        note(
-            key: const ValueKey("stockProxied"),
-            StockClient.refusal(allowFetching: true, proxied: true)!),
-      ]);
-    }
-
     // The licence choice is behind the licence button rather than among
     // the filters: it is set once, not changed every search.
     var filters = [
       for (var f in filtersFor(_source))
-        if (!_licenceFilter(f)) f,
+        if (!f.isLicence) f,
     ];
     var licence = [
       for (var f in filtersFor(_source))
-        if (_licenceFilter(f)) f,
+        if (f.isLicence) f,
     ];
     var chosen = _filters[_source] ?? const {};
     var visual = _source.kind != AssetKind.audio;
@@ -385,6 +359,41 @@ class _StockPanelState extends State<StockPanel> {
               _ => KenneyBrowser(controller: widget.controller),
             },
           ]);
+    }
+
+    // The two gates, for the libraries searched over the network only: the
+    // browsers above fetch nothing, or gate their own downloads. Say why
+    // there is no search, not a box saying no, under the Library row so
+    // another library can still be chosen.
+    if (!prefs.allowFetching) {
+      return ListView(padding: const EdgeInsets.all(8), children: [
+        CanvasWrap(children: [library]),
+        note(
+            key: const ValueKey("stockOff"),
+            "Searching Pixabay, the Noun Project, Freesound and Jamendo "
+            "connects to them directly -- not through the proxy in Settings "
+            "> Network -- so they see your connection. Nothing is sent until "
+            "you search, and nothing is downloaded until you use a result. "
+            "Each needs a free key of your own."),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey("stockAllowFetching"),
+            onPressed: () => prefs.allowFetching = true,
+            child: const Text("Allow fetching"),
+          ),
+        ),
+        note("The same switch is in Settings > Plugins > Canvas, as "
+            "\"${CanvasPreferences.allowFetchingLabel}\"."),
+      ]);
+    }
+    if (_proxied == true) {
+      return ListView(padding: const EdgeInsets.all(8), children: [
+        CanvasWrap(children: [library]),
+        note(
+            key: const ValueKey("stockProxied"),
+            StockClient.refusal(allowFetching: true, proxied: true)!),
+      ]);
     }
 
     return ListView(
@@ -487,10 +496,6 @@ class _StockPanelState extends State<StockPanel> {
       ],
     );
   }
-
-  /// _licenceFilter is whether [f] is a library's licence choice.
-  static bool _licenceFilter(StockFilter f) =>
-      f.id == "license" || f.id == "limit_to_public_domain";
 
   /// _licencePanel is what the licence button opens: the library's licence
   /// choice, if any, and what its licences ask of those using a result.

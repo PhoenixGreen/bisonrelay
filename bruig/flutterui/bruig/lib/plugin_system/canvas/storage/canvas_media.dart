@@ -252,8 +252,12 @@ class CanvasMedia {
       }
     }
     if (at(0, "ID3")) return ".mp3";
-    // An MPEG audio frame with no tag in front of it: eleven set bits.
-    if (b.length > 1 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) return ".mp3";
+    // An MPEG audio frame with no tag in front of it: eleven set bits. Its
+    // layer bits are never zero; an AAC stream's (ADTS) always are. AAC is
+    // the sound an .m4a holds, and goes the way of one: converted.
+    if (b.length > 1 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) {
+      return b[1] & 0x06 == 0 ? ".m4a" : ".mp3";
+    }
     if (at(0, "FORM") && (at(8, "AIFF") || at(8, "AIFC"))) return ".aiff";
     if (at(4, "ftyp")) {
       // The ISO family, both song and film; the brand says which it was made

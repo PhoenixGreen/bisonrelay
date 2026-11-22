@@ -27,7 +27,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/stock_import.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
@@ -398,13 +398,8 @@ class CanvasScripting {
     if (asset == null) {
       return (element: null, problem: "There is no file $id in the library.");
     }
-    if (isMidiId(asset.id)) {
-      await controller.addMidiChannelFrom(asset.source);
-      return (element: null, problem: null);
-    }
-    var element = elementForAsset(asset, _doc);
-    controller.addElement(element, select: false);
-    return (element: element.id, problem: null);
+    var element = await placeAsset(controller, asset, select: false);
+    return (element: element, problem: null);
   }
 
   /// addSvg keeps [svg] in the library as a drawing called [name] and,
@@ -772,28 +767,38 @@ class CanvasScripting {
   /// stockUse fetches result [id] (from a search) into the library, with
   /// its author and licence, and puts it on the canvas when [place].
   /// Returns the library file as [assets] lists one, with the element's id
-  /// when it was placed.
-  Future<({Map<String, Object?>? asset, String? problem})> stockUse(String id,
-      {bool place = true, required bool allowFetching}) async {
+  /// when it was placed; and with it, a notice that came with the file and
+  /// is to be passed on to whoever asked (NASA's rules for its pictures, a
+  /// model's warning), null when there is none.
+  Future<({Map<String, Object?>? asset, String? problem, String? notice})>
+      stockUse(String id,
+          {bool place = true, required bool allowFetching}) async {
     var item = _found[id];
     if (item == null) {
       return (
         asset: null,
-        problem: "Search for it first: $id is not among the results."
+        problem: "Search for it first: $id is not among the results.",
+        notice: null,
       );
     }
-    var (asset, problem) = await importStockItem(item,
+    var (:asset, :problem, :notice) = await importStockItem(item,
         allowFetching: allowFetching, proxied: await networkIsProxied());
     if (asset == null) {
-      return (asset: null, problem: problem ?? "It could not be added.");
+      return (
+        asset: null,
+        problem: problem ?? "It could not be added.",
+        notice: null,
+      );
     }
     var out = _asset(asset);
     if (place) {
       var placed = await useAsset(asset.id);
-      if (placed.problem != null) return (asset: out, problem: placed.problem);
+      if (placed.problem != null) {
+        return (asset: out, problem: placed.problem, notice: notice);
+      }
       if (placed.element != null) out["element"] = placed.element;
     }
-    return (asset: out, problem: null);
+    return (asset: out, problem: null, notice: notice);
   }
 
   // ------------------------------------------------------------------------

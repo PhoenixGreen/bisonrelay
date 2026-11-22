@@ -32,6 +32,7 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/score/score_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_dock.dart';
@@ -750,7 +751,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       },
                       builder: (context, candidate, rejected) =>
                           // An asset or stock result (fetched as it lands)
-                          // becomes the element showing it, where let go.
+                          // becomes the element showing it, where let go;
+                          // a MIDI file, a MIDI channel (see placeAsset).
                           DragTarget<Object>(
                         onWillAcceptWithDetails: (d) =>
                             droppedKind(d.data) != null,
@@ -763,11 +765,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           var center = stage.toDocumentPoint(local);
                           var asset = await droppedAsset(details.data);
                           if (asset == null || !mounted) return;
-                          _controller.addElement(elementForAsset(
-                            asset,
-                            _controller.document,
-                            center: center,
-                          ));
+                          await placeAsset(_controller, asset, center: center);
                         },
                         builder: (context, assets, _) => Container(
                           color: candidate.isEmpty && assets.isEmpty

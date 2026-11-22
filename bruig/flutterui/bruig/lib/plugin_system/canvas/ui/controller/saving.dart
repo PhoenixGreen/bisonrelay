@@ -151,6 +151,20 @@ extension CanvasSaving on CanvasController {
     return ok;
   }
 
+  /// detachFromFile lets go of the file this document was saved as, for
+  /// when that file has gone (deleted from Files): the work stays open as a
+  /// canvas never saved, with no folder or name and its changes unsaved, so
+  /// nothing writes the file back and leaving asks before it is lost.
+  void detachFromFile() {
+    _autosave?.cancel();
+    _autosave = null;
+    folder = null;
+    name = null;
+    // A count no document has had: whatever is open is on disk nowhere.
+    _savedEdits = -1;
+    notifyListeners();
+  }
+
   /// saveAs writes to a new place and makes it this document's home.
   Future<bool> saveAs(String folder, String name) async {
     var at = _edits;

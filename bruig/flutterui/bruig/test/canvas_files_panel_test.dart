@@ -278,6 +278,34 @@ void main() {
     }
   });
 
+  testWidgets(
+      "the open canvas deleted is still held, as work never saved, and not "
+      "written back", (tester) async {
+    // Rename and move told the editor where its canvas had gone; delete
+    // told it nothing, so the next save wrote the deleted file back.
+    var c = CanvasController(const CanvasDocument(title: "A"));
+    await tester.runAsync(() => c.saveAs("", "A"));
+    await pump(tester, controller: c);
+    expect(find.text("A"), findsWidgets);
+
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Delete"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Delete").last);
+    await idle(tester);
+    expect(await tester.runAsync(() => CanvasStorage.exists("", "A")), isFalse);
+
+    c.apply(const CanvasDocument(title: "A", frames: 40));
+    await tester.runAsync(() => c.save());
+    expect(await tester.runAsync(() => CanvasStorage.exists("", "A")), isFalse,
+        reason: "not written back by the next save");
+    expect([c.folder, c.name], [null, null],
+        reason: "it has nowhere to be saved now");
+    expect(c.dirty, isTrue, reason: "what is open is on disk nowhere");
+    expect(c.document.frames, 40, reason: "the work itself is kept");
+  });
+
   testWidgets("a folder is offered only what a folder can do", (tester) async {
     await pump(tester, folders: ["Plans"]);
     await tester.tap(find.byIcon(Icons.more_vert).first);

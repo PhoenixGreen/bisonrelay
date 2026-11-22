@@ -276,7 +276,14 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         "This cannot be undone. The canvas file will be removed from disk.")) {
       return;
     }
-    await CanvasStorage.delete(entry.folder, entry.name);
+    var gone = await CanvasStorage.delete(entry.folder, entry.name);
+    // The editor may hold this canvas open: it keeps the work, but as a
+    // canvas never saved, or the next save writes the file back.
+    if (gone &&
+        controller.name == entry.name &&
+        controller.folder == entry.folder) {
+      controller.detachFromFile();
+    }
     // What only that canvas used goes with it; assets stay in the library.
     unawaited(CanvasLibrary.tidy(open: {
       ...controller.document.assetIds,

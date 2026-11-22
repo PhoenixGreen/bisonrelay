@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/model_picking.dart';
@@ -147,15 +147,7 @@ class _AssetSectionState extends State<AssetSection> {
     await CanvasLibrary.remove(asset.id);
   }
 
-  void _use(LibraryAsset asset) {
-    var controller = widget.controller;
-    // A MIDI file is played by an instrument: a MIDI channel of its own.
-    if (isMidiId(asset.id)) {
-      controller.addMidiChannelFrom(asset.source);
-      return;
-    }
-    controller.addElement(elementForAsset(asset, controller.document));
-  }
+  void _use(LibraryAsset asset) => placeAsset(widget.controller, asset);
 
   void _rename(LibraryAsset asset, String name) =>
       CanvasLibrary.rename(asset.id, name);

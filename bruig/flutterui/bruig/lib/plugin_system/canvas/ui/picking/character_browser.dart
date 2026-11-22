@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/presets/drawn_styles.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/asset_placing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -62,9 +62,8 @@ class CharacterBrowserState extends State<CharacterBrowser> {
     var asset =
         (await CanvasLibrary.list()).where((a) => a.id == id).firstOrNull;
     if (asset == null || !mounted) return;
-    c.beginInteraction();
-    c.addElement(elementForAsset(asset, c.document));
-    c.endInteraction();
+    await placeAsset(c, asset);
+    if (!mounted) return;
     setState(() => _said = "Added, and kept with your drawings.");
   }
 

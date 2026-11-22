@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'support/canvas_app.dart';
 import 'dart:io';
@@ -11,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/character_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +44,7 @@ class FakeStock extends StockClient {
         StockClient.refusal(allowFetching: allowFetching, proxied: proxied);
     if (refused != null) return StockPage.failed(refused);
     asked.add(q);
+    await held?.future;
     if (q.source == StockSource.pixabayVideos) {
       return StockPage([
         StockItem(
@@ -89,6 +92,10 @@ class FakeStock extends StockClient {
       ),
     ]);
   }
+
+  /// held, when set, keeps each search's answer back until it completes:
+  /// a slow network.
+  Completer<void>? held;
 
   @override
   Future<bool> download(String url, File to,
@@ -165,6 +172,35 @@ void main() {
     expect(fake.asked, isEmpty, reason: "allowing is not searching");
   });
 
+  // The two gates stood in front of everything, so the characters drawn
+  // here, which ask nothing of the network, could not be reached while
+  // fetching was off, as it is to begin with.
+  for (var (gate, proxied) in [("fetching off", false), ("a proxy", true)]) {
+    testWidgets("with $gate, a library that fetches nothing still opens",
+        (tester) async {
+      proxiedForTest = proxied;
+      SharedPreferences.setMockInitialValues(
+          {"canvasStock.source": "characters"});
+      await show(tester, fetching: proxied, key: false);
+      expect(find.byKey(const ValueKey("stockOff")), findsNothing);
+      expect(find.byKey(const ValueKey("stockProxied")), findsNothing);
+      expect(find.byType(CharacterBrowser), findsOneWidget);
+    });
+  }
+
+  testWidgets(
+      "with fetching off, another library can be chosen from the gate's "
+      "own page", (tester) async {
+    await show(tester, fetching: false);
+    expect(find.byKey(const ValueKey("stockOff")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("stockSource")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Drawn characters").last);
+    await idle(tester);
+    expect(find.byType(CharacterBrowser), findsOneWidget);
+    expect(fake.asked, isEmpty);
+  });
+
   testWidgets("behind a proxy there is nothing to search", (tester) async {
     proxiedForTest = true;
     await show(tester);
@@ -214,6 +250,58 @@ void main() {
     var saved = await SharedPreferences.getInstance();
     expect(saved.getString("canvasStock.filters"),
         contains('"limit_to_public_domain":"0"'));
+  });
+
+  // The licence filters were known by a list of their names, and two
+  // libraries spell theirs "licence": theirs showed among the filters, and
+  // the licence button's panel had no choice in it.
+  for (var source in ["wikimedia", "iconify"]) {
+    testWidgets(
+        "$source's licence choice is behind the licence button, whatever "
+        "it calls it", (tester) async {
+      SharedPreferences.setMockInitialValues({"canvasStock.source": source});
+      await show(tester, key: false);
+      expect(find.byKey(const ValueKey("stockFilter-licence")), findsNothing,
+          reason: "not among the filters");
+      await tester.tap(find.byKey(const ValueKey("stockLicence")));
+      await idle(tester);
+      expect(find.byKey(const ValueKey("stockLicence-licence-free")),
+          findsOneWidget,
+          reason: "behind the licence button");
+    });
+  }
+
+  testWidgets(
+      "an answer still on its way when the library changes is not shown "
+      "as the new library's", (tester) async {
+    // Changing library cleared the results but not the search they were
+    // for, so an answer arriving afterwards filled the new library's list:
+    // Pixabay's pictures showed under Pexels once its key was given.
+    await show(tester);
+    fake.held = Completer();
+    await tester.enterText(find.byKey(const ValueKey("stockSearch")), "fox");
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await idle(tester, 5);
+    expect(fake.asked, hasLength(1));
+
+    await tester.tap(find.byKey(const ValueKey("stockSource")));
+    // Not settled: the search's spinner turns until its answer comes.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text("Pexels photos").last);
+    await idle(tester);
+    expect(find.byKey(const ValueKey("stockKey")), findsOneWidget,
+        reason: "Pexels needs a key, and none is given");
+
+    fake.held!.complete();
+    await idle(tester);
+    await tester.enterText(find.byKey(const ValueKey("stockKey")), "p-1");
+    await tester.tap(find.byKey(const ValueKey("stockSaveKey")));
+    await idle(tester);
+    expect(find.byKey(const ValueKey("stockSearch")), findsOneWidget);
+    expect(find.byKey(const ValueKey("stock-pixabayPictures-1")), findsNothing,
+        reason: "Pixabay's answer, for the library left");
+    expect(find.byType(CircularProgressIndicator), findsNothing,
+        reason: "not waiting for the answer it set aside");
   });
 
   testWidgets("a next page repeating a result does not show it twice",

@@ -165,6 +165,19 @@ void main() {
       expect(CanvasMedia.extensionOf(b("hello")), "");
     });
 
+    test("an AAC stream is not taken for an MP3", () {
+      // Both begin with twelve set bits. An MP3 frame's layer bits are never
+      // zero, and an AAC (ADTS) frame's always are, but both were taken for
+      // MP3, so an AAC file was kept as it was instead of being converted.
+      var adts = [0xFF, 0xF1, 0x50, 0x80, 0, 0, 0, 0];
+      expect(CanvasMedia.extensionOf(adts), isNot(".mp3"));
+      expect(CanvasMedia.extensionOf(adts), ".m4a",
+          reason: "AAC, as an .m4a's sound is: converted on the way in");
+      // MPEG-1 and MPEG-2 layer III, as MP3s are.
+      expect(CanvasMedia.extensionOf([0xFF, 0xFB, 0x90, 0x00]), ".mp3");
+      expect(CanvasMedia.extensionOf([0xFF, 0xF3, 0x90, 0x00]), ".mp3");
+    });
+
     test("stored once, by a hash of its bytes", () async {
       var source = File(path.join(root.path, "take one.mp3"));
       await source.writeAsBytes([...("ID3".codeUnits), ...List.filled(99, 7)]);

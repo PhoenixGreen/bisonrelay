@@ -219,7 +219,18 @@ class StockFilter {
   /// options are (value, label). The first is the default.
   final List<(String, String)> options;
 
-  const StockFilter(this.id, this.label, this.options);
+  /// isLicence is whether this is the library's licence choice, which the
+  /// Stock panel puts behind its licence button rather than among the
+  /// filters: it is set once, not changed every search.
+  final bool isLicence;
+
+  const StockFilter(this.id, this.label, this.options) : isLicence = false;
+
+  /// StockFilter.licence is a library's licence choice, called [id] in its
+  /// queries, whatever the library spells it.
+  const StockFilter.licence(this.id, this.options)
+      : label = "Licence",
+        isLicence = true;
 }
 
 const _any = ("", "Any");
@@ -282,7 +293,7 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
         ],
       // Public domain first: a free Noun Project key sees nothing else.
       StockSource.nounProject => [
-          const StockFilter("limit_to_public_domain", "Licence", [
+          const StockFilter.licence("limit_to_public_domain", [
             ("1", "Public domain"),
             ("0", "Any (paid key)"),
           ]),
@@ -295,7 +306,7 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
             ("[30 TO 120]", "30s-2m"),
             ("[120 TO *]", "Over 2m"),
           ]),
-          const StockFilter("license", "Licence", [
+          const StockFilter.licence("license", [
             _any,
             ('"Creative Commons 0"', "CC0"),
             ('"Attribution"', "CC BY"),
@@ -351,7 +362,7 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
             ("bitmap", "Photos and pictures"),
             ("drawing", "Drawings"),
           ]),
-          StockFilter("licence", "Licence", [
+          StockFilter.licence("licence", [
             ("free", "No credit needed"),
             ("", "Any free licence"),
           ]),
@@ -393,7 +404,7 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
             ("false", "One colour"),
             ("", "Any"),
           ]),
-          StockFilter("licence", "Licence", [
+          StockFilter.licence("licence", [
             ("free", "No credit needed"),
             ("", "Any open licence"),
           ]),

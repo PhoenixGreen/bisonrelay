@@ -6,12 +6,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/mcp/mcp_server.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'canvas_stock_panel_test.dart' show FakeStock;
 
 // creative_ai_library_test.dart covers what Claude can bring onto a canvas
 // besides what it makes: the person's library, the presets, and stock --
@@ -130,6 +133,23 @@ void main() {
     r = await call("canvas_stock_use", {"id": "pixabayPictures:1"});
     expect(r["isError"], isTrue);
     expect("${r["content"]}", contains("Search for it first"));
+  });
+
+  test("a stock picture's own rules are passed back with it", () async {
+    // NASA's pictures come with NASA's rules, said each time one is used.
+    // The Stock panel said them; through Claude they were dropped whenever
+    // the picture arrived, so Claude never heard them.
+    StockClient.instance = FakeStock();
+    addTearDown(() => StockClient.instance = StockClient());
+    canvasPrefs.allowFetching = true;
+    var found =
+        await call("canvas_stock_search", {"source": "nasa", "text": "moon"});
+    expect(found["isError"], isNot(true), reason: "${found["content"]}");
+
+    var r = await call("canvas_stock_use", {"id": "nasa:1"});
+    expect(r["isError"], isNot(true), reason: "${r["content"]}");
+    expect(canvas.document.elements.single.kind, ElementKind.image);
+    expect("${r["content"]}", contains("From NASA"));
   });
 
   test("Claude draws a character from a drawn style, credited", () async {
