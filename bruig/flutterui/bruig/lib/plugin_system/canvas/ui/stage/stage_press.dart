@@ -61,7 +61,7 @@ extension StagePress on CanvasStageState {
     // shutting it would pull the page from under the click.
     if (controller.codeLive != null) {
       if (_codeLiveRect()?.contains(event.localPosition) ?? false) {
-        _inLive = true;
+        _gesture = _LivePress();
         return true;
       }
       controller.endLiveCode();
@@ -354,10 +354,11 @@ extension StagePress on CanvasStageState {
     if (controller.retouch.on) {
       var picture = _selectedPicture();
       if (picture != null) {
-        _painting = picture.id;
+        var stroke = _RetouchStroke(picture.id);
+        _gesture = stroke;
         _mode = _DragMode.none;
         controller.beginInteraction();
-        _paintStrokeAt(doc, start: true);
+        _paintStrokeAt(stroke, doc, start: true);
         return true;
       }
     }
@@ -369,14 +370,14 @@ extension StagePress on CanvasStageState {
     if (hit != null) {
       var (team, index) = hit;
       controller.selectAlone(team.id);
-      _mode = _DragMode.player;
-      _playerIndex = index;
       // Held by where they stand, not their token's middle, which on a pitch
       // seen at an angle is off the ground.
-      _playerGrab = doc -
-          playerPlace(teamGround(document, team, controller.frame), team,
-                  team.players[index], controller.frame)
-              .ground;
+      _gesture = _PlayerDrag(
+          index,
+          doc -
+              playerPlace(teamGround(document, team, controller.frame), team,
+                      team.players[index], controller.frame)
+                  .ground);
       // Clicking a player points the timeline at them: they have no id.
       controller.focusedPlayer = index;
       controller.beginInteraction();
@@ -390,13 +391,13 @@ extension StagePress on CanvasStageState {
       if (grab != null) {
         // A placed key both moves and holds switches: decided on release by
         // how far the pointer went.
+        _LegendClick? click;
         if (grab.part == ChartLabelPart.legend &&
             controller.selection.length == 1) {
           var at = _legendSeriesAt(chart, doc);
-          if (at >= 0) _pendingClick = _LegendClick(chart, at);
+          if (at >= 0) click = _LegendClick(chart, at);
         }
-        _labelGrab = grab;
-        _mode = _DragMode.chartLabel;
+        _gesture = _ChartLabelDrag(grab, click: click);
         controller.beginInteraction();
         return true;
       }
@@ -407,8 +408,7 @@ extension StagePress on CanvasStageState {
     if (table is TableElement && !table.locked) {
       var divider = tableColumnAt(table, _hit.posed(table), doc, _docSlop);
       if (divider != null) {
-        _columnGrab = divider;
-        _mode = _DragMode.tableColumn;
+        _gesture = _TableColumnDrag(divider);
         controller.beginInteraction();
         return true;
       }
@@ -473,7 +473,7 @@ extension StagePress on CanvasStageState {
     }
     // A Code panel's tabs, files and pane dividers, and a Run panel's Run
     // button, answer a press picked or not.
-    if (element is CodeElement && _pressCode(element, doc)) return true;
+    if (element is CodeElement && _pressCode(press, element)) return true;
     if (element is CodeRunElement && _pressCodeRun(element, doc)) return true;
     // A play task's own steps, ticked by the student, and its Start again.
     if (element is PlayTaskElement && _pressPlayTask(element, doc)) {
@@ -562,19 +562,16 @@ extension StagePress on CanvasStageState {
 
     // A live counter's buttons, on the same terms: only when selected and the
     // press does not become a drag. A loose piece is both, so the press is
-    // armed here and the mode moves the piece.
+    // armed here and the drag moves the piece.
     if (element is CounterElement && controller.isOnlySelected(element.id)) {
       var part = _counterPartUnder(element, doc);
       var at = element.live ? _counterButtonAt(element, doc) : -1;
       if (part != null) {
         controller.beginInteraction();
-        _counterPart = element.id;
-        _counterPartAt = part;
         _dragStart = doc;
-        if (at >= 0 && element.live) {
-          _pendingClick = _CounterClick(element, at);
-        }
-        setState(() => _mode = _DragMode.counterPart);
+        var click = at >= 0 && element.live ? _CounterClick(element, at) : null;
+        setState(
+            () => _gesture = _CounterPieceDrag(element.id, part, click: click));
         return true;
       }
       if (at >= 0) {
@@ -684,9 +681,14 @@ extension StagePress on CanvasStageState {
   /// element's copy, or else [element] selected (or, with Shift, toggled)
   /// and its move begun.
   void _pressSelectAndMove(_Press press, CanvasElement element) {
-    var _Press(:doc) = press;
+    var _Press(:doc, :click) = press;
     var copy = _copyAt(element, doc);
-    if (copy != null && _pressCopy(element, copy)) return;
+    if (copy != null && _pressCopy(element, copy)) {
+      // The copies dragged carry the click on the element's controls till
+      // the release: see _pendingClick.
+      _pendingClick = click;
+      return;
+    }
 
     if (_shiftHeld) {
       controller.toggleSelected(element.id);
@@ -703,8 +705,6 @@ extension StagePress on CanvasStageState {
 
     // The click an earlier step armed on the element's own controls (a Code
     // panel's code) rides on the move, and then the copy pressed.
-    var click = _pendingClick;
-    _pendingClick = null;
     _gesture = _BoxMove(_beginTransform(), click: click, copy: copy);
   }
 
@@ -828,9 +828,14 @@ extension StagePress on CanvasStageState {
 /// the press begins, so no step works the point out again after another
 /// has changed the view.
 class _Press {
-  const _Press(this.event, this.stage, this.doc);
+  _Press(this.event, this.stage, this.doc);
 
   final PointerDownEvent event;
   final Offset stage;
   final Offset doc;
+
+  /// click is a click an earlier step armed on the element's own controls
+  /// for the move a later step begins (_pressSelectAndMove): a Code panel's
+  /// code, pressed, opens for typing if the press stays put.
+  PendingClick? click;
 }

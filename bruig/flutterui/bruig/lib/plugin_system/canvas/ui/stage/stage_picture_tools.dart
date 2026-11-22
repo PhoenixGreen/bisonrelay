@@ -12,14 +12,12 @@ extension StagePictureTools on CanvasStageState {
     return selected is ImageElement && selected.hasImage ? selected : null;
   }
 
-  /// _paintStrokeAt adds a point to the live stroke ([_commitStroke] commits
-  /// it on pointer up). Points are stored in picture coordinates, so the
-  /// stroke stays put when the element is resized, refitted or recropped;
+  /// _paintStrokeAt adds a point to [stroke] ([_commitStroke] commits it on
+  /// pointer up). Points are stored in picture coordinates, so the stroke
+  /// stays put when the element is resized, refitted or recropped;
   /// ImagePlacement converts, as the painter does.
-  void _paintStrokeAt(Offset doc, {bool start = false}) {
-    var id = _painting;
-    if (id == null) return;
-    var picture = document.elementById(id);
+  void _paintStrokeAt(_RetouchStroke stroke, Offset doc, {bool start = false}) {
+    var picture = document.elementById(stroke.pictureId);
     if (picture is! ImageElement) return;
 
     var image = controller.images.original(picture.assetId);
@@ -38,12 +36,12 @@ extension StagePictureTools on CanvasStageState {
       // to canvas units for the preview.
       var shorter = math.min(size.width, size.height);
       var scale = placement.scaleToImage();
-      _liveRadius = controller.brushSize * shorter / (scale == 0 ? 1 : scale);
+      stroke.radius = controller.brushSize * shorter / (scale == 0 ? 1 : scale);
     }
 
     setState(() {
-      _liveImage.add(at);
-      _liveCanvas.add(doc);
+      stroke.imagePoints.add(at);
+      stroke.canvasPoints.add(doc);
     });
   }
 

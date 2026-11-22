@@ -1,10 +1,11 @@
 part of 'canvas_stage.dart';
 
 // The other elements' own controls on the stage: a metronome's buttons; a
-// counter's buttons, its loose pieces dragged, and the field on its Set
-// button; a chart key's switches and the hold that takes the key instead; a
-// video's and a speaker's controls; and a text's flow link dropped. Part of
-// CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
+// counter's buttons, its loose pieces dragged (_CounterPieceDrag), and the
+// field on its Set button; a chart key's switches and the hold that takes
+// the key instead; a video's and a speaker's controls; and a text's flow
+// link dropped. Part of CanvasStageState: its fields, lifecycle and build
+// are in canvas_stage.dart.
 
 extension StageElementControls on CanvasStageState {
   void _pressMetronome(MetronomeElement e, MetronomePart part) {
@@ -75,10 +76,10 @@ extension StageElementControls on CanvasStageState {
     );
   }
 
-  /// _applyCounterPart moves the dragged counter piece to the pointer.
-  void _applyCounterPart(Offset doc) {
-    var id = _counterPart;
-    var element = id == null ? null : document.elementById(id);
+  /// _applyCounterPart moves [piece] of counter [id] to [doc]: -2 its words
+  /// before, -3 after, 0 and up a button.
+  void _applyCounterPart(String id, int piece, Offset doc) {
+    var element = document.elementById(id);
     if (element is! CounterElement) return;
 
     var inner = element.box.inner(_hit.posed(element));
@@ -90,12 +91,12 @@ extension StageElementControls on CanvasStageState {
     );
 
     controller.replaceElement(
-        switch (_counterPartAt) {
+        switch (piece) {
           -2 => element.copyWith(beforeAt: at),
           -3 => element.copyWith(afterAt: at),
           _ => element.copyWith(buttonAt: [
               for (var i = 0; i < element.buttons.length; i++)
-                i == _counterPartAt ? at : element.placedButton(i),
+                i == piece ? at : element.placedButton(i),
             ]),
         },
         transient: true);
@@ -124,10 +125,6 @@ extension StageElementControls on CanvasStageState {
     var block = chartLegendBlock(current, bounds);
     if (block.isEmpty) return;
 
-    // The press is the key's now: the move it began, and the switch it
-    // armed, give way to a label drag, which keeps the move's undo step.
-    _gesture = null;
-
     if (!current.legend.hasPlace) {
       controller.replaceElement(
           current.copyWith(
@@ -138,9 +135,10 @@ extension StageElementControls on CanvasStageState {
           ),
           transient: true);
     }
-    _labelGrab = ChartLabelGrab(
-        ChartLabelPart.legend, false, _toDocument(_pressedAt) - block.topLeft);
-    setState(() => _mode = _DragMode.chartLabel);
+    // The press is the key's now: the move it began, and the switch it
+    // armed, give way to a drag of the key, in the move's undo step.
+    _handOver(_ChartLabelDrag(ChartLabelGrab(ChartLabelPart.legend, false,
+        _toDocument(_pressedAt) - block.topLeft)));
   }
 
   void _pressVideo(VideoElement e, VideoPart part, Offset doc) {
@@ -184,4 +182,33 @@ extension StageElementControls on CanvasStageState {
     controller.replaceElement(from.copyWith(flowTo: onto?.id ?? ""));
     controller.endInteraction();
   }
+}
+
+/// _CounterPieceDrag is one of a selected counter's loosely placed pieces
+/// moved inside it. One undo step.
+class _CounterPieceDrag extends StageGesture with _CarriesClicks {
+  _CounterPieceDrag(this.counterId, this.piece, {this.click});
+
+  /// counterId is the counter's.
+  final String counterId;
+
+  /// piece is which: -2 the words before, -3 after, 0 and up a button.
+  final int piece;
+
+  /// click is the press of the live button the piece is, if it is one:
+  /// made if the press is let go where it began.
+  final _CounterClick? click;
+
+  @override
+  Iterable<PendingClick> get carried => [click].nonNulls;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._applyCounterPart(counterId, piece, doc);
 }

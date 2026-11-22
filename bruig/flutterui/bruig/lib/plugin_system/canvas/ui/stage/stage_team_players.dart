@@ -1,9 +1,9 @@
 part of 'canvas_stage.dart';
 
 // A team's players on the stage: the player of any team under a press, and
-// a player dragged, kept in the pitch's metres or as a fraction of the
-// team's box, as a keyframe while animating. Part of CanvasStageState: its
-// fields, lifecycle and build are in canvas_stage.dart.
+// a player dragged (_PlayerDrag), kept in the pitch's metres or as a
+// fraction of the team's box, as a keyframe while animating. Part of
+// CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
 
 extension StageTeamPlayers on CanvasStageState {
   TeamElement? _selectedTeam() {
@@ -27,18 +27,16 @@ extension StageTeamPlayers on CanvasStageState {
     return null;
   }
 
-  /// _applyPlayerMove drags a player of the selected team, stored as a
-  /// fraction of the team's box so it stays put when the team moves or
-  /// resizes.
-  void _applyPlayerMove(Offset doc) {
+  /// _applyPlayerMove drags player [index] of the selected team, taken
+  /// [grab] from where he stands, to [doc]: stored as a fraction of the
+  /// team's box so it stays put when the team moves or resizes.
+  void _applyPlayerMove(int index, Offset grab, Offset doc) {
     var team = _selectedTeam();
-    if (team == null ||
-        _playerIndex < 0 ||
-        _playerIndex >= team.players.length) {
+    if (team == null || index < 0 || index >= team.players.length) {
       return;
     }
-    var spot = team.players[_playerIndex];
-    var at = doc - _playerGrab;
+    var spot = team.players[index];
+    var at = doc - grab;
 
     // On a pitch the pointer is carried onto the field and the player kept
     // in its metres, so the player goes wherever the pitch goes.
@@ -56,7 +54,7 @@ extension StageTeamPlayers on CanvasStageState {
         var pose = track.at(controller.frame);
         controller.replaceElement(
           team.withPlayer(
-            _playerIndex,
+            index,
             spot.copyWith(
               track: track.withKey(pose.copyWith(
                 frame: controller.frame,
@@ -71,7 +69,7 @@ extension StageTeamPlayers on CanvasStageState {
       }
       var (dx, dy) = spotFromField(team, field, ground.place);
       controller.replaceElement(
-        team.withPlayer(_playerIndex, spot.copyWith(dx: dx, dy: dy)),
+        team.withPlayer(index, spot.copyWith(dx: dx, dy: dy)),
         transient: true,
       );
       return;
@@ -92,7 +90,7 @@ extension StageTeamPlayers on CanvasStageState {
       var pose = track.at(controller.frame);
       controller.replaceElement(
         team.withPlayer(
-          _playerIndex,
+          index,
           spot.copyWith(
             track: track.withKey(pose.copyWith(
               frame: controller.frame,
@@ -110,10 +108,40 @@ extension StageTeamPlayers on CanvasStageState {
     var h = team.height == 0 ? 1.0 : team.height;
     controller.replaceElement(
       team.withPlayer(
-        _playerIndex,
+        index,
         spot.copyWith(dx: (at.dx - team.x) / w, dy: (at.dy - team.y) / h),
       ),
       transient: true,
     );
   }
+}
+
+/// _PlayerDrag is a player of the selected team dragged. The team stays
+/// selected: a player is a row of its list, not an element. One undo step.
+class _PlayerDrag extends StageGesture {
+  _PlayerDrag(this.index, this.grab);
+
+  /// index is which player.
+  final int index;
+
+  /// grab is where the pointer took hold, from where he stands, so he does
+  /// not jump to the pointer.
+  final Offset grab;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._applyPlayerMove(index, grab, doc);
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
 }

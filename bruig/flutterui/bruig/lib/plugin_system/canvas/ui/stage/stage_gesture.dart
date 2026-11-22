@@ -1,8 +1,13 @@
 part of 'canvas_stage.dart';
 
 // What the pointer is doing on the stage, as one value from the press that
-// begins it to its release or cancel: StageGesture, its cases, and the
-// State's two steps that hand a move or an end to the one under way. The
+// begins it to its release or cancel: StageGesture, the State's steps that
+// hand a move or an end to the one under way or hand one over to another,
+// the clicks a gesture carries, and the cases with no better home. Cases
+// that belong with their subject sit in its part: a synth module's
+// (stage_synth_controls.dart), a Code panel's (stage_code_controls.dart), a
+// counter's piece (stage_element_controls.dart), a team's player
+// (stage_team_players.dart), the retouching stroke (stage_retouch.dart). The
 // kinds not yet made cases still run through _DragMode, in the switch in
 // stage_drag.dart and the branches in stage_release.dart. Part of
 // CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
@@ -41,6 +46,13 @@ sealed class StageGesture {
   /// skipped: the resets there that the kinds still told by _DragMode need.
   /// Read after [release] or [cancel], which may decide it.
   bool get endsRelease => false;
+
+  /// takesAll is whether every move and the release are handed to it at the
+  /// very top of _onPointerMove and _onPointerUp, before anything of the
+  /// stage's own, and nothing else in them runs: no hover, no brush ring,
+  /// none of the release's resets. For a press that is not on the page as
+  /// it is drawn: the held marker's note over it, a live preview.
+  bool get takesAll => false;
 }
 
 extension StageGestureSteps on CanvasStageState {
@@ -65,6 +77,64 @@ extension StageGestureSteps on CanvasStageState {
       gesture.release(this, at, travelled: _travelled, clicked: clicked);
     }
     if (gesture.opensUndoStep) controller.endInteraction();
+  }
+
+  /// _handOver puts [next] in place of the gesture under way, for a press
+  /// that turns out partway to be something else. The one under way ends
+  /// without finishing (nothing it would do on release is done), and the
+  /// undo step it opened stays open: [next]'s end closes it, so the two are
+  /// one step to take back.
+  void _handOver(StageGesture next) {
+    assert(_gesture?.opensUndoStep ?? false, "no open undo step to hand on");
+    assert(next.opensUndoStep, "the handed-on undo step would stay open");
+    setState(() => _gesture = next);
+  }
+}
+
+/// _CarriesClicks is a gesture that carries the clicks its press armed (see
+/// PendingClick), settled in turn as it ends: each is made if the press
+/// ended as its click, and dropped otherwise.
+mixin _CarriesClicks on StageGesture {
+  /// carried is the clicks it carries, in the order they are tried.
+  Iterable<PendingClick> get carried;
+
+  /// endsRelease is set when a click it carried is made that ends the
+  /// release.
+  @override
+  bool endsRelease = false;
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+          {required bool travelled, required bool clicked}) =>
+      _settle(stage, clicked: clicked, travelled: travelled, cancelled: false);
+
+  /// cancel makes no click, except one made however the press ends: an
+  /// instrument's key, let go.
+  @override
+  void cancel(CanvasStageState stage) => _settle(stage,
+      clicked: false, travelled: stage._travelled, cancelled: true);
+
+  /// _settle makes or drops each click [carried] as the press ends. A click
+  /// that is made and ends the release stops there.
+  void _settle(CanvasStageState stage,
+      {required bool clicked,
+      required bool travelled,
+      required bool cancelled}) {
+    for (var c in carried) {
+      if (!c.madeBy(stage,
+          clicked: clicked, travelled: travelled, cancelled: cancelled)) {
+        c.dropped(stage);
+        continue;
+      }
+      // Closed early, the drag's undo step does not take the click in;
+      // _endGesture's closing it again does nothing.
+      if (!c.inStep) stage.controller.endInteraction();
+      c.click(stage);
+      if (c.endsRelease) {
+        endsRelease = true;
+        return;
+      }
+    }
   }
 }
 
@@ -263,6 +333,96 @@ class _FlowLinkDrag extends StageGesture {
   void cancel(CanvasStageState stage) => stage.setState(() {});
 }
 
+/// _ChartLabelDrag is one of the selected chart's placed labels (its title,
+/// description or key) moved, or resized by its corner. One undo step.
+class _ChartLabelDrag extends StageGesture with _CarriesClicks {
+  _ChartLabelDrag(this.grab, {this.click});
+
+  /// grab is the label taken, how, and where in it.
+  final ChartLabelGrab grab;
+
+  /// click is the switch of the key's entry the press landed on, if any:
+  /// made if the press is let go where it began.
+  final _LegendClick? click;
+
+  @override
+  Iterable<PendingClick> get carried => [click].nonNulls;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._applyChartLabel(grab, doc);
+}
+
+/// _TableColumnDrag is the rule between two of the selected table's
+/// columns dragged, widening one and narrowing its neighbour. One undo
+/// step.
+class _TableColumnDrag extends StageGesture {
+  _TableColumnDrag(this.column);
+
+  /// column is the index of the column to the rule's left.
+  final int column;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._applyTableColumn(column, doc);
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
+}
+
+/// _MarkerNoteDrag is the held marker's label on the page moved, or sized
+/// by its corner grip, measured from the press. One undo step. The label
+/// is drawn over everything and is no element's, so it takes every move
+/// and the release first.
+class _MarkerNoteDrag extends StageGesture {
+  _MarkerNoteDrag(this.was, {required this.sizing, required this.from});
+
+  /// was is the marker as it was at the press.
+  final TimelineAction was;
+
+  /// sizing is whether the label's grip was taken, to size it.
+  final bool sizing;
+
+  /// from is where the press began, in the document.
+  final Offset from;
+
+  @override
+  bool get takesAll => true;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => false;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._dragMarkerNote(this, doc);
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
+}
+
 /// _BoxStart is the selection as a press on its box found it, which every
 /// step of a move, resize, slant or turn works from, so that rounding does
 /// not build up. Made by _beginTransform.
@@ -318,7 +478,7 @@ sealed class _BoxDrag extends StageGesture {
 
 /// _BoxMove is the selection moved by a press inside its box. A press that
 /// does not travel only selects, or makes the click it armed.
-class _BoxMove extends _BoxDrag {
+class _BoxMove extends _BoxDrag with _CarriesClicks {
   _BoxMove(super.start, {this.click, this.copy});
 
   /// click is the click the press armed on a control of what it landed on,
@@ -330,10 +490,8 @@ class _BoxMove extends _BoxDrag {
   /// code, on a panel that is reused, arms both.
   final _CopyPick? copy;
 
-  /// endsRelease is set when a click it carried is made: that is all the
-  /// release does.
   @override
-  bool endsRelease = false;
+  Iterable<PendingClick> get carried => [click, copy].nonNulls;
 
   /// waitsToTravel is false: it waits for the drag threshold itself, after
   /// telling its click the pointer has moved, which is measured against the
@@ -351,40 +509,6 @@ class _BoxMove extends _BoxDrag {
     }
     if (!stage._hasTravelled(at)) return;
     stage._applyMove(doc - stage._dragStart, start);
-  }
-
-  @override
-  void release(CanvasStageState stage, Offset at,
-          {required bool travelled, required bool clicked}) =>
-      _settle(stage, clicked: clicked, travelled: travelled, cancelled: false);
-
-  /// cancel makes no click, except an instrument's key's, which is let go
-  /// however the press ends.
-  @override
-  void cancel(CanvasStageState stage) => _settle(stage,
-      clicked: false, travelled: stage._travelled, cancelled: true);
-
-  /// _settle makes or drops what the press armed as it ends, [click] and
-  /// then [copy]. A click that is made and ends the release stops there.
-  void _settle(CanvasStageState stage,
-      {required bool clicked,
-      required bool travelled,
-      required bool cancelled}) {
-    for (var c in [click, copy].nonNulls) {
-      if (!c.madeBy(stage,
-          clicked: clicked, travelled: travelled, cancelled: cancelled)) {
-        c.dropped(stage);
-        continue;
-      }
-      // Closed early, the move's undo step does not take the click in;
-      // _endGesture's closing it again does nothing.
-      if (!c.inStep) stage.controller.endInteraction();
-      c.click(stage);
-      if (c.endsRelease) {
-        endsRelease = true;
-        return;
-      }
-    }
   }
 }
 

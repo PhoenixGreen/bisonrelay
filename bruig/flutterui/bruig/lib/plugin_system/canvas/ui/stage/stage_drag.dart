@@ -2,8 +2,9 @@ part of 'canvas_stage.dart';
 
 // A drag on the canvas: moving, resizing, skewing and turning what was pressed,
 // from the press that begins it (_beginTransform) to each step that applies
-// it, and the parts of charts, tables and synths. Part of CanvasStageState: its
-// fields, lifecycle and build are in canvas_stage.dart.
+// it; a chart's label and a table's column rule dragged, and the held
+// marker's note. Part of CanvasStageState: its fields, lifecycle and build are
+// in canvas_stage.dart.
 
 extension StageDrag on CanvasStageState {
   /// _selectedChartLabels are the lone selected chart's placed labels.
@@ -20,22 +21,23 @@ extension StageDrag on CanvasStageState {
   /// screen pixels (how still a hand is), so divided by the zoom.
   double get _docSlop => handleHitSlop / _scale;
 
-  /// _applyPart writes a part-drag onto the selected element (stage_parts.dart
-  /// works out the new element). Transient: the drag is one undo step.
-  void _applyPart(Offset doc, {required bool chartLabel}) {
+  /// _applyChartLabel moves or sizes the selected chart's label taken by
+  /// [grab] to [doc] (stage_parts.dart works out the new chart). Transient:
+  /// the drag is one undo step.
+  void _applyChartLabel(ChartLabelGrab grab, Offset doc) {
     var element = controller.selected;
-    if (element == null) return;
-    var bounds = _hit.posed(element);
-    CanvasElement? next;
-    if (chartLabel) {
-      var grab = _labelGrab;
-      if (grab == null || element is! ChartElement) return;
-      next = chartLabelDragged(element, bounds, grab, doc);
-    } else {
-      var at = _columnGrab;
-      if (at == null || element is! TableElement) return;
-      next = tableColumnDragged(element, bounds, at, doc);
-    }
+    if (element is! ChartElement) return;
+    var next = chartLabelDragged(element, _hit.posed(element), grab, doc);
+    if (next != null) controller.replaceElement(next, transient: true);
+  }
+
+  /// _applyTableColumn moves the selected table's rule right of [column] to
+  /// [doc] (stage_parts.dart works out the new table). Transient: the drag
+  /// is one undo step.
+  void _applyTableColumn(int column, Offset doc) {
+    var element = controller.selected;
+    if (element is! TableElement) return;
+    var next = tableColumnDragged(element, _hit.posed(element), column, doc);
     if (next != null) controller.replaceElement(next, transient: true);
   }
 
@@ -56,28 +58,26 @@ extension StageDrag on CanvasStageState {
     var sizing = laid.corner.contains(doc);
     if (!sizing && !laid.box.contains(doc)) return false;
     controller.beginInteraction();
-    _noteWas = note;
-    _noteSizing = sizing;
-    _noteFrom = doc;
+    _gesture = _MarkerNoteDrag(note, sizing: sizing, from: doc);
     _mode = _DragMode.none;
     return true;
   }
 
-  /// _dragMarkerNote moves the held marker's label, or sizes it by the
-  /// pointer's distance from its middle.
-  void _dragMarkerNote(Offset doc) {
-    var was = _noteWas!;
+  /// _dragMarkerNote moves the held marker's label for [drag], or sizes it
+  /// by the pointer's distance from its middle.
+  void _dragMarkerNote(_MarkerNoteDrag drag, Offset doc) {
+    var was = drag.was;
     var page = controller.document.size.size;
     TimelineAction next;
-    if (_noteSizing) {
+    if (drag.sizing) {
       var centre =
           Offset(was.noteAt.dx * page.width, was.noteAt.dy * page.height);
-      var from = (_noteFrom - centre).distance;
+      var from = (drag.from - centre).distance;
       var ratio = from < 1 ? 1.0 : (doc - centre).distance / from;
       next = was.copyWith(
           noteSize: (was.noteSize * ratio).clamp(0.3, 6.0).toDouble());
     } else {
-      var by = doc - _noteFrom;
+      var by = doc - drag.from;
       next = was.copyWith(
           noteAt: Offset((was.noteAt.dx + by.dx / page.width).clamp(0.0, 1.0),
               (was.noteAt.dy + by.dy / page.height).clamp(0.0, 1.0)));
@@ -97,19 +97,16 @@ extension StageDrag on CanvasStageState {
   }
 
   void _onPointerMove(PointerMoveEvent event) {
-    if (_inLive) return;
-    _pointer = event;
-    if (_noteWas != null) {
-      _dragMarkerNote(_toDocument(event.localPosition));
+    // A gesture that takes every move before the stage's own steps: see
+    // StageGesture.takesAll.
+    if (_gesture case var gesture? when gesture.takesAll) {
+      _moveGesture(gesture, event.localPosition);
       return;
     }
+    _pointer = event;
     // Pressed as well as hovering: the brush ring must follow a stroke.
     _hoverAt = event.localPosition;
     if (_brushAt != null) _moveBrush(event.localPosition);
-    if (_painting != null) {
-      _paintStrokeAt(_toDocument(event.localPosition));
-      return;
-    }
     if (_gesture case var gesture?) {
       _moveGesture(gesture, event.localPosition);
       return;
@@ -145,8 +142,6 @@ extension StageDrag on CanvasStageState {
             _DragMode.warpTurn ||
             _DragMode.warpMarquee:
         _dragWarp(doc);
-      case _DragMode.player:
-        _applyPlayerMove(doc);
       case _DragMode.stageOrbit:
         if (controller.stageOf(_orbiting ?? "") case var s?) {
           var from = _orbitFrom ?? s.cameraAt(controller.frame);
@@ -253,49 +248,6 @@ extension StageDrag on CanvasStageState {
           controller.replaceElement(
               withPenHandles(e, pick, pulled ? doc : _vectorFrom),
               transient: true);
-        }
-      case _DragMode.chartLabel:
-        _applyPart(doc, chartLabel: true);
-      case _DragMode.tableColumn:
-        _applyPart(doc, chartLabel: false);
-      case _DragMode.counterPart:
-        _applyCounterPart(doc);
-      case _DragMode.synthKnob:
-        _turnSynthKnob(doc);
-      case _DragMode.codeScrub:
-        if (document.elementById(_codeScrub ?? "") case CodeElement e) {
-          controller.seekCode(codeTrackSeconds(e, doc));
-        }
-      case _DragMode.codeDivider:
-        if (_codeDivider case (var id, var d)?) {
-          if (document.elementById(id) case CodeElement e) {
-            controller.replaceElement(codeDividerDragged(e, d, doc),
-                transient: true);
-          }
-        }
-      case _DragMode.codeTab:
-        if (_codeTabAt != null ||
-            (_toStage(doc) - _pressedAt).distance >
-                CanvasStageState._buttonClickSlop) {
-          setState(() => _codeTabAt = doc);
-        }
-      case _DragMode.synthScreen:
-        if (_synthScreen case (var id, var grab)?) {
-          if (document.elementById(id) case SynthModuleElement e) {
-            controller.setSynth(
-                synthScreenDragged(e, grab, synthPanelPoint(e, doc)),
-                transient: true);
-          }
-        }
-      case _DragMode.synthCable:
-        if (_synthCable case var c?) {
-          setState(() => _synthCable = (
-                from: c.from,
-                port: c.port,
-                out: c.out,
-                lifted: c.lifted,
-                at: doc
-              ));
         }
       case _DragMode.imageFrame:
         _applyFraming(doc);

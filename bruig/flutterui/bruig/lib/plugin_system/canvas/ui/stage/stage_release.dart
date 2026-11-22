@@ -13,37 +13,28 @@ extension StageRelease on CanvasStageState {
     var clicked = !cancelled &&
         (event.localPosition - _pressedAt).distance <=
             CanvasStageState._buttonClickSlop;
+    // A gesture that takes the release before the stage's own steps ends
+    // there: see StageGesture.takesAll.
+    if (_gesture case var gesture? when gesture.takesAll) {
+      _endGesture(gesture, event.localPosition,
+          cancelled: cancelled, clicked: clicked);
+      return;
+    }
     if (_liveTapPending) {
       _liveTapPending = false;
       if (!cancelled) _replayTap(event.position);
       return;
     }
-    if (_inLive) {
-      _inLive = false;
-      return;
+    // A gesture ends itself, and with it any click riding on it. Most go on
+    // to the resets at the end, which they reached when they were modes: a
+    // snap mark can be left set by a release that ended early, which the
+    // next one that reaches them clears.
+    if (_gesture case var gesture?) {
+      _endGesture(gesture, event.localPosition,
+          cancelled: cancelled, clicked: clicked);
+      if (gesture.endsRelease) return;
     }
-    if (_noteWas != null) {
-      _noteWas = null;
-      controller.endInteraction();
-      return;
-    }
-    if (_releaseSynth(_toDocument(event.localPosition), cancelled: cancelled)) {
-      return;
-    }
-    if (_releaseCode(_toDocument(event.localPosition), cancelled: cancelled)) {
-      return;
-    }
-    if (_painting != null) {
-      _commitStroke();
-      return;
-    }
-    _playerIndex = -1;
 
-    if (_counterPart != null) {
-      _counterPart = null;
-      controller.endInteraction();
-      _mode = _DragMode.none;
-    }
     // A click riding on a drag that is not yet a StageGesture case (see
     // _pendingClick). Measured in stage pixels, so it holds at any zoom.
     // Made, it is a change of its own, after the drag's undo step is
@@ -58,16 +49,6 @@ extension StageRelease on CanvasStageState {
         return;
       }
       click.dropped(this);
-    }
-
-    // A gesture ends itself, and with it any click riding on it. Most go on
-    // to the resets at the end, which they reached when they were modes: a
-    // snap mark can be left set by a release that ended early, which the
-    // next one that reaches them clears.
-    if (_gesture case var gesture?) {
-      _endGesture(gesture, event.localPosition,
-          cancelled: cancelled, clicked: clicked);
-      if (gesture.endsRelease) return;
     }
 
     if (_mode == _DragMode.vectorMarquee) {
@@ -172,20 +153,17 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.warpMove ||
         _mode == _DragMode.warpScale ||
         _mode == _DragMode.warpTurn ||
-        _mode == _DragMode.chartLabel ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.stagePan ||
         _mode == _DragMode.gizmo ||
         _mode == _DragMode.parallaxPan ||
-        _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
         _mode == _DragMode.imageLayerMove ||
         _mode == _DragMode.imageLayerSize ||
         _mode == _DragMode.imageLayerTurn ||
         _mode == _DragMode.imageMask ||
         _mode == _DragMode.imageBrush ||
-        _mode == _DragMode.vectorPoint ||
-        _mode == _DragMode.player) {
+        _mode == _DragMode.vectorPoint) {
       controller.endInteraction();
     }
     if (_mode == _DragMode.imageQuick && _quickTrail.isNotEmpty && !cancelled) {

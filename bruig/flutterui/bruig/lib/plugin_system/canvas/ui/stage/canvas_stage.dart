@@ -151,22 +151,6 @@ part 'stage_layouts.dart';
 enum _DragMode {
   none,
 
-  /// synthKnob is a synth module's knob turned by a drag up or down, and
-  /// synthCable a cable carried from a jack. See _pressSynth.
-  synthKnob,
-  synthCable,
-
-  /// synthScreen is a digital envelope's or filter's screen dragged on.
-  synthScreen,
-
-  /// codeDivider is a Code panel's pane divider dragged; codeTab one of its
-  /// tabs carried. See _pressCode.
-  codeDivider,
-  codeTab,
-
-  /// codeScrub is a Code panel's playbar track dragged along.
-  codeScrub,
-
   /// copies is copies of an element dragged on their own: those picked, or
   /// made by an Alt-drag. See _moveCopies.
   copies,
@@ -200,7 +184,6 @@ enum _DragMode {
   warpScale,
   warpTurn,
   warpMarquee,
-  player,
 
   /// spritePaint is a Sprite's frame being painted: see sprite_painting.dart.
   spritePaint,
@@ -221,15 +204,6 @@ enum _DragMode {
 
   /// parallaxPan is parallax scenery panned by an Option-drag on it.
   parallaxPan,
-
-  /// chartLabel is a chart's title or description moved or resized.
-  chartLabel,
-
-  /// tableColumn is the rule between two table columns dragged.
-  tableColumn,
-
-  /// counterPart is one of a counter's freely placed pieces moved inside it.
-  counterPart,
 
   /// imageFrame is a picture moved inside its frame: only which part the
   /// frame shows changes. See ImageFraming.
@@ -326,65 +300,18 @@ class CanvasStageState extends State<CanvasStage>
   /// StageGesture; the kinds that are not yet are still told by [_mode].
   StageGesture? _gesture;
 
-  /// _playerIndex is which player of the selected team is dragged. The team
-  /// stays selected: a player is a row of its list, not an element.
-  int _playerIndex = -1;
-
-  /// _playerGrab is where in the dot the pointer took hold, so a player does
-  /// not jump to centre under the cursor.
-  Offset _playerGrab = Offset.zero;
-
-  /// _noteWas is the marker whose canvas label is dragged (sized by its grip
-  /// if [_noteSizing]), as it was at the press; _noteFrom where it began.
-  TimelineAction? _noteWas;
-  bool _noteSizing = false;
-  Offset _noteFrom = Offset.zero;
-
   /// _pendingClick is a click armed by a press whose drag is not yet a
-  /// StageGesture case: a counter's button on its loose piece dragged, a
-  /// chart key's entry on its placed label dragged, or a Code panel's code
-  /// on its copies dragged. It is also where _pressCode leaves a Code pane's
-  /// click for the move a later step of the same press begins, which takes
-  /// it (_pressSelectAndMove). A move of the box holds its own (_BoxMove).
+  /// StageGesture case: a Code panel's code, on its copies dragged. A
+  /// gesture holds its own (see _CarriesClicks).
   PendingClick? _pendingClick;
-
-  /// _synthKey is a synth keyboard key held; _synthKnob a knob turned (its
-  /// module, knob, start value and press point); _synthCable a cable carried
-  /// (from which jack, the cable it was lifted from if any, and where it is).
-  (SynthModuleElement, int)? _synthKey;
-  (String, SynthKnob, double, Offset)? _synthKnob;
-
-  /// _synthScreen is a digital module's screen dragged: its module and what
-  /// was taken (see synthScreenGrab).
-  (String, String)? _synthScreen;
-
-  /// _codeDivider is a Code panel's pane divider dragged (panel id, line).
-  /// _codeTab is a tab pressed (panel, pane, file); _codeTabAt where it has
-  /// been carried on the page.
-  (String, CodeDividerBox)? _codeDivider;
-  ({String id, int pane, String file})? _codeTab;
-  Offset? _codeTabAt;
-
-  /// _codeScrub is the Code panel whose playbar track is being dragged.
-  String? _codeScrub;
 
   /// _codeOver is the Code pane under the pointer, which the wheel and two
   /// fingers scroll instead of the page; _codePinch one a slide began over.
   (String, int)? _codeOver;
   (String, int)? _codePinch;
 
-  /// _inLive is a press that began on a live preview, left to the preview.
-  bool _inLive = false;
-
   /// _codeEditBegun is whether the code editor has begun its undo step.
   bool _codeEditBegun = false;
-  ({
-    SynthModuleElement from,
-    String port,
-    bool out,
-    (SynthModuleElement, String)? lifted,
-    Offset at,
-  })? _synthCable;
 
   /// _legendHoldDelay is how long a chart key's entry is held down before
   /// the press takes the key to move it (see _LegendClick): press and drag
@@ -470,19 +397,6 @@ class CanvasStageState extends State<CanvasStage>
   /// is up or cancelled: a second finger would otherwise take the gesture
   /// over and leave the first one's undo step open.
   int? _gesturePointer;
-
-  /// _painting is the picture being retouched during a brush stroke, by id,
-  /// since the element is replaced when the stroke lands.
-  String? _painting;
-
-  /// _liveImage and _liveCanvas are the stroke being drawn, in the picture's
-  /// coordinates for storing and the canvas's for showing. It is written to
-  /// the element only on pointer up: each write rebuilds the treated picture.
-  final List<Offset> _liveImage = [];
-  final List<Offset> _liveCanvas = [];
-
-  /// _liveRadius is the brush radius in canvas units, set once per stroke.
-  double _liveRadius = 0;
 
   /// _preview is a picture of what the held stroke would do, and _previewOf
   /// the settings it was made for: rebuilt as they change, so adjusting
@@ -700,11 +614,6 @@ class CanvasStageState extends State<CanvasStage>
     controller.followPan(_clampedPan);
   }
 
-  /// _counterPart is the counter whose loose piece is dragged, and
-  /// _counterPartAt which: -2 the words before, -3 after, 0 and up a button.
-  String? _counterPart;
-  int _counterPartAt = 0;
-
   /// _liveTapPending is a press that opened a preview live, replayed into
   /// the app on release (_replayTap).
   bool _liveTapPending = false;
@@ -833,11 +742,6 @@ class CanvasStageState extends State<CanvasStage>
         (x, bounds.top, bounds.bottom),
     ];
   }
-
-  ChartLabelGrab? _labelGrab;
-
-  /// _columnGrab is the dragged divider: the index of the column to its left.
-  int? _columnGrab;
 
   /// _snappedTo is the lines the drag is caught on, drawn so a snap is seen
   /// rather than felt as a jump.
@@ -1127,10 +1031,16 @@ class CanvasStageState extends State<CanvasStage>
       editingItem: typed?.itemId,
       preview: _preview,
       previewOn: _previewPlacement(),
-      liveStroke: _liveCanvas,
+      liveStroke: switch (_gesture) {
+        _RetouchStroke s => s.canvasPoints,
+        _ => const [],
+      },
       knife: _knife,
       caret: _caret(),
-      liveStrokeRadius: _liveRadius,
+      liveStrokeRadius: switch (_gesture) {
+        _RetouchStroke s => s.radius,
+        _ => 0,
+      },
       liveStrokeKeeps: controller.retouch.keeps,
       selectionBounds: _selectionBounds,
       framing: _framingView(),
@@ -1165,7 +1075,7 @@ class CanvasStageState extends State<CanvasStage>
             ),
           ),
         ),
-      if (_synthCable case var c?)
+      if (_gesture case _SynthCableCarry c)
         Positioned.fill(
           child: IgnorePointer(
             child: CustomPaint(
@@ -1507,6 +1417,20 @@ class CanvasStageState extends State<CanvasStage>
         .register(signal, (event) => _onScroll(event as PointerScrollEvent));
   }
 
+  /// _leavesClickCursor is whether the gesture under way, if any, still
+  /// lets the cursor say that a click where it is would press something.
+  /// Most gestures do not; these do: a synth's key held, the held marker's
+  /// note dragged, the retouching stroke, a press left to a live preview.
+  bool get _leavesClickCursor => switch (_gesture) {
+        null ||
+        _SynthKeyHeld() ||
+        _MarkerNoteDrag() ||
+        _RetouchStroke() ||
+        _LivePress() =>
+          true,
+        _ => false,
+      };
+
   MouseCursor _cursor() {
     if (controller.placingCopies != null) return SystemMouseCursors.copy;
     if (controller.retouch.on && _selectedPicture() != null) {
@@ -1555,7 +1479,7 @@ class CanvasStageState extends State<CanvasStage>
           ? SystemMouseCursors.grabbing
           : SystemMouseCursors.grab;
     }
-    if (_mode == _DragMode.none && _gesture == null && _hoverPressable) {
+    if (_mode == _DragMode.none && _leavesClickCursor && _hoverPressable) {
       return SystemMouseCursors.click;
     }
     return SystemMouseCursors.basic;
