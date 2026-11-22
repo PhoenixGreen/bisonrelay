@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -130,7 +131,8 @@ void main() {
       var c = CanvasController(const CanvasDocument(frames: 100));
       addTearDown(c.dispose);
       c.looping = true;
-      expect(c.loopRange, (0, 100), reason: "a scene's loop is the scene");
+      expect(c.loopRange, (from: 0, length: 100),
+          reason: "a scene's loop is the scene");
       c.setLoop(20, 10);
       c.frame = 28;
       c.tickForTest();
@@ -155,13 +157,14 @@ void main() {
       addTearDown(c.dispose);
       c.frame = 240 * 3;
       c.looping = true;
-      expect(c.loopRange, (480, 1920), reason: "the verse");
+      expect(c.loopRange, (from: 480, length: 1920), reason: "the verse");
       c.looping = false;
       var bare = CanvasController(sound);
       addTearDown(bare.dispose);
       bare.frame = 240 * 5 + 10;
       bare.looping = true;
-      expect(bare.loopRange, (1200, 960), reason: "four bars from bar six");
+      expect(bare.loopRange, (from: 1200, length: 960),
+          reason: "four bars from bar six");
     });
 
     test("Stop goes back to where Play started, then to the start", () {
@@ -250,7 +253,7 @@ void main() {
       setTestScreen(tester, Size(width, 600));
       await tester.pumpWidget(canvasApp(Align(
           alignment: Alignment.bottomCenter,
-          child: CanvasTimeline(controller: c))));
+          child: CanvasTimeline(controller: c, showBar: true))));
       await tester.pumpAndSettle();
     }
 
@@ -365,7 +368,7 @@ void main() {
       await show(tester, c);
       await tester.tap(find.byKey(const ValueKey("loop")));
       await tester.pump();
-      expect((c.looping, c.loopRange), (true, (0, 960)));
+      expect((c.looping, c.loopRange), (true, (from: 0, length: 960)));
       await openTiming(tester);
       expect(within("loopLength", "4. 0. 0"), findsOneWidget);
 
@@ -374,7 +377,7 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey("loopFromField")), "3");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(c.loopRange, (480, 960));
+      expect(c.loopRange, (from: 480, length: 960));
       await closeTiming(tester);
 
       // The brace's end, dragged a bar on, snaps to the grid.
@@ -384,7 +387,7 @@ void main() {
       await tester.dragFrom(
           Offset(xOf(1440), strip.top + 3), Offset(xOf(1680) - xOf(1440), 0));
       await tester.pumpAndSettle();
-      var (from, length) = c.loopRange;
+      var (:from, :length) = c.loopRange;
       expect(from, 480);
       expect(length % 60, 0, reason: "on a beat: $length");
       expect(length, closeTo(1200, 60));
@@ -393,6 +396,51 @@ void main() {
       await tester.tapAt(Offset(xOf(900), strip.top + 3));
       await tester.pumpAndSettle();
       expect(c.looping, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        "an entry that makes no sense stays in its field, picked, to be "
+        "put right", (tester) async {
+      var c = CanvasController(sound);
+      addTearDown(c.dispose);
+      await show(tester, c);
+      c.looping = true;
+      await tester.pump();
+      await openTiming(tester);
+      var before = c.loopRange;
+      var field = find.byKey(const ValueKey("loopFromField"));
+
+      await tester.tap(find.byKey(const ValueKey("loopFrom")));
+      await tester.pumpAndSettle();
+      await tester.enterText(field, "soon");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(c.loopRange, before, reason: "nothing it could be");
+      expect(field, findsOneWidget, reason: "still open");
+      var text = tester.widget<TextField>(field).controller!;
+      expect(text.text, "soon");
+      expect((text.selection.start, text.selection.end), (0, "soon".length),
+          reason: "all of it picked, to type over");
+
+      // Put right, it is taken and the field closes.
+      await tester.enterText(field, "2");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(c.loopRange.from, 240);
+      expect(field, findsNothing);
+
+      // Escape still closes one left wrong.
+      await tester.tap(find.byKey(const ValueKey("loopFrom")));
+      await tester.pumpAndSettle();
+      await tester.enterText(field, "soon");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(field, findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(field, findsNothing);
+      expect(c.loopRange.from, 240);
       expect(tester.takeException(), isNull);
     });
 
@@ -498,7 +546,7 @@ void main() {
         if (state.contains("playing")) c.play();
         await tester.pumpWidget(canvasApp(Align(
             alignment: Alignment.bottomCenter,
-            child: CanvasTimeline(controller: c))));
+            child: CanvasTimeline(controller: c, showBar: true))));
         for (var scale in [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
           setTestTextScale(tester, scale);
           for (var width in [900.0, 1200.0, 1600.0]) {

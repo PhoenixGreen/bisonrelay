@@ -15,6 +15,10 @@ extension CanvasPanels on CanvasController {
     notifyListeners();
   }
 
+  /// restoreSnapping puts back snapping as the preferences hold it, without
+  /// notifying, for the page as it opens (KeptView).
+  void restoreSnapping(bool value) => _panelState.snapping = value;
+
   /// timelineTool is what a press on a timeline sound does: grab or cut.
   TimelineTool get timelineTool => _panelState.timelineTool;
 

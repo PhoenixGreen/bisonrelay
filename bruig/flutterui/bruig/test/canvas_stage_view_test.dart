@@ -32,7 +32,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/play_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/page_keys.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
@@ -1665,7 +1665,7 @@ void main() {
       await tester.pumpWidget(canvasApp(SizedBox(
           width: viewport.width,
           height: viewport.height,
-          child: CanvasSpaceBar(
+          child: CanvasPageKeys(
               controller: controller,
               child: CanvasStage(controller: controller)))));
       await tester.pumpAndSettle();

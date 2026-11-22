@@ -247,15 +247,19 @@ does in words, and the doing of it. Three handlers hand their keys to
 `canvasKey`, each saying where the keyboard is: the canvas
 (`canvas_stage.dart`), the play bar and timeline (`transportKey`,
 `screen/play_bar.dart`), and a scope round the whole page
-(`screen/space_bar.dart`), which hears what the others leave.
+(`CanvasPageKeys`, `screen/page_keys.dart`), which hears what the others
+leave and brings the keyboard back to the page when it is pressed.
 
 - **`reach`** is how far out a line is heard: `canvas` only while the canvas
   has the keyboard, `transport` only while the play bar or timeline has it,
   `page` anywhere on the page. The canvas's and transport's lines come
   before the page's, so they have the first say. A key that does the same
-  wherever the keyboard is (Space, copy, cut, paste, undo, redo) is one
-  `page` line, not one per handler, so that it is held and modified the
-  same everywhere.
+  wherever the keyboard is (copy, cut, paste, undo, redo) is one `page`
+  line, not one per handler, so that it is held and modified the same
+  everywhere. Space, which plays or pauses, is two lines: a `transport`
+  line that takes it with any modifier, as the play bar and timeline take
+  the arrows (so Flutter does not spend them moving the focus between the
+  bar's buttons), and a `page` line without Command for everywhere else.
 - **`when`** is whether the line applies now, read from the controller. The
   first line that fits the key, the modifiers held, the reach and `when` is
   the one done; the rest are not tried. A key with several meanings
@@ -458,8 +462,9 @@ edges, and whether they show). The rulers are the person's, so a canvas sent
 to somebody does not turn them on for them; the grid, the guides and the
 snap switches are the canvas's, saved in its `CanvasGuides`. What the
 controller holds of these (the frame, the rulers, the cues, the mixer, the
-panels) is handed to it as the page opens and written back as it changes,
-in one list in `ui/screen/kept_view.dart`. To add one,
+play bar's snapping, scrubbing and place, the panels) is handed to it as
+the page opens and written back as it changes, in one list in
+`ui/screen/kept_view.dart`. To add one,
 declare a `_Saved` value there, give it a getter and a setter, and add it to
 `_saved`. `test/canvas_preferences_test.dart` holds each key and the form it
 is stored in, since changing either loses what somebody had set.

@@ -8,7 +8,8 @@ import 'package:flutter/material.dart';
 
 // play_bar_settings.dart is the play bar's settings button and its panel:
 // the panels under the canvas (places, switching, layouts) and the
-// timeline's own (tool, playing, what shows, zoom, bar position, a marker).
+// timeline's own (its tool, its switches, what shows, where the bar sits, a
+// marker).
 // Pictures for choices of shape, switches for on and off, to read at a
 // glance.
 
@@ -22,6 +23,9 @@ typedef PlayBarToggle = ({
   VoidCallback toggle,
 });
 
+/// PlayBarSettingsButton is the gear on the play bar, and the panel it opens
+/// of every setting the bar has. The bar hands it the knife and the switches
+/// it lights when they are on, so the two show the same.
 class PlayBarSettingsButton extends StatelessWidget {
   final CanvasController controller;
 
@@ -90,15 +94,8 @@ class _Panel extends StatelessWidget {
     var colors = ThemeNotifier.of(context).colors;
     var dock = controller.dock;
     var muted = TextStyle(fontSize: 11, color: colors.onSurfaceVariant);
-    Widget heading(String text) => Padding(
-          padding: const EdgeInsets.fromLTRB(2, 12, 2, 6),
-          child: Text(text.toUpperCase(),
-              style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 0.8,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurfaceVariant)),
-        );
+    Widget heading(String text) =>
+        PlayBarHeading(text, padding: const EdgeInsets.fromLTRB(2, 12, 2, 6));
     Widget caption(String text) => Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 4),
           child: Text(text, style: muted),
@@ -312,6 +309,25 @@ class _Panel extends StatelessWidget {
       ),
     );
   }
+}
+
+/// PlayBarHeading is a heading in the play bar's menus: small capitals in
+/// the quiet text colour, with [padding] round it.
+class PlayBarHeading extends StatelessWidget {
+  final String text;
+  final EdgeInsets padding;
+  const PlayBarHeading(this.text, {required this.padding, super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: padding,
+        child: Text(text.toUpperCase(),
+            style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w600,
+                color: ThemeNotifier.of(context).colors.onSurfaceVariant)),
+      );
 }
 
 /// _Tile is a choice drawn as a picture over its name, outlined if chosen.

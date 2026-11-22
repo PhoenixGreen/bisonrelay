@@ -33,7 +33,8 @@ void main() {
     setTestScreen(tester, const Size(1200, 700));
     await tester.pumpWidget(canvasApp(Align(
         alignment: Alignment.bottomCenter,
-        child: CanvasTimeline(controller: c, height: timelineHeight + 120))));
+        child: CanvasTimeline(
+            controller: c, showBar: true, height: timelineHeight + 120))));
     await tester.pumpAndSettle();
     return c;
   }
@@ -154,10 +155,10 @@ void main() {
   });
 
   testWidgets("zooming zooms the scenes with the ruler", (tester) async {
-    var c = await show(tester);
+    await show(tester);
     await playAll(tester);
     var wide = rectOf(tester, "sceneBox1").width + 8;
-    c.askTimelineZoom(2);
+    await zoomTimeline(tester, 2, rectOf(tester, "sceneBox1").center);
     await tester.pumpAndSettle();
     expect(rectOf(tester, "sceneBox1").width + 8, closeTo(wide * 2, 1),
         reason: "twice the pixels per frame for the box as for the ruler");
@@ -502,7 +503,8 @@ void main() {
       setTestScreen(tester, const Size(1200, 800));
       await tester.pumpWidget(canvasApp(Align(
           alignment: Alignment.bottomCenter,
-          child: CanvasTimeline(controller: c, height: timelineHeight + 260))));
+          child: CanvasTimeline(
+              controller: c, showBar: true, height: timelineHeight + 260))));
       await tester.pumpAndSettle();
       await tapPlayAll(tester);
 
@@ -594,7 +596,8 @@ void main() {
       setTestScreen(tester, const Size(1200, 800));
       await tester.pumpWidget(canvasApp(Align(
           alignment: Alignment.bottomCenter,
-          child: CanvasTimeline(controller: c, height: timelineHeight + 260))));
+          child: CanvasTimeline(
+              controller: c, showBar: true, height: timelineHeight + 260))));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("timelineAllChannels")), findsNothing,
           reason: "Play all scenes is the switch");

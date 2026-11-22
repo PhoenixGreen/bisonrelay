@@ -3,20 +3,22 @@ import 'dart:async';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 
-// kept_view.dart is what the Canvas page remembers from one run of the app
-// to the next: the one place it is put back, and the one place it is
-// written down.
+// kept_view.dart is what the Canvas page remembers, from one run of the app
+// to the next, of what the controller holds: put back as the page opens, and
+// written down as it changes.
 //
 // Two things are remembered. How the page was left, whatever canvas is open
-// (the frame, the rulers, the cues, the mixer, where the panels open and
-// which are open): the list in KeptView._kept. And how one canvas was looked
-// at (its channel heights, narrow strips, timeline zoom and effects channel),
-// kept under that canvas's folder and name.
+// (the frame, the rulers, the cues, the mixer, the play bar's snapping,
+// scrubbing and place, where the panels open and which are open): the list
+// in KeptView._kept. And how one canvas was looked at (its channel heights,
+// narrow strips, timeline zoom and effects channel), kept under that
+// canvas's folder and name.
 //
-// To remember something more about the page, add a line to _kept: how the
-// controller takes it back, and how it is written down. Nothing else needs
-// to change. What the screen holds itself (the sidebars, whether the
-// timeline shows) it writes down as it changes them: see CanvasScreen.
+// To remember something more the controller holds, add a line to _kept: how
+// the controller takes it back, and how it is written down. Nothing else
+// needs to change. What a widget holds itself (the sidebars, whether the
+// timeline shows, the panels' sizes) it writes down as it changes it: see
+// CanvasScreen and CanvasDock.
 
 /// _Kept is one thing remembered: [put] hands the controller what the
 /// preferences hold, without notifying; [keep] writes down what the
@@ -50,8 +52,8 @@ class KeptView {
       keep: () => _prefs.cuesShown = _controller.cuesShown,
     ),
     (
-      put: () =>
-          _controller.restoreMixer(_prefs.mixerBands, _prefs.returnsShown),
+      put: () => _controller.restoreMixer(_prefs.mixerBands,
+          returns: _prefs.returnsShown),
       keep: () {
         _prefs.mixerBands = _controller.mixerBandNames;
         _prefs.returnsShown = _controller.returnsShown;
@@ -60,6 +62,18 @@ class KeptView {
     (
       put: () => _controller.restoreMixerLook(_prefs.mixerLook),
       keep: () => _prefs.mixerLook = _controller.mixerLook,
+    ),
+    (
+      put: () => _controller.restoreSnapping(_prefs.timelineSnap),
+      keep: () => _prefs.timelineSnap = _controller.snapping,
+    ),
+    (
+      put: () => _controller.restoreTrackpadScrolls(_prefs.timelineTrackpad),
+      keep: () => _prefs.timelineTrackpad = _controller.trackpadScrolls,
+    ),
+    (
+      put: () => _controller.restoreBarBelow(_prefs.barBelow),
+      keep: () => _prefs.barBelow = _controller.barBelow,
     ),
     (
       put: () => _controller.restoreDock(_prefs.dock),

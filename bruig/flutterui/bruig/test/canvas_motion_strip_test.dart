@@ -73,7 +73,7 @@ Future<CanvasController> pumpBoth(WidgetTester tester,
                   height: 420,
                   onResize: (_) {},
                   onClose: () {})),
-          CanvasTimeline(controller: c, height: 360),
+          CanvasTimeline(controller: c, showBar: true, height: 360),
         ]))),
   ));
   await tester.pump();

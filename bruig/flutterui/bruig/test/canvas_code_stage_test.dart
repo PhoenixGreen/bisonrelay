@@ -832,7 +832,7 @@ void main() {
       setTestScreen(tester, const Size(1400, 800));
       await tester.pumpWidget(_app(Align(
           alignment: Alignment.bottomCenter,
-          child: CanvasTimeline(controller: ctl, height: 400))));
+          child: CanvasTimeline(controller: ctl, showBar: true, height: 400))));
       await tester.pumpAndSettle();
       var box =
           tester.getRect(find.byKey(ValueKey("motionLanesPaint-${e.id}")));

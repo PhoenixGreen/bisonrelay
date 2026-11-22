@@ -84,54 +84,6 @@ extension CanvasInstruments on CanvasController {
     _audio?.stopAll();
   }
 
-  /// leavePage is the Canvas page left. The session outlives the page, but
-  /// nothing in it may go on with no page to see or stop it: the playhead
-  /// (each frame would cue sounds again), a game and its keys or a stop
-  /// waiting for one, the slots, a voice, the counters' clock, an arpeggio
-  /// or a held note, nor the pictures the renderer kept.
-  void leavePage() {
-    if (gaming) gaming = false;
-    _endWait();
-    if (playing) pause();
-    motionPlayer.clear();
-    _triggeredOff.clear();
-    stopHearing();
-    _counterTimer?.cancel();
-    _counterTimer = null;
-    for (var MapEntry(key: id, value: live) in _arps.entries) {
-      live.timer?.cancel();
-      if ((live.sounding, _instrumentHeld(id)) case (var k?, var e?)) {
-        audio.noteOff(CanvasController._channelOf(e), k);
-      }
-    }
-    _arps.clear();
-    for (var MapEntry(key: id, value: held) in _instruments.sounded.entries) {
-      if (_instrumentHeld(id) case var e?) {
-        var channel = CanvasController._channelOf(e);
-        for (var k in held.values.expand((keys) => keys)) {
-          audio.noteOff(channel, k);
-        }
-      }
-    }
-    _instruments.sounded.clear();
-    _soundCount.clear();
-    // Nothing is held on a page left: a later key-up releases nothing, and
-    // the pedal is up when it comes back.
-    _instruments.held.clear();
-    _instruments.pressedOn.clear();
-    _instruments.take.clear();
-    // The pedal let up on every instrument, or a page left with it down
-    // would come back holding every released key.
-    for (var e in _document.elements) {
-      if (e is AudioElement && e.instrument != null) {
-        _audio?.control(CanvasController._channelOf(e), MidiControl.sustain, 0);
-      }
-    }
-    stopAudio();
-    clearRenderCaches();
-    images.release();
-  }
-
   /// audioState is how [e]'s sound is doing, for the icon to show.
   AudioState audioState(AudioElement e) {
     if (e.instrument case var part?) {

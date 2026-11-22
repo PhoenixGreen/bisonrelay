@@ -37,7 +37,8 @@ void main() {
     c.setSceneLength(frames);
     var key = GlobalKey();
     await tester.pumpWidget(canvasApp(RepaintBoundary(
-        key: key, child: CanvasTimeline(controller: c, height: 200))));
+        key: key,
+        child: CanvasTimeline(controller: c, showBar: true, height: 200))));
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pump(const Duration(milliseconds: 200));
     var n = 0;

@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/picked_parts.dart'
 // is pressed, when it applies, and what it does. Three handlers hand their
 // keys here, each saying where the keyboard is (ShortcutReach): the canvas
 // (canvas_stage.dart), the play bar and timeline (transportKey in
-// play_bar.dart), and the page round them (space_bar.dart). The first line
+// play_bar.dart), and the page round them (page_keys.dart). The first line
 // that means the key now is the one done. Two things take the keyboard for
 // themselves before any of this: a field being typed in, the text editor on
 // the canvas among them (canvas_text_editor.dart), and a running game
@@ -419,7 +419,7 @@ final List<CanvasShortcut> canvasShortcuts = [
       command: null,
       held: KeyHeld.taken,
       reach: ShortcutReach.transport,
-      does: "Play or stop",
+      does: "Play or pause",
       act: (c, _) => c.togglePlay()),
   CanvasShortcut(
       keys: _arrows,
@@ -430,7 +430,8 @@ final List<CanvasShortcut> canvasShortcuts = [
 
   // Anywhere on the page, the canvas, play bar and timeline included, each
   // after their own lines: Space, copy, cut, paste, undo and redo are the
-  // same wherever the keyboard is. What is copied, cut or deleted is the
+  // same wherever the keyboard is, but for Space with Command, which only
+  // the play bar and timeline take (their line above). What is copied, cut or deleted is the
   // selection on the canvas and what is picked on the timeline together:
   // after a click on the timeline, a picked sound is copied, pasted on its
   // channel at the playhead, or deleted. Copy, cut and paste are once a
@@ -439,7 +440,7 @@ final List<CanvasShortcut> canvasShortcuts = [
       keys: const [LogicalKeyboardKey.space],
       held: KeyHeld.taken,
       reach: ShortcutReach.page,
-      does: "Play or stop",
+      does: "Play or pause",
       act: (c, _) => c.togglePlay()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyC],

@@ -104,7 +104,7 @@ void main() {
     setTestScreen(tester, const Size(1400, 700));
     await tester.pumpWidget(canvasApp(Align(
         alignment: Alignment.bottomCenter,
-        child: CanvasTimeline(controller: c, height: 400))));
+        child: CanvasTimeline(controller: c, showBar: true, height: 400))));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("rowFromSlots-a")), findsOneWidget);
     expect(find.text("playing from slots"), findsOneWidget);

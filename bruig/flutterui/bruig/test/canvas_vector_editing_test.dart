@@ -3068,7 +3068,7 @@ void main() {
       c.selectOnly("v");
       c.pickVectorShape(1);
       setTestScreen(tester, const Size(1400, 900));
-      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: CanvasTimeline(controller: c, height: timelineHeight + 160))));
+      await tester.pumpWidget(canvasApp(Align(alignment: Alignment.bottomCenter, child: CanvasTimeline(controller: c, showBar: true, height: timelineHeight + 160))));
       await tester.pumpAndSettle();
       var toggle = find.byKey(const ValueKey("vectorLanesToggle"));
       expect(toggle, findsOneWidget);

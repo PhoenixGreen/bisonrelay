@@ -249,8 +249,8 @@ void main() {
         (c) => Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               sidebar(c),
               Expanded(
-                child:
-                    CanvasTimeline(controller: c, height: timelineHeight + 120),
+                child: CanvasTimeline(
+                    controller: c, showBar: true, height: timelineHeight + 120),
               ),
             ]));
     expect(c.document.elements, isEmpty,
@@ -300,8 +300,8 @@ void main() {
         (c) => Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               sidebar(c),
               Expanded(
-                child:
-                    CanvasTimeline(controller: c, height: timelineHeight + 120),
+                child: CanvasTimeline(
+                    controller: c, showBar: true, height: timelineHeight + 120),
               ),
             ]));
     var empty = tester.getRect(find.byKey(const ValueKey("lane-new")));

@@ -161,6 +161,9 @@ class CanvasPreferences extends ChangeNotifier {
       read: (t) => t.split(","), write: (v) => v.join(","), byText: true);
   final _mixerLook = _SavedText.string("canvasMixerLook");
   final _returnsShown = _SavedBool("canvasReturnsShown", true);
+  final _timelineSnap = _SavedBool("canvasTimelineSnap", false);
+  final _timelineTrackpad = _SavedBool("canvasTimelineTrackpad", false);
+  final _barBelow = _SavedBool("canvasTimelineBarBelow", false);
   final _studioLook = _SavedText<StudioLook>(
       "canvasStudioLook", StudioLook.studio,
       read: StudioLook.fromName, write: (v) => v.name);
@@ -232,6 +235,9 @@ class CanvasPreferences extends ChangeNotifier {
     _mixerBands,
     _mixerLook,
     _returnsShown,
+    _timelineSnap,
+    _timelineTrackpad,
+    _barBelow,
     _studioLook,
     _studioOverrides,
     _publish,
@@ -443,6 +449,21 @@ class CanvasPreferences extends ChangeNotifier {
   /// returnsShown is whether the mixer's return strips are showing.
   bool get returnsShown => _returnsShown.value;
   set returnsShown(bool value) => _change(_returnsShown, value);
+
+  /// timelineSnap is whether a sound dragged on the timeline snaps
+  /// (CanvasController.snapping).
+  bool get timelineSnap => _timelineSnap.value;
+  set timelineSnap(bool value) => _change(_timelineSnap, value);
+
+  /// timelineTrackpad is whether a sideways swipe or the wheel moves the
+  /// timeline: the play bar's Scrubbing (CanvasController.trackpadScrolls).
+  bool get timelineTrackpad => _timelineTrackpad.value;
+  set timelineTrackpad(bool value) => _change(_timelineTrackpad, value);
+
+  /// barBelow is whether the play bar sits under the panels rather than
+  /// over them (CanvasController.barBelow).
+  bool get barBelow => _barBelow.value;
+  set barBelow(bool value) => _change(_barBelow, value);
 
   // --------------------------------------------------------------------------
   // Studio colours

@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 
 import 'support/canvas_app.dart';
 import 'support/canvas_audio_fake.dart';
+import 'support/canvas_timeline_menus.dart';
 
 // canvas_screen_kept_test.dart is what the Canvas page remembers from one
 // run of the app to the next (ui/screen/kept_view.dart), tested on the page
@@ -216,6 +217,47 @@ void main() {
     addTearDown(next.dispose);
     await show(tester, next, prefs);
     expect(painter().inputs.guides.rulers, const CanvasRulers(left: true));
+    await leave(tester, next, prefs);
+  });
+
+  testWidgets(
+      "the play bar's snapping, scrubbing and place, set from it, are kept "
+      "as the person's", (tester) async {
+    var c = _controller();
+    addTearDown(c.dispose);
+    // The panels under the canvas showing, and the bar with them.
+    var prefs = preferences()..timeline = true;
+    await show(tester, c, prefs);
+    expect((c.snapping, c.trackpadScrolls, c.barBelow), (false, false, false));
+
+    for (var item in ["snap-item", "trackpadScrolls-item", "barBelow"]) {
+      await tapTimelineItem(tester, item);
+    }
+    expect((c.snapping, c.trackpadScrolls, c.barBelow), (true, true, true));
+    await tester.pump(const Duration(seconds: 1));
+    expect((
+      prefs.timelineSnap,
+      prefs.timelineTrackpad,
+      prefs.barBelow
+    ), (
+      true,
+      true,
+      true
+    ), reason: "written down a moment after");
+    await leave(tester, c, prefs);
+
+    // The next run of the app opens with them as they were.
+    var next = _controller();
+    addTearDown(next.dispose);
+    await show(tester, next, prefs);
+    expect((next.snapping, next.trackpadScrolls, next.barBelow),
+        (true, true, true));
+    expect(find.byKey(const ValueKey("lit-snap")), findsOneWidget);
+
+    // Turned off again, they stay off.
+    await tapTimelineItem(tester, "snap-item");
+    await tester.pump(const Duration(seconds: 1));
+    expect(prefs.timelineSnap, isFalse);
     await leave(tester, next, prefs);
   });
 

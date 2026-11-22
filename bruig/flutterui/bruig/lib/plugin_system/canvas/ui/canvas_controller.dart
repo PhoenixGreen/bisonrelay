@@ -582,9 +582,6 @@ class CanvasController extends ChangeNotifier {
   /// the Scenes strip's own pick passes it by (see pickJoin).
   bool _joinPress = false;
 
-  /// _previewJoin is the join whose transition is being previewed (see
-  /// previewTransitionAfter), or null.
-  int? _previewJoin;
   Set<String> _pickedSceneWith = const {};
 
   // ---- controller/chain_panel.dart ----------------------------------------
@@ -610,12 +607,6 @@ class CanvasController extends ChangeNotifier {
   bool _barBelow = false;
 
   bool _trackpadScrolls = false;
-
-  /// timelineZoomAsked counts the play bar's requests to zoom the timeline
-  /// by timelineZoomFactor (0: to the whole scene). With no timeline open,
-  /// a request is dropped.
-  int timelineZoomAsked = 0;
-  double timelineZoomFactor = 1;
 
   DockLayout _dock = const DockLayout();
 
@@ -679,9 +670,6 @@ class CanvasController extends ChangeNotifier {
   /// hoveredButton is the button under the pointer, so hover colours show.
   String? hoveredButton;
 
-  Timer? _playback;
-  bool get playing => _playback != null;
-
   bool _opened = false;
 
   /// opened is whether this session has been shown. The session outlives
@@ -695,6 +683,54 @@ class CanvasController extends ChangeNotifier {
 
   /// markOpened is called by the page as it builds.
   void markOpened() => _opened = true;
+
+  /// leavePage is the Canvas page left. The session outlives the page, but
+  /// nothing in it may go on with no page to see or stop it: the playhead
+  /// (each frame would cue sounds again), a game and its keys or a stop
+  /// waiting for one, the slots, a voice, the counters' clock, an arpeggio
+  /// or a held note, nor the pictures the renderer kept.
+  void leavePage() {
+    if (gaming) gaming = false;
+    _endWait();
+    if (playing) pause();
+    motionPlayer.clear();
+    _triggeredOff.clear();
+    stopHearing();
+    _counterTimer?.cancel();
+    _counterTimer = null;
+    for (var MapEntry(key: id, value: live) in _arps.entries) {
+      live.timer?.cancel();
+      if ((live.sounding, _instrumentHeld(id)) case (var k?, var e?)) {
+        audio.noteOff(CanvasController._channelOf(e), k);
+      }
+    }
+    _arps.clear();
+    for (var MapEntry(key: id, value: held) in _instruments.sounded.entries) {
+      if (_instrumentHeld(id) case var e?) {
+        var channel = CanvasController._channelOf(e);
+        for (var k in held.values.expand((keys) => keys)) {
+          audio.noteOff(channel, k);
+        }
+      }
+    }
+    _instruments.sounded.clear();
+    _soundCount.clear();
+    // Nothing is held on a page left: a later key-up releases nothing, and
+    // the pedal is up when it comes back.
+    _instruments.held.clear();
+    _instruments.pressedOn.clear();
+    _instruments.take.clear();
+    // The pedal let up on every instrument, or a page left with it down
+    // would come back holding every released key.
+    for (var e in _document.elements) {
+      if (e is AudioElement && e.instrument != null) {
+        _audio?.control(CanvasController._channelOf(e), MidiControl.sustain, 0);
+      }
+    }
+    stopAudio();
+    clearRenderCaches();
+    images.release();
+  }
 
   /// folder and name are where this document is saved, or null when it has
   /// never been saved. Save writes back to them; Save As changes them.
@@ -973,29 +1009,10 @@ class CanvasController extends ChangeNotifier {
   final ValueNotifier<String?> dataStudio = ValueNotifier(null);
   String? dataStudioView;
 
-  /// _rangeEnd is the frame a sheet's range of bars stops playing at (see
-  /// playSheet), or null.
-  int? _rangeEnd;
-
   /// studio3dElement is the 3D character the Studio was opened for, if any.
   String? studio3dElement;
 
   Set<String> _offCanvas = const {};
-
-  // ---- scenes -------------------------------------------------------------
-
-  bool _playAll = false;
-
-  int? _previewAt;
-
-  /// _previewEnd is where the preview stops, so a transition does not run on.
-  int _previewEnd = 0;
-
-  /// _previewFrom is the scene the preview started on, returned to after it.
-  int? _previewFrom;
-
-  /// _previewFromMaster is whether the master was open as the preview began.
-  bool _previewFromMaster = false;
 
   // ------------------------------------------------------------------------
   // Cues -- see model/canvas_cues.dart.
@@ -1044,6 +1061,59 @@ class CanvasController extends ChangeNotifier {
   // Playback
   // ------------------------------------------------------------------------
 
+  // What is playing and how, together: the timer, Play running every scene
+  // or a join's transition watched, one element's animation previewed, a
+  // range to stop at, the slots playing on their own and the session's
+  // clocks, recording, and the clock a test stands in. Set and read in
+  // controller/playback.dart above all. A sheet slowed or practised keeps
+  // its own (_slowSheet with the instruments, _practice under Practising).
+
+  Timer? _playback;
+  bool get playing => _playback != null;
+
+  bool _playAll = false;
+
+  int? _previewAt;
+
+  /// _previewEnd is where the preview stops, so a transition does not run on.
+  int _previewEnd = 0;
+
+  /// _previewFrom is the scene the preview started on, returned to after it.
+  int? _previewFrom;
+
+  /// _previewFromMaster is whether the master was open as the preview began.
+  bool _previewFromMaster = false;
+
+  /// _previewJoin is the join whose transition is being previewed (see
+  /// previewTransitionAfter), or null.
+  int? _previewJoin;
+
+  ({String id, int frame})? _previewing;
+  int _previewingEnd = 0;
+
+  /// _rangeEnd is the frame a sheet's range of bars stops playing at (see
+  /// playSheet), or null.
+  int? _rangeEnd;
+
+  bool _sessionOnly = false;
+
+  /// _sessionSeconds is the slots' own clock, playing on their own.
+  double _sessionSeconds = 0;
+
+  /// _sessionClock is the session's clock while the timeline plays: from the
+  /// playhead at Play, one frame on per frame played. A Loop, a Jump or a
+  /// new scene does not move it back, so clips waiting for a loop's end
+  /// come and playing ones end.
+  double _sessionClock = 0;
+
+  bool _recording = false;
+
+  /// clockForTest stands in for the playback clock, in microseconds since
+  /// Play, and tickClockForTest is a tick of the timer against it -- so a
+  /// test can make a tick late without waiting for one to be.
+  @visibleForTesting
+  int Function()? clockForTest;
+
   set frame(int value) {
     var next = value.clamp(0, math.max(0, _document.frames - 1)).toInt();
     // A playhead moved by hand ends a transition it was stepped into (see
@@ -1074,12 +1144,6 @@ class CanvasController extends ChangeNotifier {
   ];
 
   final Set<String> _narrowStrips = {};
-
-  /// clockForTest stands in for the playback clock, in microseconds since
-  /// Play, and tickClockForTest is a tick of the timer against it -- so a
-  /// test can make a tick late without waiting for one to be.
-  @visibleForTesting
-  int Function()? clockForTest;
 
   // ------------------------------------------------------------------------
   // Live counters
@@ -1194,8 +1258,6 @@ class CanvasController extends ChangeNotifier {
   /// _arps are the arpeggiators playing live, by element id.
   final Map<String, _LiveArp> _arps = {};
 
-  bool _recording = false;
-
   final Map<String, List<MidiNote>> _taken = {};
 
   // ------------------------------------------------------------------------
@@ -1232,17 +1294,6 @@ class CanvasController extends ChangeNotifier {
   /// gameClockForTest stands in for [_gameClock], in microseconds.
   @visibleForTesting
   int Function()? gameClockForTest;
-
-  bool _sessionOnly = false;
-
-  /// _sessionSeconds is the slots' own clock, playing on their own.
-  double _sessionSeconds = 0;
-
-  /// _sessionClock is the session's clock while the timeline plays: from the
-  /// playhead at Play, one frame on per frame played. A Loop, a Jump or a
-  /// new scene does not move it back, so clips waiting for a loop's end
-  /// come and playing ones end.
-  double _sessionClock = 0;
 
   /// _offTimeline are the channels that have left the timeline for their
   /// slots, as Ableton's tracks do: silent on the timeline from a clip's
@@ -1767,9 +1818,6 @@ class CanvasController extends ChangeNotifier {
         Character3dElement e => e.copyWith(animation: animation),
         _ => element,
       };
-
-  ({String id, int frame})? _previewing;
-  int _previewingEnd = 0;
 
   // ------------------------------------------------------------------------
   // Loading and saving

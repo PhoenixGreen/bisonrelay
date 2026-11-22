@@ -30,7 +30,7 @@ Future<CanvasController> pump(WidgetTester tester) async {
   c.placeClip("a", clip, seconds: 2);
   await tester.pumpWidget(canvasApp(Align(
       alignment: Alignment.bottomCenter,
-      child: CanvasTimeline(controller: c, height: 400))));
+      child: CanvasTimeline(controller: c, showBar: true, height: 400))));
   await tester.pumpAndSettle();
   return c;
 }
@@ -191,7 +191,7 @@ void main() {
     }
     await tester.pumpWidget(canvasApp(Align(
         alignment: Alignment.bottomCenter,
-        child: CanvasTimeline(controller: c, height: 500))));
+        child: CanvasTimeline(controller: c, showBar: true, height: 500))));
     await tester.pumpAndSettle();
     Offset on(String row, double seconds) {
       var box = tester.getRect(find.byKey(ValueKey("motionLanesPaint-$row")));

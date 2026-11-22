@@ -54,6 +54,9 @@ void main() {
     expect(prefs.mixerBands, isEmpty);
     expect(prefs.mixerLook, "");
     expect(prefs.returnsShown, isTrue);
+    expect(prefs.timelineSnap, isFalse);
+    expect(prefs.timelineTrackpad, isFalse);
+    expect(prefs.barBelow, isFalse);
     expect(prefs.studioLook, StudioLook.studio);
     expect(prefs.studioOverrides, isEmpty);
     expect(prefs.publish, isEmpty);
@@ -96,6 +99,10 @@ void main() {
       "canvasMixerBands": "shown,minimised,hidden",
       "canvasMixerLook": "wide",
       "canvasReturnsShown": false,
+      // Under the keys the play bar wrote them to itself.
+      "canvasTimelineSnap": true,
+      "canvasTimelineTrackpad": true,
+      "canvasTimelineBarBelow": true,
       "canvasStudioLook": "theme",
       "canvasStudioColours": jsonEncode({role.name: 0xFF102030}),
       "canvasPublish": jsonEncode({"format": "png"}),
@@ -128,6 +135,9 @@ void main() {
     expect(prefs.mixerBands, ["shown", "minimised", "hidden"]);
     expect(prefs.mixerLook, "wide");
     expect(prefs.returnsShown, isFalse);
+    expect(prefs.timelineSnap, isTrue);
+    expect(prefs.timelineTrackpad, isTrue);
+    expect(prefs.barBelow, isTrue);
     expect(prefs.studioLook, StudioLook.theme);
     expect(prefs.studioOverrides, {role: const Color(0xFF102030)});
     expect(prefs.publish, {"format": "png"});
@@ -181,6 +191,9 @@ void main() {
     prefs.setStockFilter(StockSource.jamendo, "order", "popular");
     prefs.setStockFilter(StockSource.jamendo, "speed", "high");
     prefs.rulers = const CanvasRulers(top: true, right: true);
+    prefs.timelineSnap = true;
+    prefs.timelineTrackpad = true;
+    prefs.barBelow = true;
 
     var stored = await SharedPreferences.getInstance();
     expect(stored.getString("canvasAssetViews"), '{"picture":"list"}');
@@ -188,6 +201,9 @@ void main() {
     expect(stored.getString("canvasStockFilters"),
         '{"jamendo":{"order":"popular","speed":"high"}}');
     expect(stored.getString("canvasRulers"), '{"t":true,"r":true}');
+    expect(stored.getBool("canvasTimelineSnap"), isTrue);
+    expect(stored.getBool("canvasTimelineTrackpad"), isTrue);
+    expect(stored.getBool("canvasTimelineBarBelow"), isTrue);
 
     var next = CanvasPreferences();
     addTearDown(next.dispose);
@@ -210,6 +226,9 @@ void main() {
       StockSource.jamendo: {"order": "popular", "speed": "high"},
     });
     expect(next.rulers, const CanvasRulers(top: true, right: true));
+    expect(next.timelineSnap, isTrue);
+    expect(next.timelineTrackpad, isTrue);
+    expect(next.barBelow, isTrue);
 
     next.clearStudioColours();
     var last = CanvasPreferences();

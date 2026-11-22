@@ -78,10 +78,20 @@ extension CanvasPlayback on CanvasController {
     }
   }
 
-  /// _runsScenes is whether the transport works across the scenes: Play all
-  /// scenes, on a scene rather than the master.
-  bool get _runsScenes =>
-      _playAll && _document.hasScenes && !_document.editingMaster;
+  /// playsEveryScene is whether Play runs along every scene, one after
+  /// another, rather than the scene in front: Play all, on a canvas with
+  /// scenes. The timeline is laid along the whole run while it does.
+  bool get playsEveryScene => _playAll && _document.hasScenes;
+
+  /// _runsScenes is whether the transport's steps (stepFrame, toStart, Stop)
+  /// go on from one scene into the next: [playsEveryScene], on a scene. Not
+  /// on the master, whose frames are the run's already.
+  bool get _runsScenes => playsEveryScene && !_document.editingMaster;
+
+  /// canPlay is whether Play has more than one frame to run: the whole run
+  /// while it plays every scene, else the scene.
+  bool get canPlay =>
+      (playsEveryScene ? _document.playFrames : _document.frames) > 1;
 
   void play() {
     // A stop waiting for an action is waited for no longer.
@@ -112,8 +122,8 @@ extension CanvasPlayback on CanvasController {
     // The whole document: the playhead runs through the sequence, and the
     // editor follows it to each scene, so panel, timeline and canvas agree.
     // Not while a game plays: the game says which scene is showing.
-    if (_playAll && _document.hasScenes && !gaming) {
-      if (_document.playFrames <= 1) return;
+    if (playsEveryScene && !gaming) {
+      if (!canPlay) return;
       _previewEnd = _document.playFrames - 1;
       // From the playhead, wherever it has been put: the run's frame under
       // it on the ruler. At the very end, from the start.
@@ -168,7 +178,7 @@ extension CanvasPlayback on CanvasController {
   void _tick(int elapsed) {
     var rate = math.max(1, _document.frameRate);
     var raw = (clockForTest?.call() ?? elapsed) / 1000000;
-    // Practising, the clock runs at the tempo set -- see practiceRate.
+    // Practising, the clock runs at the tempo set -- see _clockRate.
     var seconds = raw * _clockRate + _playbackState.clockShift;
     // Only the slots: their clock goes on, the playhead does not.
     if (_sessionOnly) {
@@ -421,7 +431,7 @@ extension CanvasPlayback on CanvasController {
   /// left -- see CanvasPreferences.mixerBands -- without notifying, for the
   /// screen to call as it opens. A band left of an unknown name keeps its
   /// own; at least one band is always shown.
-  void restoreMixer(List<String> bands, bool returns) {
+  void restoreMixer(List<String> bands, {required bool returns}) {
     for (var (i, s) in MixerSection.values.indexed) {
       if (i >= bands.length) break;
       var state = BandState.values.where((b) => b.name == bands[i]).firstOrNull;
@@ -680,11 +690,11 @@ extension CanvasPlayback on CanvasController {
 
   /// loopRange is the loop's start and length in frames: the one set, or
   /// where one would start.
-  (int, int) get loopRange {
+  ({int from, int length}) get loopRange {
     var (from, length) = _playbackState.loop ?? _defaultLoop();
     var frames = math.max(1, _document.frames);
     from = from.clamp(0, frames - 1).toInt();
-    return (from, length.clamp(1, frames - from).toInt());
+    return (from: from, length: length.clamp(1, frames - from).toInt());
   }
 
   void setLoop(int from, int length) {
@@ -849,7 +859,7 @@ extension CanvasPlayback on CanvasController {
     // Round the loop: from its end back to its start -- but only from inside
     // it, so a playhead put past the loop plays on from there.
     if (_playbackState.looping) {
-      var (from, length) = loopRange;
+      var (:from, :length) = loopRange;
       var end = from + length;
       if (_frame < end && next >= end) next = from;
     }
@@ -1105,7 +1115,7 @@ extension CanvasPlayback on CanvasController {
     // press does (see _gamePress), so a scene gone to starts its sounds and
     // clips, a restart begins the game again, and shown or hidden is the
     // game's.
-    if (_game case var run? when gaming) {
+    if (_game case var run?) {
       switch (action.kind) {
         case ButtonActionKind.goToScene:
           _gameScene(run, action.elementId);
@@ -1201,7 +1211,8 @@ extension CanvasPlayback on CanvasController {
 /// uses it. The controller holds one, as _playbackState; most fields are read and
 /// set through CanvasPlayback's getters and setters above, which say what each is.
 class _PlaybackState {
-  /// playheadOnly is set only while notifyingPlayhead runs.
+  /// playheadOnly is set only while _notifyPlayhead tells of a frame of
+  /// play: see notifyingPlayhead.
   bool playheadOnly = false;
 
   /// loopCounts is how often each loop marker has fired, for repeat limits,
@@ -1236,20 +1247,30 @@ class _PlaybackState {
   /// playedFrom is the scene and frame the last Play started from.
   (int, int)? playedFrom;
 
+  /// metronome is the play bar's switch: see CanvasPlayback.metronome.
   bool metronome = false;
 
+  /// bandStates is how each mixer band shows: see bandState.
   final Map<MixerSection, BandState> bandStates = {
     for (var s in MixerSection.values) s: BandState.shown,
   };
 
+  /// flippedRows are the timeline rows whose own arrow turned their fold
+  /// from what the channel height says, and flippedRowsAt what they were
+  /// turned under (folder, name and channel height): any other, and they
+  /// are let go. See rowFolded.
   final Set<String> flippedRows = {};
 
   Object? flippedRowsAt;
 
+  /// returnsShown is whether the mixer shows its returns: see returnsShown.
   bool returnsShown = true;
 
+  /// followPlayhead is whether the timeline scrolls with the playhead.
   bool followPlayhead = CanvasPlayback.followsAtFirst;
 
+  /// looping and loop are the editor's loop: whether play goes round, and
+  /// the start and length set, if one has been (see loopRange).
   bool looping = false;
 
   (int, int)? loop;
@@ -1263,11 +1284,14 @@ class _PlaybackState {
   /// each was last read, so a tick advances by the time actually passed.
   final Set<String> countersRunning = {};
 
+  /// counterTicks counts the counters' moves: see counterTicks.
   int counterTicks = 0;
 
   /// motionPainted is the last slot-clock frame painted, slots alone playing.
   int motionPainted = -1;
 
+  /// motionSlots, mixerRailFolded and the cue widths are how the mixer and
+  /// the Slots panel look, kept as mixerLook: see each getter.
   BandState motionSlots = BandState.shown;
 
   bool mixerRailFolded = false;
@@ -1282,6 +1306,8 @@ class _PlaybackState {
 
   double slotsMasterCueWidth = 120;
 
+  /// slotsPanelSize and slotsPanelNarrow are how the Slots panel's slots
+  /// are drawn: see their getters.
   int slotsPanelSize = 1;
 
   bool slotsPanelNarrow = false;

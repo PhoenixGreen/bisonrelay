@@ -53,7 +53,7 @@ void main() {
         onMaster: true,
       ));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       expect(find.byKey(const ValueKey("canvasFrames")), findsNothing,
@@ -74,7 +74,7 @@ void main() {
       // now sit on.
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       expect(find.text("Still"), findsOneWidget);
@@ -100,7 +100,7 @@ void main() {
       var controller = CanvasController(const CanvasDocument(frames: 40));
       addTearDown(controller.dispose);
       controller.frame = 12;
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
 
       var playhead = find.byKey(const ValueKey("transportPosition"));
       var length = find.byKey(const ValueKey("canvasFrames"));
@@ -133,7 +133,7 @@ void main() {
           CanvasController(const CanvasDocument(frames: maxFrameCount));
       addTearDown(controller.dispose);
       controller.frame = maxFrameCount - 1;
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       expect(tester.takeException(), isNull);
@@ -155,7 +155,7 @@ void main() {
       var controller = CanvasController(const CanvasDocument(frames: 40));
       addTearDown(controller.dispose);
       controller.frame = 12;
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       await tester.tap(find.byKey(const ValueKey("canvasFrameRate")));
@@ -184,7 +184,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
 
       var playAt = tester.getTopLeft(find.byKey(const ValueKey("play")));
       controller.setKeyframe(element.id, const Keyframe(frame: 0));
@@ -210,7 +210,7 @@ void main() {
       var controller = CanvasController(const CanvasDocument(frames: 30));
       addTearDown(controller.dispose);
       controller.frame = 12;
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
 
       // The Marker menu is a panel (Ken, 2026-11-08): five buttons say what
       // the marker does; the fields for the one chosen are under them.
@@ -262,7 +262,7 @@ void main() {
     testWidgets("a drag away from the marks still scrubs", (tester) async {
       var (controller, _) = withPath();
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
 
       var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
@@ -291,6 +291,7 @@ void main() {
           alignment: Alignment.bottomCenter,
           child: CanvasTimeline(
             controller: c,
+            showBar: true,
             height: height,
             onResize: (h) =>
                 set(() => height = h.clamp(timelineHeight, 600).toDouble()),

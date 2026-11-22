@@ -38,7 +38,7 @@ import 'package:bruig/plugin_system/canvas/ui/screen/canvas_dock.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/kept_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/publish_sheet.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/page_keys.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/customise_sidebars.dart';
@@ -538,8 +538,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   Widget _canvasPage(BuildContext context) {
     var theme = ThemeNotifier.of(context);
 
-    // Space plays and stops from anywhere on this page: see CanvasSpaceBar.
-    var content = CanvasSpaceBar(
+    // The page's keys, wherever the focus is on it: see CanvasPageKeys.
+    var content = CanvasPageKeys(
         controller: _controller,
         child: contentAreaFrame(theme, _content(theme)));
 
@@ -563,7 +563,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (_sidebars.mode == SidebarMode.above && !narrow && _aboveAllowed) {
       return _framed(
           context,
-          CanvasSpaceBar(
+          CanvasPageKeys(
               controller: _controller,
               child: contentAreaFrame(theme,
                   _content(theme, beside: _besideSidebar(theme, sidebar)))));

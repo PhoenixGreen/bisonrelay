@@ -229,7 +229,8 @@ void main() {
     c.placeClip("a", bob, seconds: 1);
     c.pinLayer("a", 1, true);
     setTestScreen(tester, const Size(1400, 800));
-    await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+    await tester.pumpWidget(
+        host(CanvasTimeline(controller: c, showBar: true, height: 500)));
     await tester.pumpAndSettle();
     expect(c.laneSize, 1);
     expect(find.text("2 layers"), findsWidgets);
@@ -437,7 +438,8 @@ void main() {
       addTearDown(c.dispose);
       c.ensureElementSound("a");
       setTestScreen(tester, const Size(1400, 800));
-      await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+      await tester.pumpWidget(
+          host(CanvasTimeline(controller: c, showBar: true, height: 500)));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("motionRow-a")),
           buttons: kSecondaryButton);
@@ -566,7 +568,8 @@ void main() {
       var clip = c.newClip("a", kind: MotionKind.action);
       var placed = c.placeClip("a", clip, seconds: 1);
       setTestScreen(tester, const Size(1400, 800));
-      await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+      await tester.pumpWidget(
+          host(CanvasTimeline(controller: c, showBar: true, height: 500)));
       await tester.pumpAndSettle();
       return (c, placed);
     }
@@ -719,7 +722,8 @@ void main() {
       addTearDown(c.dispose);
       c.ensureElementSound("a");
       setTestScreen(tester, const Size(1400, 800));
-      await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+      await tester.pumpWidget(
+          host(CanvasTimeline(controller: c, showBar: true, height: 500)));
       await tester.pumpAndSettle();
       double rowOf(String key) =>
           tester.getSize(find.byKey(ValueKey("channelStrip-$key"))).height;

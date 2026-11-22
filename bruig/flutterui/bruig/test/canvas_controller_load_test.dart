@@ -127,7 +127,8 @@ void main() {
 
     c.load(const CanvasDocument(frames: 200));
     expect(c.looping, isFalse);
-    expect(c.loopRange, (0, 200), reason: "where a first press would put it");
+    expect(c.loopRange, (from: 0, length: 200),
+        reason: "where a first press would put it");
   });
 
   group("opening another canvas while the last plays", () {

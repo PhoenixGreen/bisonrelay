@@ -16,7 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/page_keys.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:flutter/gestures.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
@@ -107,7 +107,8 @@ void main() {
       setTestScreen(tester, const Size(1200, 700));
       await tester.pumpWidget(canvasApp(Align(
           alignment: Alignment.bottomCenter,
-          child: CanvasTimeline(controller: c, height: timelineHeight + 120))));
+          child: CanvasTimeline(
+              controller: c, showBar: true, height: timelineHeight + 120))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -423,7 +424,7 @@ void main() {
       }
 
       // Off the frames shown, there is none.
-      c.askTimelineZoom(4);
+      await zoomTimeline(tester, 4, Offset(at, strip.top + 5));
       await tester.pumpAndSettle();
       c.frame = 99;
       await tester.pump();
@@ -523,8 +524,8 @@ void main() {
       expect(await frameAtEnd(tester, c), 99);
 
       c.frame = 0;
-      c.askTimelineZoom(2);
-      await tester.pump();
+      var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+      await zoomTimeline(tester, 2, Offset(strip.left + 1, strip.center.dy));
       var end = await frameAtEnd(tester, c);
       expect(end, inInclusiveRange(45, 55), reason: "half the frames");
 
@@ -550,8 +551,8 @@ void main() {
       var c = await show(tester);
       await tapTimelineItem(tester, "trackpadScrolls-item");
       c.frame = 0;
-      c.askTimelineZoom(2);
-      await tester.pump();
+      var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+      await zoomTimeline(tester, 2, Offset(strip.left + 1, strip.center.dy));
       var end = await frameAtEnd(tester, c);
 
       var play = tester.getCenter(find.byKey(const ValueKey("play")));
@@ -600,7 +601,7 @@ void main() {
       addTearDown(c.dispose);
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: CanvasSpaceBar(
+          body: CanvasPageKeys(
             controller: c,
             child: Column(children: [
               TextButton(
@@ -621,7 +622,7 @@ void main() {
       var pressed = 0;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: CanvasSpaceBar(
+          body: CanvasPageKeys(
             controller: c,
             child: TextButton(
                 key: const ValueKey("button"),
@@ -659,7 +660,7 @@ void main() {
       addTearDown(c.dispose);
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: CanvasSpaceBar(
+          body: CanvasPageKeys(
             controller: c,
             child: TextButton(
                 key: const ValueKey("button"),
@@ -693,7 +694,7 @@ void main() {
           body: Row(children: [
             const SizedBox(width: 200, child: TextField(key: ValueKey("chat"))),
             Expanded(
-              child: CanvasSpaceBar(
+              child: CanvasPageKeys(
                 controller: c,
                 child:
                     Container(key: const ValueKey("empty"), color: Colors.grey),
@@ -878,12 +879,14 @@ void main() {
         WidgetTester tester, List<CanvasElement> elements) async {
       var c = made(elements);
       setTestScreen(tester, const Size(1200, 700));
-      await tester.pumpWidget(canvasApp(CanvasSpaceBar(
+      await tester.pumpWidget(canvasApp(CanvasPageKeys(
           controller: c,
           child: Align(
               alignment: Alignment.bottomCenter,
               child: CanvasTimeline(
-                  controller: c, height: timelineHeight + 160)))));
+                  controller: c,
+                  showBar: true,
+                  height: timelineHeight + 160)))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -1203,12 +1206,14 @@ void main() {
           audioEngine: FakeEngine(const {song: 10}));
       addTearDown(c.dispose);
       setTestScreen(tester, const Size(1200, 700));
-      await tester.pumpWidget(canvasApp(CanvasSpaceBar(
+      await tester.pumpWidget(canvasApp(CanvasPageKeys(
           controller: c,
           child: Align(
               alignment: Alignment.bottomCenter,
               child: CanvasTimeline(
-                  controller: c, height: timelineHeight + 160)))));
+                  controller: c,
+                  showBar: true,
+                  height: timelineHeight + 160)))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -1342,8 +1347,8 @@ void main() {
       addTearDown(c.dispose);
       await tester.pumpWidget(canvasApp(Align(
           alignment: Alignment.bottomCenter,
-          child:
-              CanvasTimeline(controller: c, height: timelineCollapsedHeight))));
+          child: CanvasTimeline(
+              controller: c, showBar: true, height: timelineCollapsedHeight))));
       await tester.pumpAndSettle();
       expect(tester.getSize(find.byType(CanvasTimeline)).height,
           closeTo(timelineCollapsedHeight, 0.5));

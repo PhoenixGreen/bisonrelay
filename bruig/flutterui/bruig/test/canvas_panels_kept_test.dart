@@ -107,7 +107,8 @@ void main() {
       var c = _make();
       addTearDown(c.dispose);
       // Ken's bands: the mixer minimised, the others hidden.
-      c.restoreMixer(["hidden", "hidden", "minimised", "hidden"], false);
+      c.restoreMixer(["hidden", "hidden", "minimised", "hidden"],
+          returns: false);
       setTestScreen(tester, const Size(1300, 400));
       Future<void> show() => tester.pumpWidget(
             canvasApp(Align(

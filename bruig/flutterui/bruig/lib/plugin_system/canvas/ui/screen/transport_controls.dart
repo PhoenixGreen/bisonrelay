@@ -8,20 +8,20 @@ import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// transport_controls.dart is the timeline control bar's pieces: boxes,
-// position, tap tempo, readouts that become fields, menus and the engine
-// meter; canvas_timeline.dart lays the bar out. Each box is sized to the
-// widest thing it can show, so nothing is cut or jumps as the playhead moves.
+// transport_controls.dart is the play bar's pieces: boxes, buttons, the
+// position, tap tempo and readouts that become fields; play_bar.dart lays
+// the bar out. Each box is sized to the widest thing it can show, so nothing
+// is cut or jumps as the playhead moves.
 
 const _figures = [FontFeature.tabularFigures()];
 
-/// fitWidth is how wide [text] is in [style] over the text style in force
+/// _textWidth is how wide [text] is in [style] over the text style in force
 /// at [context], rounded up.
 ///
 /// Kept: the readouts ask on every build, a frame at a time in play, and
 /// the answer is the same text's width until the text, the style or the
 /// text size changes.
-double fitWidth(BuildContext context, String text, TextStyle style) {
+double _textWidth(BuildContext context, String text, TextStyle style) {
   var merged = DefaultTextStyle.of(context).style.merge(style);
   var scaler = MediaQuery.textScalerOf(context);
   var key = (text, merged, scaler);
@@ -131,22 +131,46 @@ class TransportButton extends StatelessWidget {
   }
 }
 
-/// TransportDivider is the thin line between the parts of one box.
-class TransportDivider extends StatelessWidget {
-  const TransportDivider({super.key});
+/// _OpensAField is a readout that becomes a field when pressed, for
+/// TransportReadout and TransportPosition: the field opens holding what the
+/// readout said, all of it picked to type over, takes the keyboard once it
+/// is built, and turns back into the readout when the keyboard leaves it.
+mixin _OpensAField<T extends StatefulWidget> on State<T> {
+  bool _editing = false;
+  final TextEditingController _text = TextEditingController();
+  final FocusNode _focus = FocusNode();
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: 1,
-        height: controlHeight - 8,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        color: ThemeNotifier.of(context).colors.outlineVariant,
-      );
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _editing) setState(() => _editing = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// _openField turns the readout into the field, holding [text]. Called
+  /// inside setState.
+  void _openField(String text) {
+    _editing = true;
+    _text.text = text;
+    _pickAll();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+  }
+
+  void _pickAll() => _text.selection =
+      TextSelection(baseOffset: 0, extentOffset: _text.text.length);
 }
 
 /// TransportReadout is a small box with a word and a number; pressed, it
 /// becomes a field, and what is typed goes to [onSubmit], which says
-/// whether it made sense.
+/// whether it made sense: if not, the field stays open to be put right.
 class TransportReadout extends StatefulWidget {
   final String caption;
   final String value;
@@ -173,40 +197,24 @@ class TransportReadout extends StatefulWidget {
   State<TransportReadout> createState() => _TransportReadoutState();
 }
 
-class _TransportReadoutState extends State<TransportReadout> {
-  bool _editing = false;
-  final TextEditingController _text = TextEditingController();
-  final FocusNode _focus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _focus.addListener(() {
-      if (!_focus.hasFocus && _editing) setState(() => _editing = false);
-    });
-  }
-
-  @override
-  void dispose() {
-    _text.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
+class _TransportReadoutState extends State<TransportReadout>
+    with _OpensAField {
   void _edit() {
     if (widget.onSubmit == null) return;
-    setState(() {
-      _editing = true;
-      _text.text = widget.value;
-      _text.selection =
-          TextSelection(baseOffset: 0, extentOffset: _text.text.length);
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    setState(() => _openField(widget.value));
   }
 
+  /// _submit hands [typed] to onSubmit. Taken, the field closes; not, it
+  /// stays open with all of it picked, so a mistake is seen and typed over
+  /// rather than vanishing.
   void _submit(String typed) {
-    widget.onSubmit?.call(typed);
-    setState(() => _editing = false);
+    if (widget.onSubmit?.call(typed) ?? true) {
+      _focus.unfocus();
+      setState(() => _editing = false);
+      return;
+    }
+    setState(_pickAll);
+    _focus.requestFocus();
   }
 
   @override
@@ -222,8 +230,8 @@ class _TransportReadoutState extends State<TransportReadout> {
         fontWeight: FontWeight.w600,
         letterSpacing: 0.4,
         color: colors.onSurfaceVariant);
-    var width = math.max(fitWidth(context, widget.widest, style),
-            fitWidth(context, widget.value, style)) +
+    var width = math.max(_textWidth(context, widget.widest, style),
+            _textWidth(context, widget.value, style)) +
         4;
     Widget value = _editing
         ? SizedBox(
@@ -243,6 +251,9 @@ class _TransportReadoutState extends State<TransportReadout> {
                     isDense: true,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero),
+                // Enter does not let go of the keyboard by itself: _submit
+                // decides whether the field closes.
+                onEditingComplete: () {},
                 onSubmitted: _submit,
               ),
             ),
@@ -310,27 +321,10 @@ class TransportPosition extends StatefulWidget {
   State<TransportPosition> createState() => _TransportPositionState();
 }
 
-class _TransportPositionState extends State<TransportPosition> {
+class _TransportPositionState extends State<TransportPosition>
+    with _OpensAField {
   int _format = 0;
   DateTime? _lastTap;
-  bool _editing = false;
-  final TextEditingController _text = TextEditingController();
-  final FocusNode _focus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _focus.addListener(() {
-      if (!_focus.hasFocus && _editing) setState(() => _editing = false);
-    });
-  }
-
-  @override
-  void dispose() {
-    _text.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
 
   List<PositionFormat> get _formats => widget.bars
       ? PositionFormat.values
@@ -369,8 +363,8 @@ class _TransportPositionState extends State<TransportPosition> {
     ];
     String under(int frame) => [for (var f in others) _say(f, frame)].join("  ·  ");
     // As wide as the widest it will ever say, at the last frame.
-    var width = math.max(fitWidth(context, _say(format, last), big) + 8,
-            fitWidth(context, under(last), small)) +
+    var width = math.max(_textWidth(context, _say(format, last), big) + 8,
+            _textWidth(context, under(last), small)) +
         // The padding either side, the border, and a hair to spare.
         16 +
         2 +
@@ -438,13 +432,8 @@ class _TransportPositionState extends State<TransportPosition> {
           setState(() {
             _format = (_format - 1) % formats.length;
             var back = formats[_format % formats.length];
-            _editing = true;
-            _text.text = _say(back, widget.frame).split(" / ").first;
-            _text.selection =
-                TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+            _openField(_say(back, widget.frame).split(" / ").first);
           });
-          WidgetsBinding.instance
-              .addPostFrameCallback((_) => _focus.requestFocus());
         },
         child: Container(
           width: width,
@@ -496,134 +485,6 @@ class _TapTempoButtonState extends State<TapTempoButton> {
         },
         child: const Text("TAP", style: TextStyle(letterSpacing: 0.6)),
       );
-}
-
-/// TransportMenu is a button dropping a short list of actions: the keys a
-/// piece of sound keeps folded away, and Clear.
-class TransportMenu extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final String tooltip;
-
-  /// items are each a label, what it does (null for not now), and whether it
-  /// shows as ticked (null for not a switch).
-  final List<(String, VoidCallback?, bool?)> items;
-
-  const TransportMenu({
-    required this.label,
-    this.icon,
-    this.tooltip = "",
-    required this.items,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var colors = ThemeNotifier.of(context).colors;
-    return MenuAnchor(
-      menuChildren: [
-        for (var (i, (text, act, ticked)) in items.indexed)
-          MenuItemButton(
-            key: ValueKey("${key is ValueKey ? (key as ValueKey).value : label}-$i"),
-            onPressed: act,
-            leadingIcon: ticked == null
-                ? null
-                : Icon(ticked ? Icons.check_box : Icons.check_box_outline_blank,
-                    size: 16),
-            child: Text(text, style: const TextStyle(fontSize: 12)),
-          ),
-      ],
-      builder: (context, menu, _) {
-        Widget button = Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(4),
-            onTap: () => menu.isOpen ? menu.close() : menu.open(),
-            child: Container(
-              height: controlHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 14, color: colors.onSurfaceVariant),
-                  const SizedBox(width: 4),
-                ],
-                Text(label,
-                    style:
-                        TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
-                Icon(Icons.arrow_drop_down,
-                    size: 16, color: colors.onSurfaceVariant),
-              ]),
-            ),
-          ),
-        );
-        return tooltip.isEmpty
-            ? button
-            : Tooltip(message: tooltip, child: button);
-      },
-    );
-  }
-}
-
-/// EngineMeter is how hard the mix engine is working.
-class EngineMeter extends StatelessWidget {
-  final double load;
-  const EngineMeter({required this.load, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var colors = ThemeNotifier.of(context).colors;
-    var share = load.clamp(0.0, 1.0);
-    var hot = load > 0.8
-        ? const Color(0xFFFF5A5A)
-        : load > 0.5
-            ? const Color(0xFFF2B33D)
-            : const Color(0xFF3CCF7A);
-    var percent = "${(load * 100).round()}%";
-    var style = TextStyle(
-        fontSize: 10, fontFeatures: _figures, color: colors.onSurfaceVariant);
-    return Tooltip(
-      message: "How hard the mix engine is working: the share of the time "
-          "it has that it spends making the sound. Over 100% and it cannot "
-          "keep up.",
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("ENGINE",
-                    style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                        color: colors.onSurfaceVariant)),
-                const SizedBox(height: 2),
-                Container(
-                  width: 40,
-                  height: 4,
-                  alignment: Alignment.centerLeft,
-                  decoration: BoxDecoration(
-                      color: colors.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(2)),
-                  child: FractionallySizedBox(
-                    widthFactor: share,
-                    child: Container(
-                        decoration: BoxDecoration(
-                            color: hot,
-                            borderRadius: BorderRadius.circular(2))),
-                  ),
-                ),
-              ]),
-          const SizedBox(width: 6),
-          SizedBox(
-              width: fitWidth(context, "100%", style) + 2,
-              child: Text(percent,
-                  key: const ValueKey("engineLoad"), style: style)),
-        ]),
-      ),
-    );
-  }
 }
 
 /// MetronomeIcon is a metronome, drawn: there is none among the icons.

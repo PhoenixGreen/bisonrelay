@@ -15,7 +15,8 @@ extension CanvasDockLayout on CanvasController {
     _notifyView();
   }
 
-  /// barBelow puts the play bar under the panels: kept by CanvasPlayBar.
+  /// barBelow puts the play bar under the panels: kept as the person's
+  /// (KeptView).
   bool get barBelow => _barBelow;
 
   set barBelow(bool value) {
@@ -24,19 +25,19 @@ extension CanvasDockLayout on CanvasController {
     _notifyView();
   }
 
+  /// restoreBarBelow and restoreTrackpadScrolls put back what the
+  /// preferences hold, without notifying, for the page as it opens.
+  void restoreBarBelow(bool value) => _barBelow = value;
+  void restoreTrackpadScrolls(bool value) => _trackpadScrolls = value;
+
   /// trackpadScrolls lets a sideways swipe or the wheel move the timeline.
   /// Off by default, so swiping through the channels does not slide frames.
+  /// Kept as the person's (KeptView).
   bool get trackpadScrolls => _trackpadScrolls;
 
   set trackpadScrolls(bool value) {
     if (_trackpadScrolls == value) return;
     _trackpadScrolls = value;
-    _notifyView();
-  }
-
-  void askTimelineZoom(double factor) {
-    timelineZoomFactor = factor;
-    timelineZoomAsked++;
     _notifyView();
   }
 
@@ -196,7 +197,8 @@ extension CanvasDockLayout on CanvasController {
   /// order, after the places themselves have changed.
   void _dockSettle() => _dockState = _dockState.settled(_dock);
 
-  /// timelineShow is the ⋯ menu's Show, for the timeline and the mixer.
+  /// timelineShow is the Show in the play bar's settings, for the timeline
+  /// and the mixer.
   TimelineShow get timelineShow => _timelineShow;
 
   set timelineShow(TimelineShow value) {

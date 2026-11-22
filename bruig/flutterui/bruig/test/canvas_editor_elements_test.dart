@@ -691,7 +691,7 @@ void main() {
       // selected.
       var controller = CanvasController(const CanvasDocument(frames: 200));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       var field = find.byKey(const ValueKey("canvasFrames"));
@@ -725,7 +725,7 @@ void main() {
       // them. Taking it would make an exact number impossible to type over.
       var controller = CanvasController(const CanvasDocument(frames: 200));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       await tester.drag(
@@ -785,7 +785,7 @@ void main() {
       // "type here" over the one control that also does something else.
       var controller = CanvasController(const CanvasDocument(frames: 200));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       var box = tester.widget<TextField>(find.descendant(
@@ -798,7 +798,7 @@ void main() {
       // The scrub must not have taken the field over.
       var controller = CanvasController(const CanvasDocument(frames: 40));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, CanvasTimeline(controller: controller, showBar: true));
       await openTiming(tester);
 
       await enterValue(

@@ -13,8 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/screen/dock_switcher.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/play_bar_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/marker_panel.dart';
-import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 // play_bar.dart is the play bar along the panels under the canvas: the
@@ -34,6 +34,8 @@ const double playBarHeight = controlHeight + 6;
 KeyEventResult transportKey(CanvasController controller, KeyEvent event) =>
     canvasKey(controller, event, reach: ShortcutReach.transport);
 
+/// CanvasPlayBar is the play bar along the panels under the canvas, for
+/// [controller]: see the note at the top of this file.
 class CanvasPlayBar extends StatefulWidget {
   final CanvasController controller;
 
@@ -92,15 +94,10 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   /// the arrows keep working: see transportKey.
   final FocusNode _focus = FocusNode();
 
-  static const _trackpadKey = "canvasTimelineTrackpad";
-  static const _snapKey = "canvasTimelineSnap";
-  static const _barBelowKey = "canvasTimelineBarBelow";
-
   @override
   void initState() {
     super.initState();
     controller.chrome.addListener(_changed);
-    _readSettings();
   }
 
   @override
@@ -130,33 +127,6 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     if (!controller.notifyingPlayhead && mounted) setState(() {});
   }
 
-  /// _readSettings puts back the reader's choices kept on the device:
-  /// scrubbing, snapping and where the bar sits.
-  Future<void> _readSettings() async {
-    var scrolls = await StorageManager.readBool(_trackpadKey);
-    var snaps = await StorageManager.readBool(_snapKey);
-    var below = await StorageManager.readBool(_barBelowKey);
-    if (!mounted) return;
-    controller.trackpadScrolls = scrolls;
-    controller.snapping = snaps;
-    controller.barBelow = below;
-  }
-
-  void _setSnapping(bool value) {
-    controller.snapping = value;
-    StorageManager.saveBool(_snapKey, value);
-  }
-
-  void _setTrackpadScrolls(bool value) {
-    controller.trackpadScrolls = value;
-    StorageManager.saveBool(_trackpadKey, value);
-  }
-
-  void _setBarBelow(bool value) {
-    controller.barBelow = value;
-    StorageManager.saveBool(_barBelowKey, value);
-  }
-
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -166,7 +136,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
       onKeyEvent: (node, event) => transportKey(controller, event),
       child: SizedBox(
         height: playBarHeight,
-        child: _bar(theme, document),
+        child: _bar(theme, StudioColors.of(context), document),
       ),
     );
   }
@@ -202,21 +172,19 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   }
 
   /// _bar is the play bar: transport, playhead, what is lit and the panels'
-  /// switcher, the rest behind the ⋯ menu (transport_controls.dart). Sound
+  /// switcher, the rest behind the settings (play_bar_settings.dart). Sound
   /// has its tempo, metre and quantise here and counts in bars; scenes count
   /// frames. The playhead's readout and marker follow playheadMoved, since
-  /// the bar is not built again for each frame of play.
-  Widget _bar(ThemeNotifier theme, CanvasDocument document) {
+  /// the bar is not built again for each frame of play. Play and Record
+  /// light in the studio palette's colours (StudioColors).
+  Widget _bar(
+      ThemeNotifier theme, StudioColors studio, CanvasDocument document) {
     var sound = document.kind.isAudio;
     var audio = document.audio;
     var rate = math.max(1, document.frameRate);
-    var playable = (controller.playAll && document.hasScenes
-            ? document.playFrames
-            : document.frames) >
-        1;
     void writeAudio(AudioSettings next) =>
         controller.apply(document.copyWith(audio: next));
-    var (loopFrom, loopLength) = controller.loopRange;
+    var (from: loopFrom, length: loopLength) = controller.loopRange;
     var looping = controller.looping;
 
     // The timing: how long the canvas is and how fast; the tempo, time and
@@ -342,7 +310,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     // The bar holds what is pressed while working; the timing is behind the
     // readout, the rest behind settings, and an option turned on there
     // shows lit on the bar, to be turned off here.
-    var back = controller.offTimeline || controller.anyOverridden;
+    var back = controller.anythingOffTimeline;
     Widget transportMin() => TransportGroup(children: [
           // To the start: the playhead to the first frame.
           TransportButton(
@@ -356,8 +324,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             icon: timelinePlays ? Icons.pause : Icons.play_arrow,
             tooltip: timelinePlays ? "Pause" : "Play (Space)",
             on: timelinePlays,
-            lit: const Color(0xFF3CCF7A),
-            onPressed: !playable ? null : controller.togglePlay,
+            lit: studio.meterLow,
+            onPressed: !controller.canPlay ? null : controller.togglePlay,
           ),
           TransportButton(
             key: const ValueKey("stopPlaying"),
@@ -380,7 +348,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: controller.recording
-                      ? const Color(0xFFFF5A5A)
+                      ? studio.arm
                       : const Color(0xFF9A5A5A)),
             ),
           ),
@@ -540,52 +508,53 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           listenable: controller.playheadMoved,
           builder: (context, _) => _markerButton(document, menu)),
     );
-    // What is turned on in the ⋯ menu, lit on the bar.
-    var options = <(String, IconData, String, bool, VoidCallback)>[
+    // What is turned on in the settings, lit on the bar: the knife, and the
+    // timeline's switches.
+    PlayBarToggle knife = (
+      key: "toolKnife",
+      icon: Icons.content_cut,
+      label: "Knife: cut clips",
+      on: controller.timelineTool == TimelineTool.knife,
+      toggle: () => controller.timelineTool =
+          controller.timelineTool == TimelineTool.knife
+              ? TimelineTool.select
+              : TimelineTool.knife,
+    );
+    var toggles = <PlayBarToggle>[
       (
-        "toolKnife",
-        Icons.content_cut,
-        "Knife: cut clips (K)",
-        controller.timelineTool == TimelineTool.knife,
-        () => controller.timelineTool =
-            controller.timelineTool == TimelineTool.knife
-                ? TimelineTool.select
-                : TimelineTool.knife
+        key: "follow",
+        icon: Icons.keyboard_tab,
+        label: "Follow the playhead",
+        on: controller.followPlayhead,
+        toggle: () => controller.followPlayhead = !controller.followPlayhead,
       ),
       (
-        "follow",
-        Icons.keyboard_tab,
-        "Follow the playhead",
-        controller.followPlayhead,
-        () => controller.followPlayhead = !controller.followPlayhead
+        key: "snap",
+        icon: Icons.grid_4x4,
+        label: "Snapping",
+        on: controller.snapping,
+        toggle: () => controller.snapping = !controller.snapping,
       ),
       (
-        "snap",
-        Icons.grid_4x4,
-        "Snapping",
-        controller.snapping,
-        () => _setSnapping(!controller.snapping)
+        key: "metronome",
+        icon: Icons.av_timer,
+        label: "Metronome",
+        on: controller.metronome,
+        toggle: () => controller.metronome = !controller.metronome,
       ),
       (
-        "metronome",
-        Icons.av_timer,
-        "Metronome",
-        controller.metronome,
-        () => controller.metronome = !controller.metronome
+        key: "automationArm",
+        icon: Icons.timeline,
+        label: "Record moves settings (automation)",
+        on: controller.automationArmed,
+        toggle: () => controller.automationArmed = !controller.automationArmed,
       ),
       (
-        "automationArm",
-        Icons.timeline,
-        "Record moves settings (automation)",
-        controller.automationArmed,
-        () => controller.automationArmed = !controller.automationArmed
-      ),
-      (
-        "trackpadScrolls",
-        Icons.swipe_outlined,
-        "Scrubbing",
-        controller.trackpadScrolls,
-        () => _setTrackpadScrolls(!controller.trackpadScrolls)
+        key: "trackpadScrolls",
+        icon: Icons.swipe_outlined,
+        label: "Scrubbing",
+        on: controller.trackpadScrolls,
+        toggle: () => controller.trackpadScrolls = !controller.trackpadScrolls,
       ),
     ];
     var show = controller.timelineShow;
@@ -604,32 +573,23 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
         ),
       // The bar lights what has been turned on, not what starts on (see
       // _quietWhenOn).
-      for (var (key, icon, tip, on, press) in options)
-        if (on && !_quietWhenOn.contains(key))
+      for (var t in [knife, ...toggles])
+        if (t.on && !_quietWhenOn.contains(t.key))
           TransportButton(
-            key: ValueKey("lit-$key"),
-            icon: icon,
-            tooltip: "$tip: on. Press to turn it off",
+            key: ValueKey("lit-${t.key}"),
+            icon: t.icon,
+            tooltip: "${t.label}: on. Press to turn it off",
             on: true,
             lit: const Color(0xFF3A2F12),
-            onPressed: press,
+            onPressed: t.toggle,
           ),
     ]);
     // One button for every setting the bar has: see play_bar_settings.dart.
     var more = PlayBarSettingsButton(
       controller: controller,
-      knife: (
-        key: options[0].$1,
-        icon: options[0].$2,
-        label: options[0].$3,
-        on: options[0].$4,
-        toggle: options[0].$5,
-      ),
-      toggles: [
-        for (var (key, icon, label, on, toggle) in options.skip(1))
-          (key: key, icon: icon, label: label, on: on, toggle: toggle),
-      ],
-      onBarBelow: () => _setBarBelow(!controller.barBelow),
+      knife: knife,
+      toggles: toggles,
+      onBarBelow: () => controller.barBelow = !controller.barBelow,
       onAddMarker: () => addMarker(controller, TimelineActionKind.locator),
       onCustomiseSidebars: widget.onCustomiseSidebars,
     );
@@ -715,7 +675,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
                         const HelpNote(
                           id: "playBar",
                           title: "The play bar",
-                          paragraphs: playBarHelp,
+                          paragraphs: _playBarHelp,
                         ),
                         const SizedBox(width: 4),
                         more,
@@ -768,7 +728,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
       n.contains(".") ? n.replaceFirst(RegExp(r"\.?0+$"), "") : n;
 }
 
-const playBarHelp = [
+const _playBarHelp = [
   "The panels are on the left: press one to open or close it. Its small "
       "picture shows where it opens; drag it onto the map that appears to "
       "move it, or right-click it.",
@@ -794,11 +754,6 @@ class _BackToTimeline extends StatelessWidget {
   static const _edge = Color(0xFF7A5A1E);
   static const _fill = Color(0xFF3A2A10);
 
-  void _all() {
-    if (controller.offTimeline) controller.backToTimeline();
-    if (controller.anyOverridden) controller.backToArrangement();
-  }
-
   @override
   Widget build(BuildContext context) {
     var items = controller.offTimelineItems;
@@ -814,7 +769,7 @@ class _BackToTimeline extends StatelessWidget {
         Flexible(
           child: InkWell(
             key: const ValueKey("backToTimeline"),
-            onTap: _all,
+            onTap: controller.allBackToTimeline,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 9),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -851,7 +806,10 @@ class _BackToTimeline extends StatelessWidget {
         Container(width: 1, color: _edge),
         MenuAnchor(
           alignmentOffset: const Offset(0, 6),
-          menuChildren: [_OffList(controller: controller, onAll: _all)],
+          menuChildren: [
+            _OffList(
+                controller: controller, onAll: controller.allBackToTimeline)
+          ],
           builder: (context, menu, _) => InkWell(
             key: const ValueKey("backToTimelineList"),
             onTap: () => menu.isOpen ? menu.close() : menu.open(),
@@ -879,15 +837,8 @@ class _OffList extends StatelessWidget {
         builder: (context, _) {
           var colors = ThemeNotifier.of(context).colors;
           var items = controller.offTimelineItems;
-          Widget heading(String text) => Padding(
-                padding: const EdgeInsets.fromLTRB(2, 8, 2, 4),
-                child: Text(text.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                        color: colors.onSurfaceVariant)),
-              );
+          Widget heading(String text) => PlayBarHeading(text,
+              padding: const EdgeInsets.fromLTRB(2, 8, 2, 4));
           Widget row(OffTimelineItem item) => Container(
                 key: ValueKey(
                     "offTimeline-${item.isHeld ? "held" : "slots"}-${item.key}"),

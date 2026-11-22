@@ -283,6 +283,18 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
+  /// anythingOffTimeline is whether the play bar shows Back to the timeline:
+  /// something heard is not the timeline (offTimeline), or a setting is held
+  /// by hand off its lane (anyOverridden).
+  bool get anythingOffTimeline => offTimeline || anyOverridden;
+
+  /// allBackToTimeline is Back to the timeline pressed: every row back from
+  /// its slots, and every setting held by hand back to its lane.
+  void allBackToTimeline() {
+    if (offTimeline) backToTimeline();
+    if (anyOverridden) backToArrangement();
+  }
+
   /// offTimelineItems is what Back to the timeline lists: each row playing
   /// from its slots (an element and its own sound one item, as one row),
   /// then each channel with settings held by hand off their lanes.

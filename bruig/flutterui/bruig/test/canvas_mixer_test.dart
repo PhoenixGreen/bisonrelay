@@ -925,7 +925,7 @@ void main() {
               ]),
               audioEngine: engine,
               frameSource: FakeFrames(4));
-          c.restoreMixer([for (var b in combo) b.name], true);
+          c.restoreMixer([for (var b in combo) b.name], returns: true);
           var least = mixerLeastHeight(c);
           tester.view.physicalSize = const Size(1200, 700);
           tester.view.devicePixelRatio = 1.0;
@@ -969,16 +969,16 @@ void main() {
       addTearDown(c.dispose);
       var all = mixerLeastHeight(c);
       // Only the devices: a slot of them, scrolled.
-      c.restoreMixer(["hidden", "shown", "hidden"], true);
+      c.restoreMixer(["hidden", "shown", "hidden"], returns: true);
       var devices = mixerLeastHeight(c);
       expect(devices, lessThan(all));
       // The mixer minimised is shorter than whole.
-      c.restoreMixer(["hidden", "hidden", "minimised"], true);
+      c.restoreMixer(["hidden", "hidden", "minimised"], returns: true);
       var mini = mixerLeastHeight(c);
-      c.restoreMixer(["hidden", "hidden", "shown"], true);
+      c.restoreMixer(["hidden", "hidden", "shown"], returns: true);
       expect(mini, lessThan(mixerLeastHeight(c)));
       // Never every band hidden: the mixer comes back.
-      c.restoreMixer(["hidden", "hidden", "hidden"], false);
+      c.restoreMixer(["hidden", "hidden", "hidden"], returns: false);
       expect(c.bandState(MixerSection.mixer), BandState.shown);
       expect(c.returnsShown, isFalse);
       expect(c.mixerBandNames, ["hidden", "hidden", "shown", "shown"],

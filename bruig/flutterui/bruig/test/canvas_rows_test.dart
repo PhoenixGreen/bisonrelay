@@ -134,7 +134,7 @@ void main() {
     setTestScreen(tester, const Size(1400, 800));
     await tester.pumpWidget(canvasApp(Align(
         alignment: Alignment.bottomCenter,
-        child: CanvasTimeline(controller: c, height: 500))));
+        child: CanvasTimeline(controller: c, showBar: true, height: 500))));
     await tester.pumpAndSettle();
     var heading = find.byKey(const ValueKey("allGroupHeading"));
     expect(heading, findsOneWidget);

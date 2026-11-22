@@ -105,7 +105,8 @@ void main() {
       setTestScreen(tester, const Size(1200, 700));
       await tester.pumpWidget(canvasApp(Align(
           alignment: Alignment.bottomCenter,
-          child: CanvasTimeline(controller: c, height: timelineHeight + 120))));
+          child: CanvasTimeline(
+              controller: c, showBar: true, height: timelineHeight + 120))));
       await tester.pumpAndSettle();
       await tapPlayAll(tester);
       return c;
@@ -132,9 +133,9 @@ void main() {
       // Zoomed in on the start of the run, then taken to the last scene.
       // No zoom buttons now (Ken, 2026-11-08): zoomed as Command and the
       // wheel, or a pinch, ask.
+      var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
       for (var i = 0; i < 6; i++) {
-        c.askTimelineZoom(2);
-        await tester.pump();
+        await zoomTimeline(tester, 2, Offset(strip.left + 1, strip.center.dy));
       }
       await tester.pumpAndSettle();
       c.goToScene(3);

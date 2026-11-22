@@ -49,7 +49,7 @@ Future<CanvasController> pumpBoth(WidgetTester tester) async {
     Expanded(
         child: CanvasMixer(
             controller: c, height: 420, onResize: (_) {}, onClose: () {})),
-    CanvasTimeline(controller: c, height: 360)
+    CanvasTimeline(controller: c, showBar: true, height: 360)
   ])));
   await tester.pump();
   return c;

@@ -2,27 +2,26 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
 import 'package:flutter/material.dart';
 
-// space_bar.dart has space play and stop the timeline anywhere on the Canvas
-// page, with the few other keys the page answers wherever the focus is: a
-// cut at the playhead, the timeline's tools, and copy, paste, undo and
-// delete. They are the page's lines of canvasShortcuts (stage_keys.dart).
-// A FocusScope round the page hears what nothing inside took, before the
-// app's shortcuts would press the focused button. A text field keeps its
-// spaces; dialogs, menus and the chat are outside it. A scope, so focus
-// falls back here when a field inside is left.
+// page_keys.dart is the Canvas page's keyboard: a FocusScope round the page
+// that hears what nothing inside it took and hands it to canvasKey as the
+// page's (stage_keys.dart, the one table of keys: what each does is there),
+// before the app's shortcuts would press the focused button. A scope, so
+// focus falls back here when a field inside is left; and a press on the page
+// brings the focus back to it from outside (the chat box, say).
 
-/// CanvasSpaceBar makes space play and stop [controller] anywhere in [child].
-class CanvasSpaceBar extends StatefulWidget {
+/// CanvasPageKeys hears the page's keys for [controller] anywhere in [child]
+/// and claims the keyboard for it when the page is pressed.
+class CanvasPageKeys extends StatefulWidget {
   final CanvasController controller;
   final Widget child;
-  const CanvasSpaceBar(
+  const CanvasPageKeys(
       {required this.controller, required this.child, super.key});
 
   @override
-  State<CanvasSpaceBar> createState() => _CanvasSpaceBarState();
+  State<CanvasPageKeys> createState() => _CanvasPageKeysState();
 }
 
-class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
+class _CanvasPageKeysState extends State<CanvasPageKeys> {
   final FocusScopeNode _scope = FocusScopeNode(debugLabel: "canvas");
 
   @override

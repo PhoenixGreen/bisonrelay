@@ -233,4 +233,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets("the Knife names no key: none picks it", (tester) async {
+    // K cuts the selected channel at the playhead (stage_keys.dart); the
+    // Knife tool is picked here or on the bar.
+    Finder tip(String message) =>
+        find.byWidgetPredicate((w) => w is Tooltip && w.message == message);
+    var c = make();
+    addTearDown(c.dispose);
+    await pumpBar(tester, c);
+    await openMore(tester);
+    expect(tip("Knife: cut clips"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("toolKnifeItem")));
+    await tester.pumpAndSettle();
+    await closeMore(tester);
+    expect(c.timelineTool, TimelineTool.knife);
+    expect(tip("Knife: cut clips: on. Press to turn it off"), findsOneWidget,
+        reason: "lit on the bar");
+    expect(tester.takeException(), isNull);
+  });
 }

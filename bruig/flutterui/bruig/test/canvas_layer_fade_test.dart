@@ -148,7 +148,7 @@ void main() {
     setTestScreen(tester, const Size(1400, 600));
     await tester.pumpWidget(canvasApp(Align(
         alignment: Alignment.bottomCenter,
-        child: CanvasTimeline(controller: c, height: 400))));
+        child: CanvasTimeline(controller: c, showBar: true, height: 400))));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("rowMotion-a")));
     await tester.pumpAndSettle();

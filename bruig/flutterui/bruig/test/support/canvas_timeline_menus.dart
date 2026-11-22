@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 // The bar keeps only what is pressed while working: the options, tools and
 // view live behind its settings button (playBarSettings), the length, rate, tempo and
 // loop behind the readout's arrow (timingMenu), and a marker's settings
-// behind the flag (markerMenu).
+// behind the flag (markerMenu). And it zooms the timeline as a person does.
 
 /// settleMenu lets a menu open or close. With [settle], pumpAndSettle;
 /// without, a few frames, for a test whose timeline never settles.
@@ -97,4 +100,17 @@ Future<void> openMarker(WidgetTester tester, {bool settle = true}) async {
 Future<void> closeMenus(WidgetTester tester, {bool settle = true}) async {
   await tester.sendKeyEvent(LogicalKeyboardKey.escape);
   await settleMenu(tester, settle: settle);
+}
+
+/// zoomTimeline zooms the timeline in by [factor] (out, below one) about
+/// [at], a point over its ruler or rows, as Ctrl or Command and the wheel do.
+Future<void> zoomTimeline(WidgetTester tester, double factor, Offset at) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+  var mouse = TestPointer(1, PointerDeviceKind.mouse);
+  await tester.sendEventToBinding(mouse.hover(at));
+  // The timeline zooms by e to the power of a scroll up over 300.
+  await tester
+      .sendEventToBinding(mouse.scroll(Offset(0, -300 * math.log(factor))));
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+  await tester.pump();
 }

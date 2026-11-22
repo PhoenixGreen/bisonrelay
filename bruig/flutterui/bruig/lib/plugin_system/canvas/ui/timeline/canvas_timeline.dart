@@ -115,15 +115,15 @@ class CanvasTimeline extends StatefulWidget {
   final ValueChanged<double>? onResize;
 
   /// showBar is whether the play bar is drawn here, over the rows or under
-  /// them: as the timeline is used on its own. The Canvas page draws the bar
-  /// itself, along every panel (see CanvasPlayBar), and passes false.
+  /// them, as for the timeline mounted on its own. The Canvas page draws the
+  /// bar itself, along every panel (see CanvasPlayBar), and passes false.
   final bool showBar;
 
   const CanvasTimeline({
     required this.controller,
+    required this.showBar,
     this.height = timelineHeight,
     this.onResize,
-    this.showBar = true,
     super.key,
   });
 
@@ -149,7 +149,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   _BracePart? _pressedBrace;
   _BracePart? _dragBrace;
   int _braceFrom = 0;
-  (int, int) _braceWas = (0, 1);
+  ({int from, int length}) _braceWas = (from: 0, length: 1);
 
   /// _focus is what lets the transport's keys reach the timeline.
   final FocusNode _focus = FocusNode();
@@ -203,10 +203,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     super.dispose();
   }
 
-  /// _zoomSeen is the last zoom the play bar's menu asked for that this has
-  /// taken up: see CanvasController.askTimelineZoom.
-  int _zoomSeen = -1;
-
   /// _slotsW is the slots' column beside the rows, as the controller has it.
   /// (The Slots panel is a launcher of its own: see CanvasSlotsPanel.)
   double get _slotsW => controller.slotsWidth;
@@ -221,12 +217,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     if (controller.notifyingPlayhead && !_followMoves()) {
       _lastHead = _origin + controller.frame;
       return;
-    }
-    if (_zoomSeen < 0) _zoomSeen = controller.timelineZoomAsked;
-    if (controller.timelineZoomAsked != _zoomSeen) {
-      _zoomSeen = controller.timelineZoomAsked;
-      var factor = controller.timelineZoomFactor;
-      factor == 0 ? _setView(TimelineView.whole(_total)) : _zoomBy(factor);
     }
     setState(() {});
   }
@@ -327,10 +317,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var fitted = next.fitted(frames);
     setState(() => _view = fitted.isWhole(frames) ? null : fitted);
   }
-
-  /// _zoomBy zooms in by [factor] (out, below one) about the playhead.
-  void _zoomBy(double factor) => _setView(
-      _viewNow.zoomed(factor, _origin + controller.frame + 0.5, _total));
 
   /// _laneWidth is the width the frames are laid across: the body, less its
   /// padding and the strip column.
@@ -663,7 +649,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var view = _viewNow;
     bool same(double first, double span) =>
         (view.first - first).abs() < 0.5 && (view.span - span).abs() < 0.5;
-    var (loopFrom, loopLength) = controller.loopRange;
+    var (from: loopFrom, length: loopLength) = controller.loopRange;
     var loop = ((_origin + loopFrom).toDouble(), loopLength.toDouble());
     var picked = _pickedRange();
     var framings = [
@@ -1097,7 +1083,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// brace is the top few pixels of the ruler, only while the loop is on.
   _BracePart? _braceAt(Offset local, double width) {
     if (!controller.looping || local.dy > _braceHeight + 2) return null;
-    var (from, length) = controller.loopRange;
+    var (:from, :length) = controller.loopRange;
     var a = _xFor(from, width), b = _xFor(from + length, width);
     if ((local.dx - a).abs() <= 5) return _BracePart.start;
     if ((local.dx - b).abs() <= 5) return _BracePart.end;
@@ -1117,7 +1103,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       return step <= 0 ? f : ((f / step).round() * step).round();
     }
 
-    var (from, length) = _braceWas;
+    var (:from, :length) = _braceWas;
     var end = from + length;
     switch (part) {
       case _BracePart.start:
@@ -1244,7 +1230,7 @@ class _TimelinePainter extends CustomPainter {
 
   /// brace is the control bar's loop, as where it starts and how long it is,
   /// drawn along the top of the ruler, lit while [looping].
-  final (int, int)? brace;
+  final ({int from, int length})? brace;
   final bool looping;
 
   const _TimelinePainter({
@@ -1394,7 +1380,7 @@ class _TimelinePainter extends CustomPainter {
     }
     paintPastScene(canvas, Size(size.width, _rulerHeight), view, scene, colors);
 
-    if (brace case (var from, var length)) {
+    if (brace case (:var from, :var length)) {
       var rect =
           Rect.fromLTRB(xFor(from), 1, xFor(from + length), _braceHeight);
       var lit = looping ? colors.primary : colors.onSurfaceVariant;

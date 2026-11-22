@@ -4,7 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/page_keys.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -142,7 +142,7 @@ void main() {
     var c = _run();
     addTearDown(c.dispose);
     await tester.pumpWidget(MaterialApp(
-        home: CanvasSpaceBar(
+        home: CanvasPageKeys(
             controller: c,
             child: const Focus(autofocus: true, child: SizedBox.expand()))));
     await tester.pump();

@@ -80,7 +80,7 @@ extension CanvasScenes on CanvasController {
     _previewJoin = null;
     pause();
     // Back to the canvas it was started from: playing the document walks the
-    // editor through the scenes (see _tick).
+    // editor through the scenes (see _step).
     var back = _previewFrom;
     var wasMaster = _previewFromMaster;
     _previewFrom = null;
