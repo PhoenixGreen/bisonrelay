@@ -365,9 +365,24 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
             : PanelStack(
                 key: ValueKey("sidebarStack-${s.id}"),
                 storageKey: "canvasSidebar-${s.id}",
+                // The stack keeps how its panels are arranged (their
+                // order, which are tabbed together); the layout keeps
+                // which sidebar each is in, and follows the stack's order,
+                // so that the Customise sheet lists them as they stand.
+                onOrder: (ids) => _followOrder(s.id, ids),
                 panels: panels),
       ),
     ]);
+  }
+
+  /// _followOrder puts sidebar [id]'s panels, in the layout, in the order
+  /// its stack has them, [ids] being the stack's ids for them (their names).
+  void _followOrder(String id, List<String> ids) {
+    var next = layout.withPanelOrder(id, [
+      for (var name in ids)
+        if (SidebarPanel.fromName(name) case var panel?) panel
+    ]);
+    if (!identical(next, layout)) _set(next);
   }
 
   /// _panelMenu is the ⋯ on [panel]'s heading, in sidebar [s].

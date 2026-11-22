@@ -270,26 +270,27 @@ void main() {
                   style: ProceduralStyle.plain,
                   background: Color(0xFF0000FF))));
 
-      // What the panel shows is what the canvas owns.
-      expect(it.ownBackground.spec.background, const Color(0xFF0000FF));
+      // What the panel shows is the scene's, or the document's until the
+      // scene has one.
+      expect(it.editedBackground.spec.background, const Color(0xFF0000FF));
 
       // A colour, then a style, the way somebody changes two things.
       var pink = it.withScene(
           0,
           it.scene.copyWith(
-              background: it.ownBackground.copyWith(
-                  spec: it.ownBackground.spec
+              background: it.editedBackground.copyWith(
+                  spec: it.editedBackground.spec
                       .copyWith(background: const Color(0xFFFF69B4)))));
-      expect(pink.ownBackground.spec.background, const Color(0xFFFF69B4));
+      expect(pink.editedBackground.spec.background, const Color(0xFFFF69B4));
 
       var dotted = pink.withScene(
           0,
           pink.scene.copyWith(
-              background: pink.ownBackground.copyWith(
-                  spec: pink.ownBackground.spec
+              background: pink.editedBackground.copyWith(
+                  spec: pink.editedBackground.spec
                       .copyWith(style: ProceduralStyle.dotGrid))));
-      expect(dotted.ownBackground.spec.style, ProceduralStyle.dotGrid);
-      expect(dotted.ownBackground.spec.background, const Color(0xFFFF69B4),
+      expect(dotted.editedBackground.spec.style, ProceduralStyle.dotGrid);
+      expect(dotted.editedBackground.spec.background, const Color(0xFFFF69B4),
           reason: "the colour set a moment ago is still there");
       expect(dotted.backgroundOf(1).spec.background, const Color(0xFF0000FF),
           reason: "and the other scene is untouched");
@@ -498,8 +499,8 @@ void main() {
       expect(doc.drawnBackground.spec.style, ProceduralStyle.starfield);
       expect(doc.editedBackground.spec.style, doc.drawnBackground.spec.style,
           reason: "the panel was showing a background nobody could see");
-      expect(doc.ownBackground.spec.style, ProceduralStyle.plain,
-          reason: "the layers list still names what this canvas owns");
+      expect(doc.scene.background, isNull,
+          reason: "though the scene has none of its own");
       expect(doc.sharedBackdrop, isTrue);
 
       // And it is this canvas's own again the moment the shared one is off.

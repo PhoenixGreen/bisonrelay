@@ -247,6 +247,30 @@ class SidebarLayout {
     );
   }
 
+  /// withPanelOrder is sidebar [id]'s panels put in [order], which is how
+  /// its stack on screen has them (the reader drags a panel's heading up
+  /// or down there). A panel of the sidebar's that [order] does not name
+  /// stays, after those it does; one it names that is not the sidebar's is
+  /// passed by. The same layout where nothing moves.
+  SidebarLayout withPanelOrder(String id, List<SidebarPanel> order) {
+    var sidebar = byId(id);
+    if (sidebar == null) return this;
+    var next = [
+      for (var p in order)
+        if (sidebar.panels.contains(p)) p,
+      for (var p in sidebar.panels)
+        if (!order.contains(p)) p,
+    ];
+    var same = true;
+    for (var (i, p) in next.indexed) {
+      same = same && sidebar.panels[i] == p;
+    }
+    if (same) return this;
+    return copyWith(sidebars: [
+      for (var s in sidebars) s.id == id ? s.copyWith(panels: next) : s,
+    ]);
+  }
+
   /// hidePanel is [panel] taken out of its sidebar, remembered as from there.
   SidebarLayout hidePanel(SidebarPanel panel) {
     if (!panel.canHide) return this;

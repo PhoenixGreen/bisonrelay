@@ -1,3 +1,4 @@
+import 'package:bruig/components/panel_stack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -213,6 +214,41 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("customiseDone")));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("customiseDone")), findsNothing);
+  });
+
+  testWidgets("the layout follows the order the panels stand in",
+      (tester) async {
+    // The stack keeps how its panels are arranged and the layout which
+    // sidebar each is in. The layout had an order of its own too, which
+    // the Customise sheet listed and which the stack never told.
+    SharedPreferences.setMockInitialValues({
+      "canvasSidebar-design.order":
+          "layers,add+scenes,vocalCues,colour,settings",
+    });
+    var laid = await shown(tester);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(laid.value.byId("design")!.panels.take(3),
+        [SidebarPanel.layers, SidebarPanel.add, SidebarPanel.scenes],
+        reason: "as it was left, read back");
+
+    // Colour's heading dragged onto the top of Layers': above it.
+    var layers = tester.getRect(find.ancestor(
+        of: find.text("LAYERS"), matching: find.byType(DragTarget<PanelDrag>)));
+    var gesture = await tester.startGesture(tester.getCenter(find.descendant(
+        of: find.ancestor(
+            of: find.text("COLOUR"),
+            matching: find.byType(DragTarget<PanelDrag>)),
+        matching: find.byIcon(Icons.drag_indicator))));
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump();
+    await gesture
+        .moveTo(Offset(layers.center.dx, layers.top + layers.height * 0.1));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(laid.value.byId("design")!.panels.take(2),
+        [SidebarPanel.colour, SidebarPanel.layers]);
   });
 
   testWidgets("hiding is asked for, not set out as a layout", (tester) async {

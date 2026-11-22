@@ -695,7 +695,7 @@ void main() {
   });
 
   testWidgets("the background row says which canvas it is on", (tester) async {
-    // Leaving the shared canvas, the row went on naming the master's backdrop
+    // Leaving the shared canvas, the row went on saying what it said there
     // until something else rebuilt the column.
     var controller = CanvasController(const CanvasDocument().withScenes([
       const CanvasScene(
@@ -716,17 +716,26 @@ void main() {
     await tester.pumpWidget(
         canvasApp(SizedBox(width: 320, child: designSidebar(controller))));
     await tester.pumpAndSettle();
-    expect(find.text("Background — Dot grid"), findsOneWidget);
+    // The row names what is behind the canvas on screen, which is what a
+    // press on it selects: here the shared canvas's, drawn over the scene's.
+    expect(find.text("Background — Hex grid"), findsOneWidget);
 
     controller.showMaster();
     await tester.pumpAndSettle();
     expect(find.text("Background — Hex grid"), findsOneWidget,
         reason: "the shared canvas's own");
 
+    // The shared backdrop switched off: each scene shows its own again.
+    var document = controller.document;
+    controller.apply(
+        document.withMaster(document.master!.copyWith(backgroundOff: true)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining("Background — off"), findsOneWidget);
+
     controller.goToScene(0);
     await tester.pumpAndSettle();
     expect(find.text("Background — Dot grid"), findsOneWidget,
-        reason: "and the scene's again the moment it is showing");
+        reason: "and the scene's the moment it is showing");
   });
 
   testWidgets("the run stopping here is on the scene's own menu",

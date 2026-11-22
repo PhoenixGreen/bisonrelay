@@ -122,9 +122,15 @@ class PanelStack extends StatefulWidget {
   /// one key; the settings band and the sidebar would each want their own.
   final String storageKey;
 
+  /// onOrder is told the panels' ids in the order they stand in, as the
+  /// arrangement is read back and each time it is changed: for an owner
+  /// that keeps an order of its own and must not disagree with this one.
+  final ValueChanged<List<String>>? onOrder;
+
   const PanelStack({
     required this.panels,
     required this.storageKey,
+    this.onOrder,
     super.key,
   });
 
@@ -343,6 +349,7 @@ class _PanelStackState extends State<PanelStack> {
       _open.addAll(open);
       _heights.addAll(heights);
     });
+    widget.onOrder?.call(_order);
   }
 
   bool _isOpen(String id) =>
@@ -458,6 +465,7 @@ class _PanelStackState extends State<PanelStack> {
     for (var id in _order) {
       StorageManager.saveData(_openKey(id), _isOpen(id));
     }
+    widget.onOrder?.call(_order);
   }
 
   /// _resize gives [by] pixels to the place above [id], taking them from the

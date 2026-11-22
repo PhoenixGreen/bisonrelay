@@ -49,6 +49,30 @@ void main() {
         "files");
   });
 
+  test("a sidebar's panels follow the order its stack has them in", () {
+    const l = SidebarLayout();
+    var moved = l.withPanelOrder("design", [
+      SidebarPanel.layers,
+      SidebarPanel.add,
+      // Not the Design sidebar's: passed by.
+      SidebarPanel.stock,
+    ]);
+    expect(moved.byId("design")!.panels, [
+      SidebarPanel.layers,
+      SidebarPanel.add,
+      // Those the order does not name stay, after, as they were.
+      SidebarPanel.scenes,
+      SidebarPanel.vocalCues,
+      SidebarPanel.colour,
+      SidebarPanel.settings,
+    ]);
+    expect(moved.byId("assets")!.panels, l.byId("assets")!.panels);
+    expect(identical(l.withPanelOrder("design", l.byId("design")!.panels), l),
+        isTrue,
+        reason: "nothing moved: the same layout");
+    expect(identical(l.withPanelOrder("nonsense", const []), l), isTrue);
+  });
+
   test("hidden, a panel remembers where it was, and goes back there", () {
     var l = const SidebarLayout().hidePanel(SidebarPanel.colour);
     expect(l.hidden, [SidebarPanel.colour]);

@@ -566,15 +566,10 @@ class CanvasDocument {
       ? (master!.background ?? background)
       : (masterScene?.sharedBackground ?? scene.background ?? background);
 
-  /// ownBackground is this canvas's own backdrop, or the document's until it
-  /// has one: what the layers list names.
-  CanvasBackground get ownBackground => editingMaster
-      ? (master!.background ?? background)
-      : (scene.background ?? background);
-
-  /// editedBackground is [drawnBackground], even when it is the master's
-  /// (see [sharedBackdrop]): editing [ownBackground] under a master's
-  /// backdrop would change nothing visible.
+  /// editedBackground is the backdrop the settings, the Colour panel and
+  /// the layers list show, and the settings change: [drawnBackground], even
+  /// when that is the master's (see [sharedBackdrop]). Changing the scene's
+  /// own under a master's backdrop would change nothing visible.
   CanvasBackground get editedBackground => drawnBackground;
 
   /// hasTiming is whether anything in any scene is placed in frames (a

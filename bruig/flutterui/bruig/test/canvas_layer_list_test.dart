@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 
@@ -115,5 +117,28 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       c.dispose();
     }
+  });
+
+  testWidgets("under a shared canvas's backdrop, the row names that one",
+      (tester) async {
+    // It is the one on screen, and the one a press on the row selects: the
+    // row named the scene's own, which nobody could see.
+    var c = CanvasController(const CanvasDocument()
+        .withScenes([
+          const CanvasScene(id: "a", frames: 10),
+          const CanvasScene(id: "b", frames: 10),
+        ])
+        .withMaster(const CanvasScene(
+            id: "m",
+            frames: 10,
+            background: CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.starfield))))
+        .copyWith(masterOn: true));
+    addTearDown(c.dispose);
+    await show(tester, c);
+    expect(find.text("Background — ${ProceduralStyle.starfield.label}"),
+        findsOneWidget);
+    expect(
+        find.text("Background — ${ProceduralStyle.plain.label}"), findsNothing);
   });
 }

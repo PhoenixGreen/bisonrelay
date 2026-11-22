@@ -35,7 +35,7 @@ class CanvasLayersPanel extends StatelessWidget {
     // shared backdrop is off), or its eye keeps the state it was built with.
     var out = StringBuffer("${controller.backgroundSelected}"
         "|${_backgroundName(document)}"
-        "|${document.ownBackground.spec.background.toARGB32()}"
+        "|${document.editedBackground.spec.background.toARGB32()}"
         "|${document.editingMaster}"
         "|${document.master?.backgroundOff}");
     for (var e in controller.document.elements) {
@@ -101,7 +101,7 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
                 width: 16,
                 height: 16,
                 decoration: BoxDecoration(
-                  color: document.ownBackground.spec.background,
+                  color: document.editedBackground.spec.background,
                   borderRadius: BorderRadius.circular(3),
                   border: Border.all(color: theme.colors.outlineVariant),
                 ),
@@ -487,14 +487,15 @@ class _CancelRenameIntent extends Intent {
   const _CancelRenameIntent();
 }
 
-/// _backgroundName is what this canvas's own background is
-/// (CanvasDocument.ownBackground): a pattern by its style, a 3D stage or a
-/// parallax backdrop by its kind.
+/// _backgroundName is what is behind the canvas on screen, which is what
+/// a press on the background's row selects (CanvasDocument.editedBackground;
+/// the shared canvas's, where that is drawn over the scene's own): a
+/// pattern by its style, a 3D stage or a parallax backdrop by its kind.
 String _backgroundName(CanvasDocument document) {
-  var own = document.ownBackground;
-  return own.backdrop == BackdropKind.flat
-      ? own.spec.style.label
-      : own.backdrop.label;
+  var showing = document.editedBackground;
+  return showing.backdrop == BackdropKind.flat
+      ? showing.spec.style.label
+      : showing.backdrop.label;
 }
 
 /// _rowBeside is where in [elements] the layer listed next over the one at
