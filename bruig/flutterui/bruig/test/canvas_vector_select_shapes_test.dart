@@ -8,7 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_cut.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';

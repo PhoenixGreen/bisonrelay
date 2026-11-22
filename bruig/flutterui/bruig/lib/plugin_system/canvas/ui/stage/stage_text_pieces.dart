@@ -98,7 +98,7 @@ extension StageTextPieces on CanvasStageState {
             180 /
             math.pi;
         var turn = icon.turn + swept;
-        if (_shiftHeld) turn = (turn / 15).round() * 15;
+        if (_shiftHeld) turn = steppedTurn(turn);
         turn = (turn + 180) % 360 - 180;
         moved = start.copyWith(icon: icon.copyWith(turn: turn));
       default:

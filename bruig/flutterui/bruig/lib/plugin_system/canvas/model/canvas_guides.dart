@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
@@ -8,16 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 //
 // It is saved in the document, not in preferences, because the grid and
 // guides are part of the design; whether they are shown is saved too.
-// Nothing here is drawn on an export (see scene_renderer.dart).
+// Nothing here is drawn on an export: only the editor's stage draws it.
 
 /// GuideAxis is which way a guide runs: a vertical one is fixed at an x.
-enum GuideAxis {
-  vertical("Vertical"),
-  horizontal("Horizontal");
-
-  final String label;
-  const GuideAxis(this.label);
-}
+enum GuideAxis { vertical, horizontal }
 
 /// CanvasGuide is one line the reader has put down.
 class CanvasGuide {
@@ -59,6 +53,10 @@ class SnapTo {
     this.objects = true,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a field
+  /// out.
+  static const _defaults = SnapTo();
+
   bool get any => vertices || edges || centres;
 
   SnapTo copyWith(
@@ -70,33 +68,46 @@ class SnapTo {
         objects: objects ?? this.objects,
       );
 
-  Map<String, dynamic> toJson() =>
-      {"v": vertices, "e": edges, "c": centres, if (!objects) "o": false};
+  Map<String, dynamic> toJson() => {
+        if (vertices != _defaults.vertices) "v": vertices,
+        if (edges != _defaults.edges) "e": edges,
+        if (centres != _defaults.centres) "c": centres,
+        if (objects != _defaults.objects) "o": objects,
+      };
 
   factory SnapTo.fromJson(Map<String, dynamic> json) => SnapTo(
-        vertices: jsonBool(json["v"], true),
-        edges: jsonBool(json["e"], true),
-        centres: jsonBool(json["c"], true),
-        objects: jsonBool(json["o"], true),
+        vertices: jsonBool(json["v"], _defaults.vertices),
+        edges: jsonBool(json["e"], _defaults.edges),
+        centres: jsonBool(json["c"], _defaults.centres),
+        objects: jsonBool(json["o"], _defaults.objects),
       );
 }
 
-/// CanvasAlign is one of the six ways a set of elements can be lined up.
-/// "left" means all their left edges together, not "move them left".
-enum CanvasAlign {
-  left("Align left", Icons.align_horizontal_left),
-  centreX("Centre across", Icons.align_horizontal_center),
-  right("Align right", Icons.align_horizontal_right),
-  top("Align top", Icons.align_vertical_top),
-  middleY("Centre down", Icons.align_vertical_center),
-  bottom("Align bottom", Icons.align_vertical_bottom);
+/// SnapTarget is a switch for what snaps, as the guides panel and the
+/// settings bar's snap menu both offer it, with the one label both show.
+/// The panel's Vertices switch is not among them: it offers on one axis
+/// what Edges does, and the bar leaves it out.
+enum SnapTarget {
+  edges("Edges"),
+  centres("Centres"),
+  objects("Other elements");
 
   final String label;
-  final IconData icon;
-  const CanvasAlign(this.label, this.icon);
+  const SnapTarget(this.label);
 
-  /// across is whether this one moves things sideways.
-  bool get across => this == left || this == centreX || this == right;
+  /// of is whether this switch is on in [to].
+  bool of(SnapTo to) => switch (this) {
+        edges => to.edges,
+        centres => to.centres,
+        objects => to.objects,
+      };
+
+  /// set is [to] with this switch at [on].
+  SnapTo set(SnapTo to, bool on) => switch (this) {
+        edges => to.copyWith(edges: on),
+        centres => to.copyWith(centres: on),
+        objects => to.copyWith(objects: on),
+      };
 }
 
 /// CanvasRulers is which window edges carry a ruler (none by default).
@@ -113,6 +124,10 @@ class CanvasRulers {
     this.bottom = false,
   });
 
+  /// _defaults is one as made: what a saved one means by leaving a field
+  /// out.
+  static const _defaults = CanvasRulers();
+
   bool get any => top || left || right || bottom;
 
   CanvasRulers copyWith({bool? top, bool? left, bool? right, bool? bottom}) =>
@@ -124,17 +139,17 @@ class CanvasRulers {
       );
 
   Map<String, dynamic> toJson() => {
-        if (top) "t": true,
-        if (left) "l": true,
-        if (right) "r": true,
-        if (bottom) "b": true,
+        if (top != _defaults.top) "t": top,
+        if (left != _defaults.left) "l": left,
+        if (right != _defaults.right) "r": right,
+        if (bottom != _defaults.bottom) "b": bottom,
       };
 
   factory CanvasRulers.fromJson(Map<String, dynamic> json) => CanvasRulers(
-        top: jsonBool(json["t"], false),
-        left: jsonBool(json["l"], false),
-        right: jsonBool(json["r"], false),
-        bottom: jsonBool(json["b"], false),
+        top: jsonBool(json["t"], _defaults.top),
+        left: jsonBool(json["l"], _defaults.left),
+        right: jsonBool(json["r"], _defaults.right),
+        bottom: jsonBool(json["b"], _defaults.bottom),
       );
 }
 
@@ -201,25 +216,25 @@ class CanvasGuides {
   /// field out.
   static const _defaults = CanvasGuides();
 
+  /// minGridSize and maxGridSize bound the grid's spacing, in document
+  /// units; minSubdivisions and maxSubdivisions how finely it is divided;
+  /// minSnapWithin and maxSnapWithin the snap distance, in screen pixels;
+  /// minStageStep and maxStageStep a 3D stage's step, in metres; and
+  /// minStageTurn and maxStageTurn its turn, in degrees. Held to as a value
+  /// is set, as a saved one is read, and by the panel's fields.
+  static const double minGridSize = 2, maxGridSize = 1000;
+  static const int minSubdivisions = 1, maxSubdivisions = 10;
+  static const double minSnapWithin = 1, maxSnapWithin = 40;
+  static const double minStageStep = 0.01, maxStageStep = 10;
+  static const double minStageTurn = 1, maxStageTurn = 90;
+
   /// isDefault is whether every setting is at its default: nothing to save.
-  bool get isDefault =>
-      !showGrid &&
-      gridSize == 40 &&
-      subdivisions == 1 &&
-      guides.isEmpty &&
-      showGuides &&
-      !lockGuides &&
-      snap &&
-      snapTo.vertices &&
-      snapTo.edges &&
-      snapTo.centres &&
-      snapTo.objects &&
-      snapWithin == 6 &&
-      !stageSnap &&
-      stageStep == 0.25 &&
-      stageTurn == 15 &&
-      showRulers &&
-      !rulers.any;
+  /// Asked of what is saved, so a setting is never missed here.
+  bool get isDefault => toJson().isEmpty;
+
+  /// rulersShown is whether any ruler is drawn: one asked for, and rulers
+  /// not hidden.
+  bool get rulersShown => showRulers && rulers.any;
 
   CanvasGuides copyWith({
     bool? showGrid,
@@ -239,17 +254,21 @@ class CanvasGuides {
   }) =>
       CanvasGuides(
         showGrid: showGrid ?? this.showGrid,
-        gridSize: (gridSize ?? this.gridSize).clamp(2.0, 1000.0),
-        subdivisions: (subdivisions ?? this.subdivisions).clamp(1, 10),
+        gridSize: (gridSize ?? this.gridSize).clamp(minGridSize, maxGridSize),
+        subdivisions: (subdivisions ?? this.subdivisions)
+            .clamp(minSubdivisions, maxSubdivisions),
         guides: guides ?? this.guides,
         showGuides: showGuides ?? this.showGuides,
         lockGuides: lockGuides ?? this.lockGuides,
         snap: snap ?? this.snap,
         snapTo: snapTo ?? this.snapTo,
-        snapWithin: (snapWithin ?? this.snapWithin).clamp(1.0, 40.0),
+        snapWithin:
+            (snapWithin ?? this.snapWithin).clamp(minSnapWithin, maxSnapWithin),
         stageSnap: stageSnap ?? this.stageSnap,
-        stageStep: (stageStep ?? this.stageStep).clamp(0.01, 10.0),
-        stageTurn: (stageTurn ?? this.stageTurn).clamp(1.0, 90.0),
+        stageStep:
+            (stageStep ?? this.stageStep).clamp(minStageStep, maxStageStep),
+        stageTurn:
+            (stageTurn ?? this.stageTurn).clamp(minStageTurn, maxStageTurn),
         rulers: rulers ?? this.rulers,
         showRulers: showRulers ?? this.showRulers,
       );
@@ -266,45 +285,53 @@ class CanvasGuides {
           if (i != index) g,
       ]);
 
-  Map<String, dynamic> toJson() => {
-        if (showGrid) "grid": true,
-        "gridSize": gridSize,
-        if (subdivisions != _defaults.subdivisions) "sub": subdivisions,
-        if (guides.isNotEmpty) "guides": [for (var g in guides) g.toJson()],
-        if (!showGuides) "hideGuides": true,
-        if (lockGuides) "lockGuides": true,
-        if (!snap) "noSnap": true,
-        "snapTo": snapTo.toJson(),
-        if (snapWithin != _defaults.snapWithin) "within": snapWithin,
-        if (stageSnap) "stageSnap": true,
-        if (stageStep != _defaults.stageStep) "stageStep": stageStep,
-        if (stageTurn != _defaults.stageTurn) "stageTurn": stageTurn,
-        if (rulers.any) "rulers": rulers.toJson(),
-        if (!showRulers) "showRulers": false,
-      };
+  /// toJson writes only what differs from a guides as made, so a canvas
+  /// nobody has set up writes nothing (see isDefault).
+  Map<String, dynamic> toJson() {
+    const d = _defaults;
+    return {
+      if (showGrid != d.showGrid) "grid": showGrid,
+      if (gridSize != d.gridSize) "gridSize": gridSize,
+      if (subdivisions != d.subdivisions) "sub": subdivisions,
+      if (guides.isNotEmpty) "guides": [for (var g in guides) g.toJson()],
+      if (showGuides != d.showGuides) "hideGuides": !showGuides,
+      if (lockGuides != d.lockGuides) "lockGuides": lockGuides,
+      if (snap != d.snap) "noSnap": !snap,
+      if (snapTo.toJson() case var to when to.isNotEmpty) "snapTo": to,
+      if (snapWithin != d.snapWithin) "within": snapWithin,
+      if (stageSnap != d.stageSnap) "stageSnap": stageSnap,
+      if (stageStep != d.stageStep) "stageStep": stageStep,
+      if (stageTurn != d.stageTurn) "stageTurn": stageTurn,
+      if (rulers.toJson() case var edges when edges.isNotEmpty) "rulers": edges,
+      if (showRulers != d.showRulers) "showRulers": showRulers,
+    };
+  }
 
-  factory CanvasGuides.fromJson(Map<String, dynamic> json) => CanvasGuides(
-        showGrid: jsonBool(json["grid"], false),
-        gridSize:
-            jsonDouble(json["gridSize"], _defaults.gridSize).clamp(2.0, 1000.0),
-        subdivisions: jsonInt(json["sub"], _defaults.subdivisions).clamp(1, 10),
-        guides:
-            jsonObjects(json["guides"], CanvasGuide.fromJson, most: maxGuides),
-        showGuides: !jsonBool(json["hideGuides"], false),
-        lockGuides: jsonBool(json["lockGuides"], false),
-        snap: !jsonBool(json["noSnap"], false),
-        snapTo: jsonSpec(json["snapTo"], SnapTo.fromJson, _defaults.snapTo),
-        snapWithin:
-            jsonDouble(json["within"], _defaults.snapWithin).clamp(1.0, 40.0),
-        stageSnap: jsonBool(json["stageSnap"], false),
-        stageStep: jsonDouble(json["stageStep"], _defaults.stageStep)
-            .clamp(0.01, 10.0),
-        stageTurn:
-            jsonDouble(json["stageTurn"], _defaults.stageTurn).clamp(1.0, 90.0),
-        rulers:
-            jsonSpec(json["rulers"], CanvasRulers.fromJson, _defaults.rulers),
-        showRulers: jsonBool(json["showRulers"], true),
-      );
+  factory CanvasGuides.fromJson(Map<String, dynamic> json) {
+    const d = _defaults;
+    return CanvasGuides(
+      showGrid: jsonBool(json["grid"], d.showGrid),
+      gridSize: jsonDouble(json["gridSize"], d.gridSize)
+          .clamp(minGridSize, maxGridSize),
+      subdivisions: jsonInt(json["sub"], d.subdivisions)
+          .clamp(minSubdivisions, maxSubdivisions),
+      guides:
+          jsonObjects(json["guides"], CanvasGuide.fromJson, most: maxGuides),
+      showGuides: !jsonBool(json["hideGuides"], !d.showGuides),
+      lockGuides: jsonBool(json["lockGuides"], d.lockGuides),
+      snap: !jsonBool(json["noSnap"], !d.snap),
+      snapTo: jsonSpec(json["snapTo"], SnapTo.fromJson, d.snapTo),
+      snapWithin: jsonDouble(json["within"], d.snapWithin)
+          .clamp(minSnapWithin, maxSnapWithin),
+      stageSnap: jsonBool(json["stageSnap"], d.stageSnap),
+      stageStep: jsonDouble(json["stageStep"], d.stageStep)
+          .clamp(minStageStep, maxStageStep),
+      stageTurn: jsonDouble(json["stageTurn"], d.stageTurn)
+          .clamp(minStageTurn, maxStageTurn),
+      rulers: jsonSpec(json["rulers"], CanvasRulers.fromJson, d.rulers),
+      showRulers: jsonBool(json["showRulers"], d.showRulers),
+    );
+  }
 
   /// linesFor is every line an element could land on, in document units: the
   /// canvas's edges and middle, the grid, and the shown guides, as vertical

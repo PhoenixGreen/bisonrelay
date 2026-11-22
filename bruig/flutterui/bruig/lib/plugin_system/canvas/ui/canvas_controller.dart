@@ -46,7 +46,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_align.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';

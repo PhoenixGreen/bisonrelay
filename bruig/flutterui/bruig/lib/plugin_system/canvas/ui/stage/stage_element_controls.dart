@@ -3,11 +3,83 @@ part of 'canvas_stage.dart';
 // The other elements' own controls on the stage: a metronome's buttons; a
 // counter's buttons, its loose pieces dragged (_CounterPieceDrag), and the
 // field on its Set button; a chart key's switches and the hold that takes
-// the key instead; a video's and a speaker's controls; and a text's flow
+// the key instead; a chart's placed labels and a table's column rules, as
+// drawn and as taken; a video's and a speaker's controls; and a text's flow
 // link dropped. Part of CanvasStageState: its fields, lifecycle and build
 // are in canvas_stage.dart.
 
 extension StageElementControls on CanvasStageState {
+  /// _labelledChart is the lone selected chart whose placed labels are
+  /// drawn and can be taken: not a locked one, and not with helpers hidden.
+  /// Drawing and pressing both ask this, so they agree.
+  ChartElement? get _labelledChart {
+    var element = controller.selected;
+    if (element is! ChartElement || element.locked) return null;
+    return controller.showHelpers ? element : null;
+  }
+
+  /// _selectedChartLabels are the placed labels of the chart whose labels
+  /// are shown (see _labelledChart), each with whether it has a resize grip.
+  List<({Rect rect, bool grip})> _selectedChartLabels() {
+    var element = _labelledChart;
+    if (element == null) return const [];
+    return [
+      for (var MapEntry(key: part, value: rect)
+          in chartLabelPlaces(element, _hit.posed(element)).entries)
+        if (!rect.isEmpty) (rect: rect, grip: chartLabelResizes(part)),
+    ];
+  }
+
+  /// _chartLabelAt is the placed label of the labelled chart at [doc], and
+  /// how it is taken, or null.
+  ChartLabelGrab? _chartLabelAt(Offset doc) {
+    var chart = _labelledChart;
+    if (chart == null) return null;
+    return chartLabelGrabAt(chart, _hit.posed(chart), doc, _docSlop);
+  }
+
+  /// _columnedTable is the lone selected table whose column rules have
+  /// grips and can be taken: not a locked one, and not with helpers hidden.
+  /// Drawing and pressing both ask this, so they agree.
+  TableElement? get _columnedTable {
+    var element = controller.selected;
+    if (element is! TableElement || element.locked) return null;
+    return controller.showHelpers ? element : null;
+  }
+
+  /// _selectedTableColumns are the inner column rules of the table whose
+  /// rules can be taken (see _columnedTable), as (x, top, bottom), for
+  /// grips.
+  List<(double, double, double)> _selectedTableColumns() {
+    var element = _columnedTable;
+    if (element == null) return const [];
+    var bounds = _hit.posed(element);
+    return [
+      for (var x in tableColumnDividers(element, bounds))
+        (x, bounds.top, bounds.bottom),
+    ];
+  }
+
+  /// _tableColumnAt is the column rule of that table at [doc], or null.
+  int? _tableColumnAt(Offset doc) {
+    var table = _columnedTable;
+    if (table == null) return null;
+    return tableColumnAt(table, _hit.posed(table), doc, _docSlop);
+  }
+
+  /// _onTableColumnGrip is whether a press at [stage] is on one of the grips
+  /// drawn at the ends of a column rule, and takes the rule.
+  bool _onTableColumnGrip(Offset stage, Offset doc) {
+    if (_tableColumnAt(doc) == null) return false;
+    for (var (x, top, bottom) in _selectedTableColumns()) {
+      for (var grip in tableColumnGrips(
+          _toStage(Offset(x, top)), _toStage(Offset(x, bottom)))) {
+        if (grip.inflate(handleHitSlop).contains(stage)) return true;
+      }
+    }
+    return false;
+  }
+
   void _pressMetronome(MetronomeElement e, MetronomePart part) {
     controller.selectAlone(e.id);
     switch (part) {

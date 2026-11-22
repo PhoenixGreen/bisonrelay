@@ -193,11 +193,24 @@ extension StagePress on CanvasStageState {
 
     // A guide, after what is drawn over it or is a tool in hand. It is a
     // hairline, so its reach is tight (see guideGrabSlop), but within it the
-    // guide wins over what lies under it. Not where the selection's grips
-    // lie on it, as they are drawn over it. Before Option's camera, since
+    // guide wins over what lies under it. Not where a mark drawn over it
+    // lies on it (see _drawnOverGuide). Before Option's camera, since
     // Option frees a guide's drag from snapping.
-    if (!_onSelectionGrip(stage, doc) && _grabGuide(doc)) return true;
+    if (!_drawnOverGuide(stage, doc) && _grabGuide(doc)) return true;
     return false;
+  }
+
+  /// _pressMarkerNote takes a press on the held marker's canvas label.
+  bool _pressMarkerNote(Offset doc) {
+    var note = controller.holdingMarker;
+    if (note == null || controller.gaming) return false;
+    var laid = markerNoteLayout(controller.document.size.size, note);
+    var sizing = laid.corner.contains(doc);
+    if (!sizing && !laid.box.contains(doc)) return false;
+    controller.beginInteraction();
+    _gesture = _MarkerNoteDrag(note, sizing: sizing, from: doc);
+    _mode = _DragMode.none;
+    return true;
   }
 
   /// _pressAltCamera takes a press with Option held for the camera of a 3D
@@ -382,32 +395,26 @@ extension StagePress on CanvasStageState {
     }
 
     // A selected chart's placed label, before the chart whose box holds it.
-    if (_labelledChart case var chart?) {
-      var grab = chartLabelGrabAt(chart, _hit.posed(chart), doc, _docSlop);
-      if (grab != null) {
-        // A placed key both moves and holds switches: decided on release by
-        // how far the pointer went.
-        _LegendClick? click;
-        if (grab.part == ChartLabelPart.legend &&
-            controller.selection.length == 1) {
-          var at = _legendSeriesAt(chart, doc);
-          if (at >= 0) click = _LegendClick(chart, at);
-        }
-        _gesture = _ChartLabelDrag(grab, click: click);
-        controller.beginInteraction();
-        return true;
+    if (_chartLabelAt(doc) case var grab?) {
+      // A placed key both moves and holds switches: decided on release by
+      // how far the pointer went.
+      _LegendClick? click;
+      var chart = _labelledChart!;
+      if (grab.part == ChartLabelPart.legend &&
+          controller.selection.length == 1) {
+        var at = _legendSeriesAt(chart, doc);
+        if (at >= 0) click = _LegendClick(chart, at);
       }
+      _gesture = _ChartLabelDrag(grab, click: click);
+      controller.beginInteraction();
+      return true;
     }
 
     // A selected table's column rule, before the table.
-    var table = controller.selected;
-    if (table is TableElement && !table.locked) {
-      var divider = tableColumnAt(table, _hit.posed(table), doc, _docSlop);
-      if (divider != null) {
-        _gesture = _TableColumnDrag(divider);
-        controller.beginInteraction();
-        return true;
-      }
+    if (_tableColumnAt(doc) case var divider?) {
+      _gesture = _TableColumnDrag(divider);
+      controller.beginInteraction();
+      return true;
     }
     return false;
   }
@@ -615,7 +622,7 @@ extension StagePress on CanvasStageState {
       unawaited(startVectorEditing(context, controller, element).then((_) {
         var e = controller.editingVector;
         if (!mounted || e == null || e.id != element.id) return;
-        var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
+        var reach = handleReach(e.handleSize) / _scale;
         var shape = shapeAt(e, at, reach);
         if (shape >= 0) controller.pickVectorShape(shape);
       }));
@@ -787,7 +794,7 @@ extension StagePress on CanvasStageState {
           180 /
           math.pi;
       var turn = drag.turn + swept;
-      if (_shiftHeld) turn = (turn / 15).round() * 15;
+      if (_shiftHeld) turn = steppedTurn(turn);
       turn = (turn + 180) % 360 - 180;
       controller.setCopyOwn(e.id, CopyValue.turn.name, turn, transient: true);
       return;

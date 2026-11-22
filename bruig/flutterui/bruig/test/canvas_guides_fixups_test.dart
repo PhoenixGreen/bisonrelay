@@ -7,27 +7,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_parts.dart';
 
 import 'support/canvas_app.dart';
 
 // canvas_guides_fixups_test.dart holds the rules of the marks drawn over the
 // page, each as the person pressing sees them: what is pressed is what is
 // drawn on top, a guide is taken only where it is drawn, a click on a ruler
-// changes nothing, a guide follows the pointer however slowly it moves, a
-// chart's labels show a grip only where one sizes them, a turned camera is
-// caught where its turned frame is drawn, and the grid and guides keep out
-// of the way while the canvas plays.
+// or a guide pulled out and dropped back changes nothing, a guide follows
+// the pointer however slowly it moves, a chart's labels show a grip only
+// where one sizes them, a table's rules are taken only where their grips
+// are drawn, a camera is caught where its frame is drawn and nowhere else,
+// and the grid and guides keep out of the way while the canvas plays or is
+// seen through its camera.
 
 const _viewport = Size(1280, 800);
 
@@ -204,6 +213,28 @@ void main() {
 
     for (var shown in [true, false]) {
       var how = shown ? "shown" : "hidden";
+      testWidgets(
+          "pulled out and dropped back on it, with guides $how, changes "
+          "nothing", (tester) async {
+        var c = guided(ruled.copyWith(showGuides: shown));
+        var stage = await pump(tester, c);
+        expect(stage.pageRect.left, greaterThan(rulerThickness),
+            reason: "the test needs the ruler off the page");
+        var g = await tester.startGesture(leftStrip(stage));
+        await tester.pump();
+        await g.moveBy(const Offset(120, 0));
+        await tester.pump();
+        expect(c.document.guides.guides, hasLength(1),
+            reason: "a guide is pulled out");
+        await g.moveBy(const Offset(-120, 0));
+        await tester.pump();
+        await g.up();
+        await tester.pumpAndSettle();
+        expect(c.document.guides.guides, isEmpty);
+        expect(c.document.guides.showGuides, shown);
+        expect(c.canUndo, isFalse, reason: "no undo step");
+      });
+
       testWidgets("clicked, with guides $how, changes nothing", (tester) async {
         var c = guided(ruled.copyWith(showGuides: shown));
         var stage = await pump(tester, c);
@@ -276,6 +307,150 @@ void main() {
       await tester.pumpAndSettle();
       var after = c.document.elementById("c") as ChartElement;
       expect(after.titleBox.x, e.titleBox.x, reason: "the title was not taken");
+    });
+  });
+
+  group("a table's column rules", () {
+    /// table is two even columns, their rule at x 400.
+    TableElement table() => TableElement(
+          const ElementBase(id: "t", x: 200, y: 200, width: 400, height: 200),
+          rows: const [
+            ["One", "Two"],
+            ["Three", "Four"],
+          ],
+          columnWidths: const [1, 1],
+        );
+
+    double rule(CanvasController c) {
+      var e = c.document.elementById("t") as TableElement;
+      return tableColumnDividers(e, e.bounds).single;
+    }
+
+    testWidgets("with helpers hidden, are neither drawn nor taken",
+        (tester) async {
+      var c = guided(const CanvasGuides(), [table()]);
+      c.selectOnly("t");
+      c.showHelpers = false;
+      var stage = await pump(tester, c);
+      expect(painted(tester).tableColumns, isEmpty);
+      var at = rule(c);
+      await tester.dragFrom(
+          stage.toStagePoint(Offset(at, 300)), const Offset(60, 0));
+      await tester.pumpAndSettle();
+      var after = c.document.elementById("t") as TableElement;
+      expect(after.columnWidths, [1, 1], reason: "the rule was not taken");
+    });
+  });
+
+  group("a mark drawn over a guide", () {
+    testWidgets("a table column rule's grip takes the press", (tester) async {
+      // The rule a quarter across, clear of the table's own top handle.
+      var e = TableElement(
+        const ElementBase(id: "t", x: 200, y: 200, width: 400, height: 200),
+        rows: const [
+          ["One", "Two"],
+        ],
+        columnWidths: const [1, 3],
+      );
+      var at = tableColumnDividers(e, e.bounds).single;
+      var c = guided(
+          CanvasGuides(guides: [CanvasGuide(axis: GuideAxis.vertical, at: at)]),
+          [e]);
+      c.selectOnly("t");
+      var stage = await pump(tester, c);
+      // The grip drawn just inside the rule's top end.
+      var grip = stage.toStagePoint(Offset(at, 200)) + const Offset(0, 5);
+      await tester.dragFrom(grip, const Offset(60, 0));
+      await tester.pumpAndSettle();
+      var after = c.document.elementById("t") as TableElement;
+      var [left, right] = after.columnWidths;
+      expect(left / (left + right), greaterThan(0.3), reason: "the rule moved");
+      expect(c.document.guides.guides.single.at, at,
+          reason: "and the guide stayed");
+    });
+
+    testWidgets("a chart label's resize grip takes the press", (tester) async {
+      var e = ChartElement(
+        const ElementBase(id: "c", x: 200, y: 120, width: 800, height: 460),
+        title: "Title",
+        titleBox: const ChartLabel(x: 0.1, y: 0.1, width: 0.3, height: 0.12),
+        floatingLabels: true,
+        data: ChartData.parse("Cat\tOne\n2019\t10\n2020\t20"),
+      );
+      var title = chartLabelPlaces(e, e.bounds)[ChartLabelPart.title]!;
+      var corner = title.bottomRight;
+      var c = guided(
+          CanvasGuides(
+              guides: [CanvasGuide(axis: GuideAxis.vertical, at: corner.dx)]),
+          [e]);
+      c.selectOnly("c");
+      var stage = await pump(tester, c);
+      await tester.dragFrom(stage.toStagePoint(corner), const Offset(60, 40));
+      await tester.pumpAndSettle();
+      var after = c.document.elementById("c") as ChartElement;
+      expect(after.titleBox.width, greaterThan(e.titleBox.width),
+          reason: "the title was sized");
+      expect(c.document.guides.guides.single.at, corner.dx,
+          reason: "and the guide stayed");
+    });
+
+    testWidgets("a Layout's cut knob takes the press", (tester) async {
+      var l = LayoutElement(
+          const ElementBase(id: "L", x: 100, y: 100, width: 600, height: 500),
+          root: LayoutNode.cut(
+              vertical: true,
+              a: const LayoutNode.leaf("a"),
+              b: const LayoutNode.leaf("b")),
+          cells: const [LayoutCell(id: "a"), LayoutCell(id: "b")],
+          gutter: 20,
+          rowGutter: 20);
+      var line = layoutCutLines(l, l.bounds).single;
+      // The ring that tilts the cut, near its end.
+      var knob = Offset.lerp(line.from, line.to, 0.88)!;
+      var c = guided(
+          CanvasGuides(
+              guides: [CanvasGuide(axis: GuideAxis.horizontal, at: knob.dy)]),
+          [l]);
+      c.selectOnly("L");
+      var stage = await pump(tester, c);
+      await tester.dragFrom(stage.toStagePoint(knob), const Offset(100, 40));
+      await tester.pumpAndSettle();
+      var after = c.document.elementById("L") as LayoutElement;
+      expect(after.root.tilt, isNot(0), reason: "the cut tilted");
+      expect(c.document.guides.guides.single.at, knob.dy,
+          reason: "and the guide stayed");
+    });
+  });
+
+  group("a camera whose frame is not drawn", () {
+    // A camera is taken by its frame, so where the frame is not drawn there
+    // is nothing to take.
+    const cam = CameraElement(
+        ElementBase(id: "cam", x: 320, y: 180, width: 640, height: 360));
+    // The middle of its top edge.
+    const edge = Offset(640, 180);
+
+    testWidgets("with helpers hidden, is not taken", (tester) async {
+      var c = guided(const CanvasGuides(), [cam]);
+      c.showHelpers = false;
+      var stage = await pump(tester, c);
+      await tester.tapAt(stage.toStagePoint(edge));
+      await tester.pumpAndSettle();
+      expect(c.selection, isNot(contains("cam")));
+    });
+
+    testWidgets("on a 3D stage, is not taken", (tester) async {
+      var c = guided(const CanvasGuides(), [
+        BackgroundElement(
+            const ElementBase(id: "st", x: 0, y: 0, width: 1280, height: 720),
+            backdrop: BackdropKind.stage,
+            stage: StageElement(const ElementBase(id: ""))),
+        cam,
+      ]);
+      var stage = await pump(tester, c);
+      await tester.tapAt(stage.toStagePoint(edge));
+      await tester.pumpAndSettle();
+      expect(c.selection, isNot(contains("cam")));
     });
   });
 
@@ -364,6 +539,30 @@ void main() {
         await stop(tester, c);
       });
     }
+
+    testWidgets("in camera view, no grid or guide is drawn", (tester) async {
+      // Looking through the camera while editing draws the page moved, as
+      // playing does.
+      var doc = const CanvasDocument().copyWith(guides: scaffolding).addElement(
+          const CameraElement(
+              ElementBase(id: "cam", x: 320, y: 180, width: 640, height: 360)));
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      var stage = await pump(tester, c);
+      Offset onPage(double x) =>
+          Offset(stage.toStagePoint(Offset(x, 0)).dx, stage.pageRect.center.dy);
+      var editing = await shot(tester);
+      expect(lineAt(editing, onPage(330)), isTrue,
+          reason: "editing, the guide is drawn");
+      expect(lineAt(editing, onPage(200)), isTrue,
+          reason: "editing, the grid is drawn");
+
+      c.cameraView = true;
+      await tester.pumpAndSettle();
+      var looking = await shot(tester);
+      expect(lineAt(looking, onPage(330)), isFalse, reason: "no guide");
+      expect(lineAt(looking, onPage(200)), isFalse, reason: "no grid");
+    });
 
     for (var mode in ["playing", "in a game"]) {
       testWidgets("$mode, a ruler makes no guide and a guide is not taken",

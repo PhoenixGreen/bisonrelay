@@ -217,11 +217,15 @@ class _ElementsMarquee extends StageGesture {
 
 /// _GuideDrag is a guide line moved, or a new one pulled from a ruler.
 class _GuideDrag extends StageGesture {
-  _GuideDrag(this.index) : pulled = null;
+  _GuideDrag(this.index)
+      : pulled = null,
+        unpulled = null;
 
-  /// _GuideDrag.pulled is a new guide along [pulled] pulled out of a ruler.
-  /// It is put down by the first move, so a click makes none.
-  _GuideDrag.pulled(GuideAxis this.pulled) : index = -1;
+  /// _GuideDrag.pulled is a new guide along [pulled] pulled out of a ruler,
+  /// from a canvas that was [unpulled]. It is put down by the first move, so
+  /// a click makes none.
+  _GuideDrag.pulled(GuideAxis this.pulled, CanvasDocument this.unpulled)
+      : index = -1;
 
   /// index is the guide's place in the document's list of guides, or -1
   /// for a pulled one not yet put down.
@@ -230,6 +234,11 @@ class _GuideDrag extends StageGesture {
   /// pulled is the axis of a guide pulled out of a ruler, or null for one
   /// already on the page.
   final GuideAxis? pulled;
+
+  /// unpulled is the document as the press on the ruler found it, which a
+  /// pulled guide let go off the page puts back; null for one already on
+  /// the page.
+  final CanvasDocument? unpulled;
 
   @override
   bool get opensUndoStep => true;
@@ -251,12 +260,13 @@ class _GuideDrag extends StageGesture {
   @override
   void release(CanvasStageState stage, Offset at,
           {required bool travelled, required bool clicked}) =>
-      stage._finishGuide(index);
+      stage._finishGuide(index, unpulled: unpulled);
 
   /// cancel drops the guide as a release does: a cancel keeps what the drag
   /// did, so a guide dragged off the page goes all the same.
   @override
-  void cancel(CanvasStageState stage) => stage._finishGuide(index);
+  void cancel(CanvasStageState stage) =>
+      stage._finishGuide(index, unpulled: unpulled);
 }
 
 /// _AnchorDrag is an element's anchor point dragged. See

@@ -1,10 +1,14 @@
 part of 'stage_painter.dart';
 
-// What is drawn over the elements: chart labels, the knife's line, cameras and
-// the selection. Part of StagePainter: its fields, lifecycle and build are in
+// The page's contents as the editor draws them (an open editor's own words
+// left out), and the marks over them: a Layout's lines, knobs and reading
+// numbers, a chart's placed labels, a table's column rules, the knife's line,
+// anchors, game touch areas, cameras, and the selection's box, handles and
+// ring, which also calls on the tools' marks in stage_painter_handles.dart.
+// Part of StagePainter: its fields, lifecycle and build are in
 // stage_painter.dart.
 
-extension StagePainterMarks on StagePainter {
+extension _StagePainterMarks on StagePainter {
   /// _skippedWords is the words an open editor draws itself, which the
   /// canvas leaves out: a piece's id, textBodyWords for the paragraph, or
   /// null while the canvas draws them under a see-through field.
@@ -174,15 +178,10 @@ extension StagePainterMarks on StagePainter {
     var paint = Paint()..color = const Color(0xFF3D7EFF);
 
     for (var (x, top, bottom) in tableColumns) {
-      var at = x * scale + origin.dx;
-      var t = top * scale + origin.dy;
-      var b = bottom * scale + origin.dy;
-      for (var y in [t + 5, b - 5]) {
+      for (var grip in tableColumnGrips(Offset(x, top) * scale + origin,
+          Offset(x, bottom) * scale + origin)) {
         canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromCenter(center: Offset(at, y), width: 4, height: 12),
-                const Radius.circular(2)),
-            paint);
+            RRect.fromRectAndRadius(grip, const Radius.circular(2)), paint);
       }
     }
   }
@@ -229,10 +228,10 @@ extension StagePainterMarks on StagePainter {
         ..color = ink;
       for (var paint in [halo, line]) {
         canvas.drawCircle(c, 6, paint);
-        canvas.drawLine(
-            c - const Offset(10, 0), c + const Offset(10, 0), paint);
-        canvas.drawLine(
-            c - const Offset(0, 10), c + const Offset(0, 10), paint);
+        canvas.drawLine(c - const Offset(anchorReach, 0),
+            c + const Offset(anchorReach, 0), paint);
+        canvas.drawLine(c - const Offset(0, anchorReach),
+            c + const Offset(0, anchorReach), paint);
       }
       canvas.drawCircle(c, 1.8, Paint()..color = ink);
     }
@@ -252,13 +251,11 @@ extension StagePainterMarks on StagePainter {
     }
   }
 
-  /// _paintCameras draws each Camera's frame over the page, except while
-  /// looking through it, when the page is the frame.
+  /// _paintCameras draws each Camera's frame over the page, unless the
+  /// stage says not (camerasShown): while looking through one, when the
+  /// page is the frame, and on a 3D stage, where it is in the scene.
   void _paintCameras(Canvas canvas) {
-    // On a 3D stage it is in the scene, not a frame on the page.
-    if (camera != null || directed || isStageScene(document)) {
-      return;
-    }
+    if (!camerasShown) return;
     for (var cam in document.elements.whereType<CameraElement>()) {
       if (!cam.visible) continue;
       var r = cameraFrame(cam, frame, document, live: liveMotion);
@@ -479,7 +476,7 @@ extension StagePainterMarks on StagePainter {
       ..strokeWidth = 1
       ..color = const Color(0x993D7EFF);
 
-    for (var element in chosenOutlines(document, selection, frame)) {
+    for (var element in chosenOutlines(document, selection)) {
       var box = element.movedBoundsAt(frame, document, live: liveMotion);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)

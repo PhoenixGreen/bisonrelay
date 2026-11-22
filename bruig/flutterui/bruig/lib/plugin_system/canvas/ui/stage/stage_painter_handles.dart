@@ -1,11 +1,13 @@
 part of 'stage_painter.dart';
 
-// The handles and guides of the tools: trails, copies, the warp grid, flow
-// grips, shape and layer boxes, mirror lines, vector and path controls, framing
-// and the rulers' guides. Part of StagePainter: its fields, lifecycle and build
-// are in stage_painter.dart.
+// The marks of motion and of the tools: the motion trail and onion skin,
+// copies, every element's box, the warp grid, a text's flow links and grips,
+// a drawing's shape box, a picture's layer boxes, the pencil's mirror lines,
+// vector and path controls, a picture being reframed, the grid, guides and
+// snap lines, and the rulers. Part of StagePainter: its fields, lifecycle and
+// build are in stage_painter.dart.
 
-extension StagePainterHandles on StagePainter {
+extension _StagePainterHandles on StagePainter {
   /// _paintTrail draws the selected element's motion while open in the
   /// Chain: its middle's path three seconds either side of now, dashed, and
   /// faint copies where it was a moment before. Nothing if it stands still.
@@ -292,7 +294,7 @@ extension StagePainterHandles on StagePainter {
     // The turn handle on a stalk above the box, as an element's.
     if (turnable) {
       var top = screen(box.topCenter);
-      var knob = top - const Offset(0, shapeTurnReach);
+      var knob = shapeTurnKnob(top);
       canvas.drawLine(
           top,
           knob,
@@ -445,7 +447,7 @@ extension StagePainterHandles on StagePainter {
             ..color = colour);
     }
     for (var h in layers.handles) {
-      var r = Rect.fromCenter(center: screen(h), width: 8, height: 8);
+      var r = Rect.fromCenter(center: screen(h), width: handleSize, height: handleSize);
       canvas.drawRect(r, Paint()..color = const Color(0xFFFFFFFF));
       canvas.drawRect(
           r,
@@ -639,7 +641,7 @@ extension StagePainterHandles on StagePainter {
         (node.outDx, node.outDy, path.outHandleOf(node)),
         (node.inDx, node.inDy, path.inHandleOf(node)),
       ]) {
-        if (dx == 0 && dy == 0) continue;
+        if (!handleBent(dx, dy)) continue;
         var end = at(handle);
         canvas.drawLine(point, end, line);
         canvas.drawCircle(end, 4, knob);

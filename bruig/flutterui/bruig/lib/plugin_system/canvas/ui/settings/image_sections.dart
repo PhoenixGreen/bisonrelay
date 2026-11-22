@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_align.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';

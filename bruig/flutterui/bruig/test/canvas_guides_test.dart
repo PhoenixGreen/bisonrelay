@@ -1,10 +1,11 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_guides_test.dart is about where a dragged element actually lands.
@@ -188,6 +189,74 @@ void main() {
       expect(back.guides.first.axis, GuideAxis.vertical);
       expect(back.guides.first.at, 120);
       expect(back.guides.last.at, 340);
+    });
+
+    test("each setting changed alone is saved, and reads back", () {
+      // Nothing to save is asked of what is saved, so a setting is never
+      // left out of either.
+      const d = CanvasGuides();
+      expect(d.isDefault, isTrue);
+      expect(d.toJson(), isEmpty);
+      var alone = <String, CanvasGuides>{
+        "showGrid": d.copyWith(showGrid: true),
+        "gridSize": d.copyWith(gridSize: 24),
+        "subdivisions": d.copyWith(subdivisions: 3),
+        "guides":
+            d.withGuide(const CanvasGuide(axis: GuideAxis.horizontal, at: 120)),
+        "showGuides": d.copyWith(showGuides: false),
+        "lockGuides": d.copyWith(lockGuides: true),
+        "snap": d.copyWith(snap: false),
+        "snapTo.vertices": d.copyWith(snapTo: const SnapTo(vertices: false)),
+        "snapTo.edges": d.copyWith(snapTo: const SnapTo(edges: false)),
+        "snapTo.centres": d.copyWith(snapTo: const SnapTo(centres: false)),
+        "snapTo.objects": d.copyWith(snapTo: const SnapTo(objects: false)),
+        "snapWithin": d.copyWith(snapWithin: 12),
+        "stageSnap": d.copyWith(stageSnap: true),
+        "stageStep": d.copyWith(stageStep: 0.5),
+        "stageTurn": d.copyWith(stageTurn: 45),
+        "rulers.top": d.copyWith(rulers: const CanvasRulers(top: true)),
+        "rulers.left": d.copyWith(rulers: const CanvasRulers(left: true)),
+        "rulers.right": d.copyWith(rulers: const CanvasRulers(right: true)),
+        "rulers.bottom": d.copyWith(rulers: const CanvasRulers(bottom: true)),
+        "showRulers": d.copyWith(showRulers: false),
+      };
+      for (var MapEntry(key: field, value: guides) in alone.entries) {
+        expect(guides.isDefault, isFalse, reason: field);
+        var saved = jsonEncode(guides.toJson());
+        var back =
+            CanvasGuides.fromJson(jsonDecode(saved) as Map<String, dynamic>);
+        expect(back.isDefault, isFalse, reason: field);
+        expect(jsonEncode(back.toJson()), saved, reason: field);
+      }
+    });
+
+    test("every setting changed is written as it always was", () {
+      const every = CanvasGuides(
+        showGrid: true,
+        gridSize: 24,
+        subdivisions: 3,
+        guides: [CanvasGuide(axis: GuideAxis.vertical, at: 120)],
+        showGuides: false,
+        lockGuides: true,
+        snap: false,
+        snapTo: SnapTo(
+            vertices: false, edges: false, centres: false, objects: false),
+        snapWithin: 12,
+        stageSnap: true,
+        stageStep: 0.5,
+        stageTurn: 45,
+        rulers: CanvasRulers(top: true, left: true, right: true, bottom: true),
+        showRulers: false,
+      );
+      expect(
+          jsonEncode(every.toJson()),
+          '{"grid":true,"gridSize":24.0,"sub":3,'
+          '"guides":[{"axis":"vertical","at":120.0}],"hideGuides":true,'
+          '"lockGuides":true,"noSnap":true,'
+          '"snapTo":{"v":false,"e":false,"c":false,"o":false},'
+          '"within":12.0,"stageSnap":true,"stageStep":0.5,"stageTurn":45.0,'
+          '"rulers":{"t":true,"l":true,"r":true,"b":true},'
+          '"showRulers":false}');
     });
 
     test("the scaffolding travels with the canvas", () {

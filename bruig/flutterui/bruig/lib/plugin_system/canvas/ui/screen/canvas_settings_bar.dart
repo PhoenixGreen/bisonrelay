@@ -863,24 +863,14 @@ class _SnapButton extends StatelessWidget {
                 () => _set(guides.copyWith(stageTurn: turn)),
                 key: ValueKey("snapTurn-${turn.round()}")),
         ] else ...[
-          tick(
-              "To edges",
-              guides.snapTo.edges,
-              () => _set(guides.copyWith(
-                  snapTo:
-                      guides.snapTo.copyWith(edges: !guides.snapTo.edges)))),
-          tick(
-              "To centres",
-              guides.snapTo.centres,
-              () => _set(guides.copyWith(
-                  snapTo: guides.snapTo
-                      .copyWith(centres: !guides.snapTo.centres)))),
-          tick(
-              "To other elements",
-              guides.snapTo.objects,
-              () => _set(guides.copyWith(
-                  snapTo: guides.snapTo
-                      .copyWith(objects: !guides.snapTo.objects)))),
+          // The targets the guides panel offers, worded as a menu's.
+          for (var target in SnapTarget.values)
+            tick(
+                "To ${target.label.toLowerCase()}",
+                target.of(guides.snapTo),
+                () => _set(guides.copyWith(
+                    snapTo:
+                        target.set(guides.snapTo, !target.of(guides.snapTo))))),
         ],
         const Divider(height: 1),
         MenuItemButton(

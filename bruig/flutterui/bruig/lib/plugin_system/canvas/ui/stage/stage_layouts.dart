@@ -127,6 +127,23 @@ extension StageLayouts on CanvasStageState {
     );
   }
 
+  /// _cutKnobAt is the cut of [e] whose knob is at document point [doc],
+  /// and the drag that knob begins, or null.
+  (LayoutCutLine, _DragMode)? _cutKnobAt(LayoutElement e, Offset doc) {
+    var local = _intoLayout(e, doc);
+    for (var line in layoutCutLines(e, e.bounds)) {
+      var k = _cutKnobs(e, line);
+      if (k == null) continue;
+      for (var (at, mode) in [
+        (k.turn, _DragMode.layoutCutTurn),
+        (k.gutter, _DragMode.layoutCutGutter),
+      ]) {
+        if ((local - at).distance <= 8 / _scale) return (line, mode);
+      }
+    }
+    return null;
+  }
+
   static double _cutGutterOf(LayoutElement e, LayoutNode n) =>
       n.gutter ?? (n.vertical ? e.gutter : e.rowGutter);
 
@@ -221,19 +238,10 @@ extension StageLayouts on CanvasStageState {
     var local = _intoLayout(e, doc);
     var reach = 10 / _scale;
     // A cut's knobs before its line, as they sit on or beside it.
-    for (var line in layoutCutLines(e, e.bounds)) {
-      var k = _cutKnobs(e, line);
-      if (k == null) continue;
-      for (var (at, mode) in [
-        (k.turn, _DragMode.layoutCutTurn),
-        (k.gutter, _DragMode.layoutCutGutter),
-      ]) {
-        if ((local - at).distance <= 8 / _scale) {
-          _beginLayoutDrag(e, mode);
-          _layoutCut = line;
-          return true;
-        }
-      }
+    if (_cutKnobAt(e, doc) case (var line, var mode)?) {
+      _beginLayoutDrag(e, mode);
+      _layoutCut = line;
+      return true;
     }
     for (var line in layoutCutLines(e, e.bounds)) {
       if (_toSegment(local, line.from, line.to) <= reach) {
@@ -348,7 +356,7 @@ extension StageLayouts on CanvasStageState {
                   180 /
                   math.pi;
           var turn = c.turn + swept;
-          if (_shiftHeld) turn = (turn / 15).round() * 15;
+          if (_shiftHeld) turn = steppedTurn(turn);
           moved = c.copyWith(turn: (turn + 180) % 360 - 180);
         } else {
           var from = _dragStart - _layoutMiddle, to = doc - _layoutMiddle;

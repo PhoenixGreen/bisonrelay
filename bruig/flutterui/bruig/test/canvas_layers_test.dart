@@ -37,8 +37,6 @@ const _widgetLibraries = [
 /// off. An import is added here only with a reason; one that no longer
 /// breaks its rule fails the last test until it is taken out.
 const _exceptions = <String>{
-  // Alignment choices carry their Material icons.
-  "$_canvas/model/canvas_guides.dart: package:flutter/material.dart",
   // The film colour tables are data a picture's look is read with, kept
   // with the presets.
   "$_canvas/model/image_steps.dart: ${_package}presets/film_tables.dart",
@@ -156,8 +154,9 @@ void main() {
 
   test("the stage's own libraries do not import the stage", () {
     // The keys, the hit test, the picked parts, the view and its scrolling,
-    // and what is edited in place are read by the stage; when one of them
-    // imported the stage back, neither could be read or changed alone.
+    // what is edited in place and the rulers are read by the stage; when one
+    // of them imported the stage back, neither could be read or changed
+    // alone.
     var own = [
       "ui/stage/stage_keys.dart",
       "ui/stage/stage_hit_test.dart",
@@ -165,6 +164,7 @@ void main() {
       "ui/stage/stage_transform.dart",
       "ui/stage/stage_scroll.dart",
       "ui/stage/in_place_edit.dart",
+      "ui/stage/stage_rulers.dart",
     ];
     var offenders = [
       for (var path in own)

@@ -1,11 +1,12 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:flutter/painting.dart';
 
-// stage_geometry.dart is the sizes of what is grabbed on the stage and the
-// names of the handles, shared so the painter and the hit-testing agree. All
-// are screen pixels, so handles keep their size at every zoom.
+// stage_geometry.dart is the sizes and places of what is grabbed on the
+// stage, the names of the handles, and the steps a turn takes with Shift,
+// shared so the painter and the hit-testing agree. Sizes are screen pixels,
+// so handles keep their size at every zoom.
 
 /// handleSize is a resize handle's side.
 const double handleSize = 9;
@@ -16,12 +17,50 @@ const double handleSize = 9;
 /// elements nearby.
 const double handleHitSlop = 6;
 
+/// handleReach is how near, in screen pixels, a press must be to a handle
+/// [size] across to take it: half the handle, and the slop past it.
+double handleReach([double size = handleSize]) => size / 2 + handleHitSlop;
+
 /// strokeHitSlop is how much empty canvas beside a line counts as on it; too
 /// much steals clicks meant for what is behind.
 const double strokeHitSlop = 7;
 
 /// rotateHandleGap is how far above the selection the rotate ring sits.
 const double rotateHandleGap = 26;
+
+/// shapeTurnReach is how far above a shape's box its turn handle sits.
+const double shapeTurnReach = 22;
+
+/// shapeTurnKnob is where the turn handle of a box whose top middle is at
+/// [top] sits, both on screen.
+Offset shapeTurnKnob(Offset top) => top - const Offset(0, shapeTurnReach);
+
+/// anchorReach is how long each arm of an anchor's cross is drawn, and so
+/// how near it a press takes the anchor.
+const double anchorReach = 10;
+
+/// handleBent is whether a path point's handle, [dx] and [dy] from the
+/// point, is drawn and can be taken: an unbent one lies on its point.
+bool handleBent(double dx, double dy) => dx != 0 || dy != 0;
+
+/// tableColumnGrips is where the two grips of a table's column rule are
+/// drawn, for a rule from [top] to [bottom], all on screen: a short bar
+/// just inside each end.
+List<Rect> tableColumnGrips(Offset top, Offset bottom) => [
+      Rect.fromCenter(center: top + const Offset(0, 5), width: 4, height: 12),
+      Rect.fromCenter(
+          center: bottom - const Offset(0, 5), width: 4, height: 12),
+    ];
+
+/// turnStepDegrees is the step a turn takes with Shift held.
+const double turnStepDegrees = 15;
+
+/// steppedTurn is [angle] put on the nearest turn step: degrees, or
+/// [radians].
+double steppedTurn(double angle, {bool radians = false}) {
+  var step = radians ? turnStepDegrees * math.pi / 180 : turnStepDegrees;
+  return (angle / step).round() * step;
+}
 
 /// StageHandle names the eight resize grips and the rotate one.
 enum StageHandle {
@@ -113,86 +152,23 @@ class FlowLine {
   int get hashCode => Object.hash(from, to, overflowing);
 }
 
-/// rulerThickness is how deep a ruler strip is.
-const double rulerThickness = 18;
-
 /// guideGrabSlop is how near a guide a press must be to take it: tighter
 /// than a handle's, since a guide lies over things that may be aimed at.
 const double guideGrabSlop = 4;
 
-/// rulerStep picks the gap between numbered ticks: the smallest 1, 2, 5, 10
-/// ... multiple of [every] (the grid's spacing, so each number has a grid
-/// line under it) that leaves numbers about [wanted] pixels apart.
-double rulerStep(double scale, double every, {double wanted = 80}) {
-  if (!every.isFinite || every <= 0) every = 100;
-  if (!scale.isFinite || scale <= 0) return every;
-
-  var want = wanted / scale / every;
-  if (want <= 1) return every;
-
-  var magnitude = math.pow(10, (math.log(want) / math.ln10).floor()).toDouble();
-  var norm = want / magnitude;
-  var step = norm <= 1
-      ? 1
-      : norm <= 2
-          ? 2
-          : norm <= 5
-              ? 5
-              : 10;
-  return every * step * magnitude;
-}
-
-/// RulerBands is where the four strips are drawn and hit-tested; null for an
-/// edge that is switched off.
-class RulerBands {
-  final Rect? top;
-  final Rect? left;
-  final Rect? right;
-  final Rect? bottom;
-
-  const RulerBands({this.top, this.left, this.right, this.bottom});
-
-  bool get any =>
-      top != null || left != null || right != null || bottom != null;
-
-  /// axisAt is the guide a press at [at] would make, or null off the rulers:
-  /// side strips make upright lines, top and bottom ones level lines.
-  GuideAxis? axisAt(Offset at) {
-    if (left?.contains(at) ?? false) return GuideAxis.vertical;
-    if (right?.contains(at) ?? false) return GuideAxis.vertical;
-    if (top?.contains(at) ?? false) return GuideAxis.horizontal;
-    if (bottom?.contains(at) ?? false) return GuideAxis.horizontal;
-    return null;
-  }
-}
-
-/// rulerBandsFor lays the strips against the page's edges, not the window's,
-/// so the ruler sits beside what it measures; clamped inside the viewport
-/// for a page zoomed to fill it.
-RulerBands rulerBandsFor(Rect page, Size viewport, CanvasRulers rulers) {
-  const t = rulerThickness;
-  double x0 = page.left.clamp(0.0, math.max(0.0, viewport.width));
-  double x1 = page.right.clamp(0.0, math.max(0.0, viewport.width));
-  double y0 = page.top.clamp(0.0, math.max(0.0, viewport.height));
-  double y1 = page.bottom.clamp(0.0, math.max(0.0, viewport.height));
-
-  double down(double at) =>
-      at.clamp(0.0, math.max(0.0, viewport.height - t)).toDouble();
-  double across(double at) =>
-      at.clamp(0.0, math.max(0.0, viewport.width - t)).toDouble();
-
-  return RulerBands(
-    top: rulers.top
-        ? Rect.fromLTWH(x0, down(page.top - t), math.max(0.0, x1 - x0), t)
-        : null,
-    bottom: rulers.bottom
-        ? Rect.fromLTWH(x0, down(page.bottom), math.max(0.0, x1 - x0), t)
-        : null,
-    left: rulers.left
-        ? Rect.fromLTWH(across(page.left - t), y0, t, math.max(0.0, y1 - y0))
-        : null,
-    right: rulers.right
-        ? Rect.fromLTWH(across(page.right), y0, t, math.max(0.0, y1 - y0))
-        : null,
-  );
+/// cameraTab is where [cam]'s name tab is on the page: in the top-left of
+/// [frame], a fixed size on screen at any [scale]. Shared by painter and
+/// stage so drawing and hit-testing agree.
+Rect cameraTab(CameraElement cam, Rect frame, double scale) {
+  var label = TextPainter(
+    text: TextSpan(
+        text: cam.name,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  var w = math.min(label.width + 26, 220.0) / scale;
+  var h = 20 / scale;
+  var inset = 4 / scale;
+  return Rect.fromLTWH(frame.left + inset, frame.top + inset,
+      math.min(w, frame.width - inset * 2), math.min(h, frame.height / 3));
 }

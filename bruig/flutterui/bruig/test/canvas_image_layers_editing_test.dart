@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

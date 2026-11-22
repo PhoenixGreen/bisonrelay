@@ -17,7 +17,24 @@ extension StageHitTesting on CanvasStageState {
       document: document,
       frame: controller.frame,
       live: controller.liveMotion,
-      scale: _scale);
+      scale: _scale,
+      cameras: _camerasShown);
+
+  /// _directed is whether the page is seen through the scene's camera:
+  /// while it plays, or in camera view, unless the master is edited.
+  bool get _directed =>
+      (controller.playing || controller.cameraView) && !document.editingMaster;
+
+  /// _camerasShown is whether each Camera's frame is drawn over the page,
+  /// and so whether one can be taken there: not with helpers hidden, nor
+  /// while the page is seen through a camera (the scene's, or a game's own
+  /// framing), nor on a 3D stage, where a camera is in the scene. The
+  /// painter and the hit test both ask this.
+  bool get _camerasShown =>
+      controller.showHelpers &&
+      !_directed &&
+      !(controller.gaming && controller.gameFraming != null) &&
+      !isStageScene(document);
 
   /// _hitElement is the topmost element under a document point.
   CanvasElement? _hitElement(Offset point) => _hit.topmost(point);
@@ -53,7 +70,7 @@ extension StageHitTesting on CanvasStageState {
     if (!_selectionHasOwnGeometry) return null;
     var bounds = _selectionBounds;
     if (bounds == null) return null;
-    var reach = handleSize / 2 + handleHitSlop;
+    var reach = handleReach();
 
     // Hidden helpers cannot be grabbed: see CanvasController.showHelpers.
     if (!controller.showHelpers) return null;
@@ -348,6 +365,20 @@ extension StageHitTesting on CanvasStageState {
       if (e is! VideoElement || !e.visible) continue;
       var part = _videoPartAt(e, doc);
       if (part != null) return (e, part);
+    }
+    return null;
+  }
+
+  /// _anchorUnder is the element whose shown, unlocked anchor is at [stage].
+  String? _anchorUnder(Offset stage) {
+    for (var id in controller.selection) {
+      if (!controller.anchorShown(id)) continue;
+      var e = document.elementById(id);
+      if (e == null || e.base.anchorLocked || e.locked) continue;
+      if ((_toStage(e.anchorAt(controller.frame)) - stage).distance <=
+          anchorReach) {
+        return id;
+      }
     }
     return null;
   }

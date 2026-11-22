@@ -2,32 +2,11 @@ part of 'canvas_stage.dart';
 
 // A drag on the canvas: moving, resizing, skewing and turning what was pressed,
 // from the press that begins it (_beginTransform) to each step that applies
-// it; a chart's label and a table's column rule dragged, and the held
-// marker's note. Part of CanvasStageState: its fields, lifecycle and build are
+// it; a chart's label, a table's column rule, an anchor and the held marker's
+// note dragged. Part of CanvasStageState: its fields, lifecycle and build are
 // in canvas_stage.dart.
 
 extension StageDrag on CanvasStageState {
-  /// _labelledChart is the lone selected chart whose placed labels are
-  /// drawn and can be taken: not a locked one, and not with helpers hidden.
-  /// Drawing and pressing both ask this, so they agree.
-  ChartElement? get _labelledChart {
-    var element = controller.selected;
-    if (element is! ChartElement || element.locked) return null;
-    return controller.showHelpers ? element : null;
-  }
-
-  /// _selectedChartLabels are the placed labels of the chart whose labels
-  /// are shown (see _labelledChart), each with whether it has a resize grip.
-  List<({Rect rect, bool grip})> _selectedChartLabels() {
-    var element = _labelledChart;
-    if (element == null) return const [];
-    return [
-      for (var MapEntry(key: part, value: rect)
-          in chartLabelPlaces(element, _hit.posed(element)).entries)
-        if (!rect.isEmpty) (rect: rect, grip: chartLabelResizes(part)),
-    ];
-  }
-
   /// _docSlop is the pointer's reach in document units: the slop is in
   /// screen pixels (how still a hand is), so divided by the zoom.
   double get _docSlop => handleHitSlop / _scale;
@@ -59,19 +38,6 @@ extension StageDrag on CanvasStageState {
       controller.replaceElement(e.withAnchorAt(doc, controller.frame),
           transient: true);
     }
-  }
-
-  /// _pressMarkerNote takes a press on the held marker's canvas label.
-  bool _pressMarkerNote(Offset doc) {
-    var note = controller.holdingMarker;
-    if (note == null || controller.gaming) return false;
-    var laid = markerNoteLayout(controller.document.size.size, note);
-    var sizing = laid.corner.contains(doc);
-    if (!sizing && !laid.box.contains(doc)) return false;
-    controller.beginInteraction();
-    _gesture = _MarkerNoteDrag(note, sizing: sizing, from: doc);
-    _mode = _DragMode.none;
-    return true;
   }
 
   /// _dragMarkerNote moves the held marker's label for [drag], or sizes it
@@ -579,19 +545,6 @@ extension StageDrag on CanvasStageState {
     return Offset(dx, dy);
   }
 
-  /// _anchorUnder is the element whose shown, unlocked anchor is at [stage].
-  String? _anchorUnder(Offset stage) {
-    for (var id in controller.selection) {
-      if (!controller.anchorShown(id)) continue;
-      var e = document.elementById(id);
-      if (e == null || e.base.anchorLocked || e.locked) continue;
-      if ((_toStage(e.anchorAt(controller.frame)) - stage).distance <= 10) {
-        return id;
-      }
-    }
-    return null;
-  }
-
   void _applyRotate(Offset doc, _BoxStart start) {
     var bounds = _selectionBounds;
     if (bounds == null) return;
@@ -614,7 +567,7 @@ extension StageDrag on CanvasStageState {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
       var rotation = entry.value + degrees;
-      if (_shiftHeld) rotation = (rotation / 15).round() * 15;
+      if (_shiftHeld) rotation = steppedTurn(rotation);
       next = next.withElement(element.turnedTo(rotation));
     }
     controller.apply(next, transient: true);

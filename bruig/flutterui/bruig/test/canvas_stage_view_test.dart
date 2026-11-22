@@ -34,7 +34,7 @@ import 'package:bruig/plugin_system/canvas/ui/screen/play_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_parts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -2717,7 +2717,7 @@ void main() {
       // nothing about which of six overlapping things are in it.
       var document = three();
       expect([
-        for (var e in chosenOutlines(document, {"a", "c"}, 0)) e.id,
+        for (var e in chosenOutlines(document, {"a", "c"})) e.id,
       ], [
         "a",
         "c"
@@ -2725,8 +2725,8 @@ void main() {
     });
 
     test("and one on its own is not: it has a box already", () {
-      expect(chosenOutlines(three(), {"a"}, 0), isEmpty);
-      expect(chosenOutlines(three(), {}, 0), isEmpty);
+      expect(chosenOutlines(three(), {"a"}), isEmpty);
+      expect(chosenOutlines(three(), {}), isEmpty);
     });
 
     test("nor is one that is not being drawn", () {
@@ -2734,7 +2734,7 @@ void main() {
       document = document
           .withElement(document.elementById("a")!.withBase(visible: false));
       expect([
-        for (var e in chosenOutlines(document, {"a", "b"}, 0)) e.id,
+        for (var e in chosenOutlines(document, {"a", "b"})) e.id,
       ], [
         "b"
       ]);

@@ -15,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

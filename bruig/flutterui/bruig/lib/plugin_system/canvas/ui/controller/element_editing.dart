@@ -454,21 +454,9 @@ extension CanvasElementEditing on CanvasController {
 
     var next = _document;
     for (var element in chosen) {
-      var at = element.bounds;
-      var dx = switch (align) {
-        CanvasAlign.left => box.left - at.left,
-        CanvasAlign.centreX => box.center.dx - at.center.dx,
-        CanvasAlign.right => box.right - at.right,
-        _ => 0.0,
-      };
-      var dy = switch (align) {
-        CanvasAlign.top => box.top - at.top,
-        CanvasAlign.middleY => box.center.dy - at.center.dy,
-        CanvasAlign.bottom => box.bottom - at.bottom,
-        _ => 0.0,
-      };
-      if (dx == 0 && dy == 0) continue;
-      next = next.withElement(_moved(element, dx, dy));
+      var by = align.offset(box, element.bounds);
+      if (by == Offset.zero) continue;
+      next = next.withElement(_moved(element, by.dx, by.dy));
     }
     apply(next, transient: transient);
   }

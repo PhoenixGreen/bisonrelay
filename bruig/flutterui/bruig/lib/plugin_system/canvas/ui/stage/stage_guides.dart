@@ -2,18 +2,34 @@ part of 'canvas_stage.dart';
 
 // Guides on the stage: one taken by a press near it, or pulled out of a
 // ruler; moved by a drag, snapped to the grid; and dropped on release, or
-// removed when dragged off the page. Part of CanvasStageState: its fields,
-// lifecycle and build are in canvas_stage.dart.
+// removed when dragged off the page, a new one leaving the canvas as it
+// was. Part of CanvasStageState: its fields, lifecycle and build are in
+// canvas_stage.dart.
 
 extension StageGuides on CanvasStageState {
   /// _guidesInView is whether the grid and guides are drawn over the page:
-  /// not while it plays, previews or runs as a game, when the scene's camera
-  /// moves the page under them. The rulers stay.
+  /// not while it plays, previews or runs as a game, nor while it is seen
+  /// through the scene's camera, when the camera moves the page under them.
+  /// The rulers stay.
   bool get _guidesInView =>
       !controller.playing &&
       !controller.gaming &&
+      !_directed &&
       controller.previewAt == null &&
       controller.previewing == null;
+
+  /// _drawnOverGuide is whether a press at [stage] is on a mark drawn over
+  /// the guides, which takes the press before a guide there: the
+  /// selection's grips, a Layout's cut knobs, a chart label's resize grip
+  /// or a table column rule's grips.
+  bool _drawnOverGuide(Offset stage, Offset doc) {
+    if (_onSelectionGrip(stage, doc)) return true;
+    if (_oneLayout case var layout? when _cutKnobAt(layout, doc) != null) {
+      return true;
+    }
+    if (_chartLabelAt(doc)?.resizing ?? false) return true;
+    return _onTableColumnGrip(stage, doc);
+  }
 
   /// _pullGuide begins pulling a new guide out of the ruler under [stage],
   /// and says whether it did. The guide is put down by the drag's first
@@ -22,7 +38,7 @@ extension StageGuides on CanvasStageState {
     var from = _rulerUnder(stage);
     if (from == null) return false;
     controller.beginInteraction();
-    _gesture = _GuideDrag.pulled(from);
+    _gesture = _GuideDrag.pulled(from, document);
     return true;
   }
 
@@ -71,11 +87,10 @@ extension StageGuides on CanvasStageState {
   /// dragged from is what is seen. None while guides are put away, as no
   /// guide could be drawn coming out of one.
   GuideAxis? _rulerUnder(Offset stage) {
-    if (!document.guides.showRulers || !_guidesInView) return null;
-    var rulers = document.guides.rulers;
-    if (!rulers.any) return null;
+    var guides = document.guides;
+    if (!guides.rulersShown || !_guidesInView) return null;
     // The strips are at the window's edges, the page scrolled under them.
-    return rulerBandsFor(_pageRect.shift(-_scrolled), _visible, rulers)
+    return rulerBandsFor(_pageRect.shift(-_scrolled), _visible, guides.rulers)
         .axisAt(stage - _scrolled);
   }
 
@@ -104,8 +119,11 @@ extension StageGuides on CanvasStageState {
   }
 
   /// _finishGuide drops the guide at [index], or removes it if dragged off
-  /// the canvas.
-  void _finishGuide(int index) {
+  /// the canvas. A guide pulled out of a ruler and let go off the canvas
+  /// was never put down: the canvas goes back to [unpulled], the document
+  /// as the press found it, so no undo step is left and guides hidden
+  /// before stay hidden.
+  void _finishGuide(int index, {CanvasDocument? unpulled}) {
     var guides = document.guides;
     if (index < 0 || index >= guides.guides.length) return;
     var guide = guides.guides[index];
@@ -114,7 +132,10 @@ extension StageGuides on CanvasStageState {
         ? guide.at < 0 || guide.at > page.width
         : guide.at < 0 || guide.at > page.height;
 
-    if (off) {
+    if (!off) return;
+    if (unpulled != null) {
+      controller.apply(unpulled, transient: true);
+    } else {
       controller.apply(document.copyWith(guides: guides.withoutGuide(index)));
     }
   }

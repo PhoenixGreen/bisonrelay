@@ -46,7 +46,7 @@ extension StagePictureTools on CanvasStageState {
   }
 
   /// _layerReach is how near a layer handle, in document units, a press is.
-  double get _layerReach => (handleSize / 2 + handleHitSlop) / _scale;
+  double get _layerReach => handleReach() / _scale;
 
   /// _layerKnob is [space]'s turning knob, above the middle of its top.
   Offset _layerKnob(LayerSpace space) {
@@ -331,7 +331,7 @@ extension StagePictureTools on CanvasStageState {
         case _DragMode.warpTurn:
           var a =
               (doc - _warpPivot).direction - (_warpGrab - _warpPivot).direction;
-          if (_shiftHeld) a = (a / (math.pi / 12)).round() * (math.pi / 12);
+          if (_shiftHeld) a = steppedTurn(a, radians: true);
           var d = p - _warpPivot;
           return _warpPivot +
               Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
@@ -744,7 +744,7 @@ extension StagePictureTools on CanvasStageState {
         next = was.placed(layerPlace(space.inner, rect), turn: was.turn);
       case _DragMode.imageLayerTurn:
         var turn = space.turnTo(doc);
-        if (_shiftHeld) turn = (turn / 15).round() * 15.0;
+        if (_shiftHeld) turn = steppedTurn(turn);
         turn = ((turn + 180) % 360) - 180;
         next = was.placed(was.place, turn: turn);
       default:

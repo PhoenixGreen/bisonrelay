@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_align.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:flutter/material.dart' show Icons, IconData;
@@ -244,21 +244,7 @@ ImageElement withLayersAligned(
       layers.map((l) => _seen(l, inner)).reduce((a, b) => a.expandToInclude(b));
   var next = e;
   for (var l in layers) {
-    var at = _seen(l, inner);
-    var by = Offset(
-      switch (align) {
-        CanvasAlign.left => box.left - at.left,
-        CanvasAlign.centreX => box.center.dx - at.center.dx,
-        CanvasAlign.right => box.right - at.right,
-        _ => 0.0,
-      },
-      switch (align) {
-        CanvasAlign.top => box.top - at.top,
-        CanvasAlign.middleY => box.center.dy - at.center.dy,
-        CanvasAlign.bottom => box.bottom - at.bottom,
-        _ => 0.0,
-      },
-    );
+    var by = align.offset(box, _seen(l, inner));
     if (by != Offset.zero) next = _shifted(next, inner, l.id, by);
   }
   return next;

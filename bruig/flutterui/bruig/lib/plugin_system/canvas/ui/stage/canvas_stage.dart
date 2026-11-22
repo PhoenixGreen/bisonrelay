@@ -108,6 +108,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/carried_synth_cable.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/picked_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
@@ -686,20 +687,6 @@ class CanvasStageState extends State<CanvasStage>
   Offset _warpPivot = Offset.zero;
   Offset _warpGrab = Offset.zero;
 
-  /// _selectedTableColumns are the selected table's inner column rules, as
-  /// (x, top, bottom), for grips.
-  List<(double, double, double)> _selectedTableColumns() {
-    var element = controller.selected;
-    if (element is! TableElement || element.locked || !controller.showHelpers) {
-      return const [];
-    }
-    var bounds = _hit.posed(element);
-    return [
-      for (var x in tableColumnDividers(element, bounds))
-        (x, bounds.top, bounds.bottom),
-    ];
-  }
-
   /// _snappedTo is the lines the drag is caught on, drawn so a snap is seen
   /// rather than felt as a jump.
   SnapResult? _snappedTo;
@@ -780,9 +767,7 @@ class CanvasStageState extends State<CanvasStage>
           painter =
               _scrolling(context, painter, content, down: down, across: across);
           // Over a page that scrolls, the rulers in a layer that does not.
-          if ((down || across) &&
-              document.guides.showRulers &&
-              document.guides.rulers.any) {
+          if ((down || across) && document.guides.rulersShown) {
             painter = _overRulers(painter);
           }
 
@@ -899,8 +884,7 @@ class CanvasStageState extends State<CanvasStage>
       counterValue: controller.counterValue,
       liveMotion: controller.liveMotion,
       motionTick: controller.motionTick,
-      directed: (controller.playing || controller.cameraView) &&
-          !document.editingMaster,
+      directed: _directed,
       counterPressed: (e) => e.id == _hoveredCounter ? _hoveredCounterAt : -1,
       counterRunning: controller.counterRunning,
       counterTick: controller.counterTicks,
@@ -922,12 +906,12 @@ class CanvasStageState extends State<CanvasStage>
       // its own way, following the player.
       camera: controller.gaming
           ? controller.gameFraming
-          : (controller.playing || controller.cameraView) &&
-                  !document.editingMaster
+          : _directed
               // Its Camera, or its slow move: see sceneFraming.
               ? sceneFraming(document, controller.frame,
                   live: controller.liveMotion)
               : null,
+      camerasShown: _camerasShown,
       selectedPath: _selectedPath(),
       rulersApart: _viewport.width > _visible.width + 0.5 ||
           _viewport.height > _visible.height + 0.5,
@@ -1134,7 +1118,7 @@ class CanvasStageState extends State<CanvasStage>
           child: AnimatedBuilder(
             animation: Listenable.merge([_scroller.down, _scroller.across]),
             builder: (context, _) => CustomPaint(
-              painter: _RulerLayer(
+              painter: StageRulerLayer(
                   guides: document.guides,
                   sheet: document.size.size,
                   scale: _scale,
@@ -1435,32 +1419,4 @@ class CanvasStageState extends State<CanvasStage>
     }
     return SystemMouseCursors.basic;
   }
-}
-
-/// _RulerLayer draws the rulers over a scrolling page, at the window's
-/// edges: see paintStageRulers.
-class _RulerLayer extends CustomPainter {
-  final CanvasGuides guides;
-  final Size sheet;
-  final double scale;
-  final Offset origin;
-  final Rect page;
-  const _RulerLayer(
-      {required this.guides,
-      required this.sheet,
-      required this.scale,
-      required this.origin,
-      required this.page});
-
-  @override
-  void paint(Canvas canvas, Size size) =>
-      paintStageRulers(canvas, size, guides, sheet, scale, origin, page);
-
-  @override
-  bool shouldRepaint(_RulerLayer old) =>
-      old.guides != guides ||
-      old.sheet != sheet ||
-      old.scale != scale ||
-      old.origin != origin ||
-      old.page != page;
 }

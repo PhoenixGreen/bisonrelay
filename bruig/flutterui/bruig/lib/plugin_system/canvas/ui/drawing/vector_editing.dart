@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart'
+    show steppedTurn;
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
@@ -257,8 +259,7 @@ VectorElement movedVector(
       var d = to - node.point;
       // Snapped, it turns in steps of fifteen degrees.
       if (snap && d.distance > 0) {
-        const step = math.pi / 12;
-        var angle = (math.atan2(d.dy, d.dx) / step).round() * step;
+        var angle = steppedTurn(math.atan2(d.dy, d.dx), radians: true);
         d = Offset(math.cos(angle), math.sin(angle)) * d.distance;
       }
       // Turned only, it keeps its length; stretched only, its line.

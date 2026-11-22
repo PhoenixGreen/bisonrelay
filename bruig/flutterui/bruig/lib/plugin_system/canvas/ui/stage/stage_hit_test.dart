@@ -14,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 
 /// StageHitTest answers "what is at this point of the document, now": where
 /// each element is drawn at this frame, and which is under a point. Made
@@ -35,11 +34,16 @@ class StageHitTest {
   /// pixels on screen (a thin line's, a small tab's).
   final double scale;
 
+  /// cameras is whether a Camera's frame is drawn over the page, and so can
+  /// be hit there (CanvasStageState._camerasShown).
+  final bool cameras;
+
   const StageHitTest({
     required this.document,
     required this.frame,
     this.live,
     required this.scale,
+    this.cameras = true,
   });
 
   /// posed is where [e] is drawn now: its resting box moved by its motion.
@@ -49,8 +53,9 @@ class StageHitTest {
   /// slant undone.
   bool contains(CanvasElement e, Offset at) {
     // A camera is hit by its frame's edge: what it shows inside is picked as
-    // if it were not there.
+    // if it were not there. Where the frame is not drawn, nothing is hit.
     if (e is CameraElement) {
+      if (!cameras) return false;
       var frame = posed(e);
       // Its name tab is drawn upright, so it is hit upright.
       if (cameraTab(e, frame, scale).contains(at)) return true;

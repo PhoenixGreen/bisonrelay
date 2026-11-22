@@ -15,15 +15,15 @@ extension StageVectorTools on CanvasStageState {
   /// can still be pulled out.
   (int, bool, bool)? _hitPathControl(PathElement path, Offset doc) {
     // In document units, so the grab area is one size on screen at any zoom.
-    var reach = (handleSize / 2 + handleHitSlop) / _scale;
+    var reach = handleReach() / _scale;
     for (var i = 0; i < path.nodes.length; i++) {
       var node = path.nodes[i];
       if ((doc - path.outHandleOf(node)).distance <= reach &&
-          (node.outDx != 0 || node.outDy != 0)) {
+          handleBent(node.outDx, node.outDy)) {
         return (i, true, true);
       }
       if ((doc - path.inHandleOf(node)).distance <= reach &&
-          (node.inDx != 0 || node.inDy != 0)) {
+          handleBent(node.inDx, node.inDy)) {
         return (i, true, false);
       }
     }
@@ -45,7 +45,7 @@ extension StageVectorTools on CanvasStageState {
   /// space drags a box to pick points. Outside the drawing, editing ends and
   /// the press goes on.
   bool _pressVector(VectorElement e, Offset doc) {
-    var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
+    var reach = handleReach(e.handleSize) / _scale;
     var twice = clock.now().difference(_lastClickAt) <
         CanvasStageState._doubleClickWindow;
     // A double-click here is two clicks on one spot.
@@ -351,8 +351,7 @@ extension StageVectorTools on CanvasStageState {
 
     if (box != null && !_shiftHeld) {
       var top = space.toCanvas(box.topCenter) * _scale;
-      if ((doc * _scale - (top - const Offset(0, shapeTurnReach))).distance <=
-          8) {
+      if ((doc * _scale - shapeTurnKnob(top)).distance <= 8) {
         return hold(box, -1);
       }
       for (var (i, h) in boxHandles(box).indexed) {
@@ -399,10 +398,7 @@ extension StageVectorTools on CanvasStageState {
       var c = box.center;
       var turn = math.atan2(at.dy - c.dy, at.dx - c.dx) -
           math.atan2(from.dy - c.dy, from.dx - c.dx);
-      if (_shiftHeld) {
-        const step = math.pi / 12;
-        turn = (turn / step).round() * step;
-      }
+      if (_shiftHeld) turn = steppedTurn(turn, radians: true);
       next = withItemsTurned(before, items, c, turn);
     } else {
       var to = _itemsHandle == null
@@ -826,7 +822,7 @@ extension StageVectorTools on CanvasStageState {
       action = buttons[i];
     }
     if (action == null || action == StylusAction.draw) return false;
-    var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
+    var reach = handleReach(e.handleSize) / _scale;
     _mode = _DragMode.none;
     switch (action) {
       case StylusAction.draw:

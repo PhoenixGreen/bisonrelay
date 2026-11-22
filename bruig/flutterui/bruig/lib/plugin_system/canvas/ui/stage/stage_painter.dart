@@ -25,13 +25,13 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart'
     show SceneTransition;
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
@@ -47,10 +47,6 @@ part 'stage_painter_handles.dart';
 // it sits on, and the marks for what is selected and what can be taken hold
 // of. It is handed values the stage has already decided (where handles go,
 // what a held stroke looks like) and only draws them.
-
-/// shapeTurnReach is how far above a shape's box, in screen pixels, its turn
-/// handle sits.
-const double shapeTurnReach = 22;
 
 /// StageFraming is a picture being repositioned inside its frame. [src] is
 /// the whole picture and [dst] where all of it lands, larger than [frame];
@@ -81,7 +77,7 @@ class StageFraming {
 /// chosenOutlines is every element of a multi-selection, each outlined so
 /// overlapping ones can be told apart. Empty for a single selection.
 List<CanvasElement> chosenOutlines(
-    CanvasDocument document, Set<String> selection, int frame) {
+    CanvasDocument document, Set<String> selection) {
   if (selection.length < 2) return const [];
   return [
     for (var element in document.elements)
@@ -184,8 +180,8 @@ class StagePainter extends CustomPainter {
   final Offset Function(StageHandle, Rect) handleFor;
   final Rect? marquee;
 
-  /// counterValue is what a live counter shows now, and counterPressed which
-  /// of its buttons is under the pointer: session state, not design.
+  /// counterValue is what a live counter shows now: session state, not
+  /// design.
   final double Function(CounterElement)? counterValue;
 
   /// liveMotion is what plays from slots; motionTick rises as it plays on.
@@ -195,6 +191,9 @@ class StagePainter extends CustomPainter {
   /// directed is whether the page is seen through its Camera, which on a 3D
   /// stage is the stage's camera (see camera_3d.dart).
   final bool directed;
+
+  /// counterPressed is which of a live counter's buttons is under the
+  /// pointer, and counterRunning whether it runs: session state too.
   final int Function(CounterElement)? counterPressed;
   final bool Function(CounterElement)? counterRunning;
 
@@ -347,9 +346,14 @@ class StagePainter extends CustomPainter {
   /// selection would not hide them.
   final bool showHelpers;
 
-  /// camera is the scene's camera on this frame while it plays, or null.
-  /// Never while editing: a press must land where the page looks to be.
+  /// camera is how the page is framed while it is seen through a camera:
+  /// the scene's while it plays or in camera view, or a game's own. Null
+  /// while editing otherwise, so a press lands where the page looks to be.
   final (double, Offset)? camera;
+
+  /// camerasShown is whether each Camera's frame is drawn over the page:
+  /// the stage's rule, which its hit test asks too (_camerasShown).
+  final bool camerasShown;
 
   /// drafting draws rasterised work (adjustments, effects) smaller during a
   /// gesture; see RasterCache.drafting.
@@ -369,6 +373,7 @@ class StagePainter extends CustomPainter {
     required this.showHandles,
     required this.showHelpers,
     this.camera,
+    this.camerasShown = true,
     this.flowGrips,
     this.flowLines = const [],
     this.showAllBounds = false,
@@ -723,8 +728,6 @@ class StagePainter extends CustomPainter {
     _paintRulers(canvas, size);
   }
 
-  // ---- stage_painter_handles.dart -----------------------------------------
-
   @override
   bool shouldRepaint(StagePainter old) =>
       old.drafting != drafting ||
@@ -737,6 +740,7 @@ class StagePainter extends CustomPainter {
       old.frame != frame ||
       old.motionTick != motionTick ||
       old.directed != directed ||
+      old.camerasShown != camerasShown ||
       old.previewAt != previewAt ||
       old.previewing != previewing ||
       old.markerNote != markerNote ||
@@ -846,122 +850,4 @@ class StageLayers {
       this.marker,
       this.lasso,
       this.warp});
-}
-
-/// paintStageRulers draws the rulers [guides] asks for along the edges of
-/// [page], inside a view [size] across, numbered from the page's top-left
-/// (so they agree with the X and Y fields) at [scale] pixels a unit of a
-/// [sheet] whose top-left is at [origin]. Over a page that scrolls, the
-/// stage calls it in a layer of its own, so rulers stay at the window edges.
-void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
-    double scale, Offset origin, Rect page) {
-    if (!guides.rulers.any || !guides.showRulers) return;
-    var bands = rulerBandsFor(page, size, guides.rulers);
-    var step = rulerStep(scale, guides.gridSize);
-
-    var strip = Paint()..color = const Color(0xF01A1A1E);
-    var edge = Paint()
-      ..strokeWidth = 1
-      ..color = const Color(0x33FFFFFF);
-    var tick = Paint()
-      ..strokeWidth = 1
-      ..color = const Color(0x66FFFFFF);
-    // The unnumbered ticks are the grid itself, fainter.
-    var fine = Paint()
-      ..strokeWidth = 1
-      ..color = const Color(0x33FFFFFF);
-    var minor = guides.gridSize;
-    var showFine = minor > 0 && minor < step && minor * scale >= 6;
-
-    // The page starts at (0, 0) in document units, so its screen origin is
-    // [origin]; transforming the frame's corner again would push every tick
-    // off the page.
-    var zero = origin;
-
-    void number(double at, Offset where, {required bool vertical}) {
-      // Shared and kept (see labelPainter): the same few numbers come round
-      // on every repaint of the stage.
-      var painter = labelPainter("${at.round()}",
-          size: 8, colour: const Color(0xAAFFFFFF));
-      if (vertical) {
-        // Turned on its side, so the numbers read up the strip.
-        canvas.save();
-        canvas.translate(where.dx, where.dy);
-        canvas.rotate(-math.pi / 2);
-        painter.paint(canvas, Offset(-painter.width - 2, 0));
-        canvas.restore();
-      } else {
-        painter.paint(canvas, where);
-      }
-    }
-
-    for (var top in [true, false]) {
-      var band = top ? bands.top : bands.bottom;
-      if (band == null) continue;
-      canvas.drawRect(band, strip);
-      canvas.drawLine(Offset(band.left, top ? band.bottom : band.top),
-          Offset(band.right, top ? band.bottom : band.top), edge);
-
-      canvas.save();
-      canvas.clipRect(band);
-      // Only across the page, not the grey round it.
-      if (showFine) {
-        for (var i = 0; i * minor <= sheet.width; i++) {
-          var x = zero.dx + i * minor * scale;
-          canvas.drawLine(Offset(x, top ? band.bottom - 3 : band.top),
-              Offset(x, top ? band.bottom : band.top + 3), fine);
-        }
-      }
-      for (var i = 0; i * step <= sheet.width; i++) {
-        var at = i * step;
-        var x = zero.dx + at * scale;
-        canvas.drawLine(Offset(x, top ? band.bottom - 6 : band.top),
-            Offset(x, top ? band.bottom : band.top + 6), tick);
-        number(at, Offset(x + 2, band.top + 3), vertical: false);
-      }
-      canvas.restore();
-    }
-
-    for (var left in [true, false]) {
-      var band = left ? bands.left : bands.right;
-      if (band == null) continue;
-      canvas.drawRect(band, strip);
-      canvas.drawLine(Offset(left ? band.right : band.left, band.top),
-          Offset(left ? band.right : band.left, band.bottom), edge);
-
-      canvas.save();
-      canvas.clipRect(band);
-      if (showFine) {
-        for (var i = 0; i * minor <= sheet.height; i++) {
-          var y = zero.dy + i * minor * scale;
-          canvas.drawLine(Offset(left ? band.right - 3 : band.left, y),
-              Offset(left ? band.right : band.left + 3, y), fine);
-        }
-      }
-      for (var i = 0; i * step <= sheet.height; i++) {
-        var at = i * step;
-        var y = zero.dy + at * scale;
-        canvas.drawLine(Offset(left ? band.right - 6 : band.left, y),
-            Offset(left ? band.right : band.left + 6, y), tick);
-        number(at, Offset(band.right - 3, y - 2), vertical: true);
-      }
-      canvas.restore();
-    }
-  }
-
-/// cameraTab is where [cam]'s name tab is on the page: in the top-left of
-/// [frame], a fixed size on screen at any [scale]. Shared by painter and
-/// stage so drawing and hit-testing agree.
-Rect cameraTab(CameraElement cam, Rect frame, double scale) {
-  var label = TextPainter(
-    text: TextSpan(
-        text: cam.name,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-    textDirection: TextDirection.ltr,
-  )..layout();
-  var w = math.min(label.width + 26, 220.0) / scale;
-  var h = 20 / scale;
-  var inset = 4 / scale;
-  return Rect.fromLTWH(frame.left + inset, frame.top + inset,
-      math.min(w, frame.width - inset * 2), math.min(h, frame.height / 3));
 }
