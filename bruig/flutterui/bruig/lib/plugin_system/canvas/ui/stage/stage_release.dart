@@ -330,10 +330,12 @@ extension StageRelease on CanvasStageState {
     // The cursor is worked out at build: onto a ruler or off it rebuilds.
     var ruler = _rulerUnder(stage);
     if (ruler != _hoverRuler) setState(() => _hoverRuler = ruler);
-    _hoverCode(stage);
-    // For a Look at that faces the pointer.
-    controller.stagePointer = _toDocument(stage);
-    controller.tilePaint?.hoverAt(_toDocument(stage));
+    var doc = _toDocument(stage);
+    _hoverCode(doc);
+    // For a Look at that faces the pointer. It moves what faces it, so the
+    // element hit below, after it, may not be the one _hoverCode hit.
+    controller.stagePointer = doc;
+    controller.tilePaint?.hoverAt(doc);
     if (controller.editingImage != null &&
         (controller.imageTool == ImageTool.brush ||
             controller.imageTool == ImageTool.quick ||
@@ -341,7 +343,6 @@ extension StageRelease on CanvasStageState {
             controller.imageTool.paints)) {
       setState(() {});
     }
-    var doc = _toDocument(stage);
     var hot = _gizmo()?.hit(doc, _gizmoReach);
     if (hot != _gizmoHot) setState(() => _gizmoHot = hot);
     var element = _hitElement(doc);
@@ -355,9 +356,7 @@ extension StageRelease on CanvasStageState {
     }
 
     // Whether a click here presses something, for the cursor.
-    var selected = element != null &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id;
+    var selected = element != null && controller.isOnlySelected(element.id);
     var pressable = counter != null ||
         (selected &&
             (element is ButtonElement ||

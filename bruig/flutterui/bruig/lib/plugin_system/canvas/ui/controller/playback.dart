@@ -6,7 +6,7 @@ part of '../canvas_controller.dart';
 extension CanvasPlayback on CanvasController {
   void resetZoom() {
     _zoom = 1;
-    _pan = const Offset2(0, 0);
+    _pan = Offset.zero;
     _notifyView();
   }
 
@@ -26,7 +26,7 @@ extension CanvasPlayback on CanvasController {
 
   /// followPan is the view as scrolled by hand (scroll bars, two fingers,
   /// the wheel), kept for the zoom to zoom about. Nothing is redrawn for it.
-  void followPan(Offset2 value) => _pan = value;
+  void followPan(Offset value) => _pan = value;
 
   /// stepFrame moves the playhead, and stops playback first, or the next
   /// tick would undo the step. While Play runs every scene, a step past

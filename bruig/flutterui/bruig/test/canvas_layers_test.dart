@@ -154,6 +154,28 @@ void main() {
     expect(offenders, isEmpty);
   });
 
+  test("the stage's own libraries do not import the stage", () {
+    // The keys, the hit test and the picked parts are read by the stage;
+    // when one of them imported the stage back, neither could be read or
+    // changed alone.
+    var own = [
+      "ui/stage/stage_keys.dart",
+      "ui/stage/stage_hit_test.dart",
+      "ui/stage/picked_parts.dart",
+    ];
+    var offenders = [
+      for (var path in own)
+        if (File("$_canvas/$path").existsSync())
+          for (var uri in _importsOf(File("$_canvas/$path")))
+            if (uri == "${_package}ui/stage/canvas_stage.dart") "$path: $uri",
+    ];
+    expect(offenders, isEmpty);
+    for (var path in own) {
+      expect(File("$_canvas/$path").existsSync(), isTrue,
+          reason: "$path moved; update this test");
+    }
+  });
+
   test("every exception is still needed, and the folders are still there", () {
     var broken = _broken().toSet();
     expect(_exceptions.difference(broken), isEmpty,

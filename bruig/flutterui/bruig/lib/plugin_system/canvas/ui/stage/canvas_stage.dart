@@ -66,7 +66,7 @@ import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/quick_fill.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
@@ -108,6 +108,8 @@ import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/carried_synth_cable.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/picked_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -130,8 +132,9 @@ part 'stage_layouts.dart';
 // the export's scene_renderer.dart, with handles over it and every gesture
 // that moves something. stage_painter.dart draws; stage_parts.dart answers
 // drags on a piece inside an element; stage_geometry.dart holds shared sizes.
-// Pointer positions go from stage (screen) space to document space once, at
-// the top of each handler; handles stay in stage space, one size at any zoom.
+// Pointer positions arrive in stage (screen) space and are turned into
+// document space (_toDocument) where a handler needs them, in some handlers
+// more than once; handles stay in stage space, one size at any zoom.
 
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
@@ -320,6 +323,10 @@ class CanvasStageState extends State<CanvasStage>
 
   CanvasController get controller => widget.controller;
   CanvasDocument get document => controller.document;
+
+  // The fields below are grouped by the gesture or the job they serve, as
+  // the doc comment on each says, not by the part (stage_*.dart) that
+  // reads them: most are read by several.
 
   _DragMode _mode = _DragMode.none;
 
@@ -581,7 +588,13 @@ class CanvasStageState extends State<CanvasStage>
   /// _startElements are the selection at the start, for a scaling resize.
   Map<String, CanvasElement> _startElements = {};
   Map<String, double> _startRotation = {};
+
+  /// _startPan is the controller's pan when a pan began, and
+  /// _panStartOnStage where the pointer was then, in stage pixels: a pan
+  /// moves the view under the pointer, so its travel is measured on the
+  /// stage, not the document.
   Offset _startPan = Offset.zero;
+  Offset _panStartOnStage = Offset.zero;
   Rect? _marquee;
 
   @visibleForTesting
@@ -615,6 +628,23 @@ class CanvasStageState extends State<CanvasStage>
 
   final FocusNode _focus = FocusNode(debugLabel: "canvas stage");
 
+  /// _heardOn is what of [c] the stage rebuilds on (_onChanged): the
+  /// controller, its pictures and the keys held. Listened to and let go
+  /// through this one list, so what is added is also removed.
+  static List<Listenable> _heardOn(CanvasController c) =>
+      [c, c.images, c.keysHeld];
+
+  /// _shadersReady is the shaders' "ready" notifiers, loaded once for the
+  /// app: until one lands, what needs it is drawn without it, and the stage
+  /// repaints when it does. Kept apart from _heardOn, which changes with the
+  /// controller.
+  static List<Listenable> get _shadersReady => [
+        VideoKey.ready,
+        AdjustShader.ready,
+        TextureShader.ready,
+        SharpenShader.ready,
+      ];
+
   @override
   void initState() {
     super.initState();
@@ -626,19 +656,17 @@ class CanvasStageState extends State<CanvasStage>
     });
     // Pen pressure and tilt, which some platforms pass only via the runner.
     TabletInput.instance.start();
-    controller.addListener(_onChanged);
-    controller.images.addListener(_onChanged);
-    controller.keysHeld.addListener(_onChanged);
+    for (var l in _heardOn(controller)) {
+      l.addListener(_onChanged);
+    }
     _scroll.addListener(_followScroll);
     _scrollX.addListener(_followScroll);
     // Counters set to start running do; a stopwatch waits.
     controller.startCounters();
-    // Shaders loaded once for the app. Until the key shader lands a keyed
-    // video is drawn unkeyed; this repaints when it does.
-    VideoKey.ready.addListener(_onChanged);
-    AdjustShader.ready.addListener(_onChanged);
-    TextureShader.ready.addListener(_onChanged);
-    SharpenShader.ready.addListener(_onChanged);
+    // Until the key shader lands a keyed video is drawn unkeyed, and so on.
+    for (var l in _shadersReady) {
+      l.addListener(_onChanged);
+    }
     unawaited(VideoKey.load());
     unawaited(AdjustShader.load());
     unawaited(TextureShader.load());
@@ -650,12 +678,12 @@ class CanvasStageState extends State<CanvasStage>
   void didUpdateWidget(CanvasStage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != controller) {
-      oldWidget.controller.removeListener(_onChanged);
-      oldWidget.controller.images.removeListener(_onChanged);
-      oldWidget.controller.keysHeld.removeListener(_onChanged);
-      controller.addListener(_onChanged);
-      controller.images.addListener(_onChanged);
-      controller.keysHeld.addListener(_onChanged);
+      for (var l in _heardOn(oldWidget.controller)) {
+        l.removeListener(_onChanged);
+      }
+      for (var l in _heardOn(controller)) {
+        l.addListener(_onChanged);
+      }
     }
   }
 
@@ -676,13 +704,9 @@ class CanvasStageState extends State<CanvasStage>
     _backgrounds.dispose();
     _scroll.dispose();
     _scrollX.dispose();
-    controller.removeListener(_onChanged);
-    controller.keysHeld.removeListener(_onChanged);
-    controller.images.removeListener(_onChanged);
-    VideoKey.ready.removeListener(_onChanged);
-    AdjustShader.ready.removeListener(_onChanged);
-    TextureShader.ready.removeListener(_onChanged);
-    SharpenShader.ready.removeListener(_onChanged);
+    for (var l in [..._heardOn(controller), ..._shadersReady]) {
+      l.removeListener(_onChanged);
+    }
     _focus.dispose();
     super.dispose();
   }
@@ -705,8 +729,10 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
+  /// _onChanged answers a change in what the stage listens to (_heardOn,
+  /// _shadersReady): it starts or stops the drift ticker, ends an edit in
+  /// place whose element has gone, and rebuilds the stage.
   void _onChanged() {
-    // The controller closes a picture's layers when the selection moves off it.
     if (!mounted) return;
     _followPlayback();
     _forgetGoneEdits();
@@ -736,8 +762,6 @@ class CanvasStageState extends State<CanvasStage>
     }
   }
 
-  // ---- stage_coordinates.dart ---------------------------------------------
-
   ((CanvasDocument, int, double?), Rect?)? _levelOf;
 
   /// _syncing is set while the scroll views follow the view, so
@@ -748,11 +772,8 @@ class CanvasStageState extends State<CanvasStage>
   /// the zoom buttons zoom about what is looked at.
   void _followScroll() {
     if (_syncing || !mounted) return;
-    var pan = _clampedPan;
-    controller.followPan(Offset2(pan.dx, pan.dy));
+    controller.followPan(_clampedPan);
   }
-
-  // ---- stage_hit_testing.dart ---------------------------------------------
 
   /// _counterPart is the counter whose loose piece is dragged, and
   /// _counterPartAt which: -2 the words before, -3 after, 0 and up a button.
@@ -763,8 +784,6 @@ class CanvasStageState extends State<CanvasStage>
   /// the app on release (_replayTap).
   bool _liveTapPending = false;
   int _replayPointer = 0x7FFF0000;
-
-  // ---- stage_press.dart ---------------------------------------------------
 
   /// _pressedCopy is the copy of [_pressedCopyOf] a press landed on, picked
   /// if the press is a click.
@@ -796,8 +815,6 @@ class CanvasStageState extends State<CanvasStage>
   LayoutCutLine? _layoutCut;
   LayoutTrackLine? _layoutTrack;
   Offset _layoutMiddle = Offset.zero;
-
-  // ---- stage_vector_tools.dart --------------------------------------------
 
   VectorPart _vectorPart = VectorPart.point;
 
@@ -878,15 +895,9 @@ class CanvasStageState extends State<CanvasStage>
   /// _brushAt is where the brush ring is drawn; null hides it.
   Offset? _brushAt;
 
-  // ---- stage_picture_tools.dart -------------------------------------------
-
-  // ---- warp grid ------------------------------------------------------
-
   List<Offset> _warpStartPoints = const [];
   Offset _warpPivot = Offset.zero;
   Offset _warpGrab = Offset.zero;
-
-  // ---- stage_drag.dart ----------------------------------------------------
 
   /// _selectedTableColumns are the selected table's inner column rules, as
   /// (x, top, bottom), for grips.
@@ -922,8 +933,6 @@ class CanvasStageState extends State<CanvasStage>
               (at: e.anchorAt(controller.frame), locked: e.base.anchorLocked),
       ];
 
-  // ---- stage_release.dart -------------------------------------------------
-
   /// _backgrounds caches generated backgrounds, rasterised once while the
   /// design and size hold still. Shared by every canvas on screen, with room
   /// for a few, so the facing leaf and pages in transition keep theirs. See
@@ -940,8 +949,6 @@ class CanvasStageState extends State<CanvasStage>
   /// _hoverPressable is whether a click here would press a selected button,
   /// speaker or video control, or a live counter's button.
   bool _hoverPressable = false;
-
-  // ---- stage_3d_view.dart -------------------------------------------------
 
   /// _gizmoDrag is the gizmo at the drag's start, the part held, the page
   /// point taken, and the element's id.
@@ -962,8 +969,6 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _pinch is the zoom, view, scale and page point a pinch began from.
   ({double zoom, Offset pan, double scale, Offset doc})? _pinch;
-
-  // ------------------------------------------------------------------------
 
   /// _onKey is the canvas's keyboard: the lines of canvasShortcuts heard
   /// while the canvas has it, then the page's (stage_keys.dart).
@@ -1040,7 +1045,7 @@ class CanvasStageState extends State<CanvasStage>
                         backgrounds: _backgrounds,
                         page: _pageRect,
                         view: _viewRect,
-                        levelShown: levelShown,
+                        levelShown: _levelShown,
                         facing: _facingPage,
                         facingFrame: _facingPage == null
                             ? 0
@@ -1113,16 +1118,11 @@ class CanvasStageState extends State<CanvasStage>
                               // to show them), and while a line's thickness
                               // is dragged, so the line can be watched.
                               bare: _mode == _DragMode.vectorScale ||
-                                  controller.vectorTool == VectorTool.shapes ||
                                   _picksShapes ||
-                                  controller.vectorTool == VectorTool.text ||
-                                  controller.vectorTool == VectorTool.tint ||
-                                  controller.vectorTool == VectorTool.shadow ||
-                                  controller.vectorTool ==
-                                      VectorTool.highlight ||
-                                  controller.vectorTool == VectorTool.eraser ||
-                                  (controller.vectorTool == VectorTool.pencil &&
-                                      !controller.vectorPencilPoints),
+                                  !(controller.vectorTool.showsPoints ||
+                                      (controller.vectorTool ==
+                                              VectorTool.pencil &&
+                                          controller.vectorPencilPoints)),
                               turnable: _picksShapes,
                               shapeBox: _picksShapes
                                   ? itemsExtent(v, controller.vectorItems)
@@ -1201,7 +1201,7 @@ class CanvasStageState extends State<CanvasStage>
                 Positioned.fill(
                   child: IgnorePointer(
                     child: CustomPaint(
-                      painter: _CarriedCable(
+                      painter: CarriedSynthCable(
                           synthJackAt(c.from, c.port, out: c.out),
                           c.at,
                           synthSignalColour((c.out
@@ -1414,13 +1414,11 @@ class CanvasStageState extends State<CanvasStage>
             : bodyIsBlock(element)
                 ? _wordsBlockFor(element, bounds)
                 : bounds;
-    var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
       key: ValueKey("edit-$id-${item?.id ?? ""}"),
       element: element,
       item: item,
-      rect: Rect.fromLTWH(
-          topLeft.dx, topLeft.dy, box.width * _scale, box.height * _scale),
+      rect: _toStageRect(box),
       pivot: _toStage(bounds.center),
       scale: _scale,
       showWords: shows,
@@ -1613,31 +1611,4 @@ class _RulerLayer extends CustomPainter {
       old.scale != scale ||
       old.origin != origin ||
       old.page != page;
-}
-
-/// _CarriedCable is a synth cable carried from a jack to the pointer, dashed.
-class _CarriedCable extends CustomPainter {
-  final Offset? jack;
-  final Offset at;
-  final Color colour;
-  final double panelScale, scale;
-  final Offset origin;
-  const _CarriedCable(this.jack, this.at, this.colour, this.panelScale,
-      this.scale, this.origin);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    var from = jack;
-    if (from == null) return;
-    paintSynthCable(canvas, from * scale + origin, at * scale + origin, colour,
-        panelScale * scale,
-        dashed: true);
-  }
-
-  @override
-  bool shouldRepaint(_CarriedCable old) =>
-      old.jack != jack ||
-      old.at != at ||
-      old.scale != scale ||
-      old.origin != origin;
 }

@@ -956,7 +956,7 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.zoom = 2.5;
-      controller.pan = const Offset2(40, -20);
+      controller.pan = const Offset(40, -20);
 
       controller.load(const CanvasDocument(title: "Another"));
       expect(controller.zoom, 1);

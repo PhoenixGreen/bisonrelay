@@ -154,12 +154,9 @@ extension StageFramingDrag on CanvasStageState {
       // Undo the element's rotation and mirror, so the picture moves with
       // the pointer.
       var travel = doc - _dragStart;
-      var a = -e.movedRotationAt(controller.frame, controller.document,
-            live: controller.liveMotion) * math.pi / 180;
-      if (a != 0) {
-        travel = Offset(travel.dx * math.cos(a) - travel.dy * math.sin(a),
-            travel.dx * math.sin(a) + travel.dy * math.cos(a));
-      }
+      var turn = -e.movedRotationAt(controller.frame, controller.document,
+            live: controller.liveMotion);
+      if (turn != 0) travel = BoxFrame(turn, 0, 0).apply(travel);
       var base =
           e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
       travel = Offset(base.flipX ? -travel.dx : travel.dx,

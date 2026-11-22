@@ -821,7 +821,7 @@ void main() {
       var before =
           tester.widget<CanvasStepper>(find.byType(CanvasStepper).first);
       controller.zoom = 2.5;
-      controller.pan = const Offset2(30, 30);
+      controller.pan = const Offset(30, 30);
       await tester.pumpAndSettle();
 
       expect(
@@ -848,7 +848,7 @@ void main() {
 
       before = controller.revision;
       controller.zoom = 2;
-      controller.pan = const Offset2(10, 10);
+      controller.pan = const Offset(10, 10);
       controller.showHelpers = false;
       expect(controller.revision, before,
           reason: "and these are, so they do not");

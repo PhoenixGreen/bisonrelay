@@ -376,8 +376,9 @@ class CanvasController extends ChangeNotifier {
   /// atFit is whether the view shows the whole canvas untouched (Fit lit).
   bool get atFit => (_zoom - 1).abs() < 0.001 && _pan.dx == 0 && _pan.dy == 0;
 
-  Offset2 _pan = const Offset2(0, 0);
-  Offset2 get pan => _pan;
+  /// pan is the view: the page's middle from the window's, in screen pixels.
+  Offset _pan = Offset.zero;
+  Offset get pan => _pan;
 
   /// revision counts every change to the document rather than the view of
   /// it. The sidebar watches it, so panning, zooming and hovering do not lay
@@ -472,7 +473,7 @@ class CanvasController extends ChangeNotifier {
     if (value == _fit) return;
     _fit = value;
     _zoom = 1;
-    _pan = const Offset2(0, 0);
+    _pan = Offset.zero;
   }
 
   /// _notifyView tells listeners the view moved (zoom, pan, framing, tool)
@@ -1017,14 +1018,14 @@ class CanvasController extends ChangeNotifier {
     if (next == _zoom) return;
     // Scale the pan with the page, so the window's middle stays put.
     var f = next / _zoom;
-    _pan = Offset2(_pan.dx * f, _pan.dy * f);
+    _pan = Offset(_pan.dx * f, _pan.dy * f);
     _zoom = next;
     // Back at the fit, re-centre, or an earlier pan leaves it off-centre.
-    if ((_zoom - 1).abs() < 0.001) _pan = const Offset2(0, 0);
+    if ((_zoom - 1).abs() < 0.001) _pan = Offset.zero;
     _notifyView();
   }
 
-  set pan(Offset2 value) {
+  set pan(Offset value) {
     _pan = value;
     _notifyView();
   }

@@ -10,7 +10,7 @@ part of 'canvas_stage.dart';
 // CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
 
 extension StageLayouts on CanvasStageState {
-  LayoutElement? get _oneLayout => _layoutOf(controller);
+  LayoutElement? get _oneLayout => chosenLayout(controller);
 
   /// _intoLayout is document point [p] in [e]'s own frame, its turn undone.
   Offset _intoLayout(LayoutElement e, Offset p) =>
@@ -377,28 +377,4 @@ extension StageLayouts on CanvasStageState {
     controller.pickLayoutCell(e.id, place?.cell.id);
     return true;
   }
-}
-
-/// _layoutOf is the one selected Layout, unlocked, or null.
-LayoutElement? _layoutOf(CanvasController c) {
-  var chosen = _chosenOf(c);
-  if (chosen.length != 1) return null;
-  var e = chosen.first;
-  return e is LayoutElement && !e.locked ? e : null;
-}
-
-/// removableLayoutCell is the selected Layout's picked cell, when Delete
-/// would take it out: not its last.
-String? removableLayoutCell(CanvasController c) {
-  var e = _layoutOf(c);
-  if (e == null || e.shownCells.length < 2) return null;
-  return c.layoutCell(e.id);
-}
-
-/// removePickedLayoutCell takes the selected Layout's picked cell out, as
-/// Delete does; nothing if there is none to take (see removableLayoutCell).
-void removePickedLayoutCell(CanvasController c) {
-  var e = _layoutOf(c), id = removableLayoutCell(c);
-  if (e == null || id == null) return;
-  c.removeLayoutCell(e, id);
 }

@@ -39,7 +39,7 @@ reason, as debts to pay off; nothing may be added to the list without one.
 |---|---|
 | (top) | `canvas_controller.dart` and what every part uses: `controls.dart`, `canvas_dialogs.dart`, `element_factory.dart`, `element_settings.dart`, presets, studio colours. |
 | `controller/` | The controller's own parts, as `extension` files (see below). |
-| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates`, `stage_hit_testing`, `stage_press`, `stage_drag`, `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing`, `stage_3d_view`. Drawing is `stage_painter.dart` and its parts. |
+| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates`, `stage_hit_testing`, `stage_press` (every press, editing or playing), `stage_drag`, `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing`, `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, two libraries beside it do not import it (`test/canvas_layers_test.dart` holds all three to that): `stage_hit_test.dart`, what is at a point of the document now, and `picked_parts.dart`, the parts picked inside one element, which the keys act on too. Drawing is `stage_painter.dart` and its parts. |
 | `screen/` | The editor around the stage: settings bar, dock, play bar, publishing, the file player. |
 | `timeline/` | Rows, channels, scenes, markers, keys, automation. |
 | `mixer/` | The mixer, its strips and devices, the clip slots. |
@@ -149,7 +149,7 @@ with no default); the rest are not, and are marked.
    reading and the panel sweep cover it without being told. Add tests for
    what is its own.
 
-As it needs them: what a press on it does while playing
+As it needs them: what a press on it does, editing or playing
 (`ui/stage/stage_press.dart`), the colours it offers the Chain
 (`model/design_device.dart`), and anything it keeps while the canvas is open
 (a part of the controller, forgotten in `_forgetDocument`).

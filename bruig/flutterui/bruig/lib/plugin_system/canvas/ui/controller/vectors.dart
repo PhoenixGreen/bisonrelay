@@ -1172,6 +1172,17 @@ extension CanvasVectors on CanvasController {
     apply(_document.withElement(fitted));
   }
 
+  /// isOnlySelected is whether [id] is the one element selected.
+  bool isOnlySelected(String id) =>
+      _selection.length == 1 && _selection.first == id;
+
+  /// selectAlone selects [id] alone unless it already is the one element
+  /// selected, when it leaves the selection as it is: a press on a control
+  /// of the element picked keeps what else selectOnly would clear.
+  void selectAlone(String id) {
+    if (!isOnlySelected(id)) selectOnly(id);
+  }
+
   void selectOnly(String id) {
     if (_selection.length == 1 &&
         _selection.first == id &&

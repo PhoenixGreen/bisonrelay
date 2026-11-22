@@ -1,6 +1,6 @@
 // view_types.dart is the view's kinds and bounds: the zoom's limits, the
-// tools a drag on the canvas or the 3D stage takes, how the frame is fitted,
-// and the pan as a pair of doubles. Plain values that know nothing of the
+// tools a drag on the canvas or the 3D stage takes, and how the frame is
+// fitted. Plain values that know nothing of the
 // controller, which exports them.
 
 /// minZoom and maxZoom bound the view, as multiples of the fitted size (see
@@ -87,21 +87,4 @@ enum CanvasFit {
 
   final String label;
   const CanvasFit(this.label);
-}
-
-/// Offset2 is a pair of doubles, used for the view's pan and converted to
-/// an Offset where the stage needs one.
-class Offset2 {
-  final double dx;
-  final double dy;
-  const Offset2(this.dx, this.dy);
-
-  Offset2 operator +(Offset2 other) => Offset2(dx + other.dx, dy + other.dy);
-
-  @override
-  bool operator ==(Object other) =>
-      other is Offset2 && other.dx == dx && other.dy == dy;
-
-  @override
-  int get hashCode => Object.hash(dx, dy);
 }

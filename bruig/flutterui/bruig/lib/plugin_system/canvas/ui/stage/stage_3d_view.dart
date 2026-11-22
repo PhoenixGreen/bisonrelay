@@ -6,7 +6,7 @@ part of 'canvas_stage.dart';
 
 extension Stage3dView on CanvasStageState {
   /// _gizmoReach is how near a part, in page units, the pointer must be.
-  double get _gizmoReach => 9 / (_scale == 0 ? 1 : _scale);
+  double get _gizmoReach => 9 / _scaleOrOne;
 
   /// _gizmo is the gizmo on the lone selected staged element, or null.
   StageGizmo? _gizmo() {
@@ -79,7 +79,7 @@ extension Stage3dView on CanvasStageState {
     if (keys.isControlPressed || keys.isMetaPressed) {
       controller.dollyBy(math.exp(d.dy * 0.01), transient: true);
     } else if (keys.isShiftPressed) {
-      controller.panCameraBy(-d / (_scale == 0 ? 1 : _scale),
+      controller.panCameraBy(-d / _scaleOrOne,
           transient: true);
     } else {
       controller.orbitBy(-d.dx * 0.4, -d.dy * 0.4, transient: true);
@@ -127,11 +127,11 @@ extension Stage3dView on CanvasStageState {
     var after = _fitScale * controller.zoom;
     var middle = Offset(document.size.width / 2, document.size.height / 2);
     var next = was + (under - middle) * (before - after);
-    controller.pan = Offset2(next.dx, next.dy);
+    controller.pan = next;
   }
 
   void _onPinchStart(PointerPanZoomStartEvent e) {
-    _codePinch = _codePaneAt(e.localPosition);
+    _codePinch = _codePaneAt(_toDocument(e.localPosition));
     // Locked, the page does not zoom: on a stage the fingers steer the camera
     // instead (see _onPinchUpdate).
     if (controller.pageLocked) {
@@ -161,7 +161,7 @@ extension Stage3dView on CanvasStageState {
       if ((spread - 1).abs() > 0.002) {
         controller.dollyBy(1 / spread, transient: true);
       } else if (HardwareKeyboard.instance.isShiftPressed) {
-        controller.panCameraBy(e.panDelta / (_scale == 0 ? 1 : _scale),
+        controller.panCameraBy(e.panDelta / _scaleOrOne,
             transient: true);
       } else {
         controller.orbitBy(e.panDelta.dx * 0.4, e.panDelta.dy * 0.4,

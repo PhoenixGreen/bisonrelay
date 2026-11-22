@@ -88,7 +88,7 @@ extension StagePress on CanvasStageState {
             event.buttons == kMiddleMouseButton)) {
       _mode = _DragMode.pan;
       _startPan = _clampedPan;
-      _dragStart = stage;
+      _panStartOnStage = stage;
       return;
     }
 
@@ -288,10 +288,7 @@ extension StagePress on CanvasStageState {
     var hit = _hitAnyPlayer(doc);
     if (hit != null) {
       var (team, index) = hit;
-      if (controller.selection.length != 1 ||
-          controller.selection.first != team.id) {
-        controller.selectOnly(team.id);
-      }
+      controller.selectAlone(team.id);
       _mode = _DragMode.player;
       _playerIndex = index;
       // Held by where they stand, not their token's middle, which on a pitch
@@ -390,10 +387,7 @@ extension StagePress on CanvasStageState {
     // A play task's own steps, ticked by the student, and its Start again.
     if (element is PlayTaskElement && _pressPlayTask(element, doc)) return;
     if (element is CodeTaskElement && codeTaskButtonAt(element, doc)) {
-      if (controller.selection.length != 1 ||
-          controller.selection.first != element.id) {
-        controller.selectOnly(element.id);
-      }
+      controller.selectAlone(element.id);
       controller.checkCodeTask(element);
       _mode = _DragMode.none;
       return;
@@ -410,8 +404,7 @@ extension StagePress on CanvasStageState {
     // action waits for pointer-up, when the travel is known. See
     // _onPointerUp.
     if (element is ButtonElement &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       _pendingButton = element;
       _beginTransform(_DragMode.move, null);
       return;
@@ -421,8 +414,7 @@ extension StagePress on CanvasStageState {
     // that stays put plays, mutes, sets the volume or seeks; one that
     // travels moves it.
     if (element is VideoElement &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       var part = _videoPartAt(element, doc);
       if (part != null) {
         _pendingVideo = element;
@@ -438,15 +430,10 @@ extension StagePress on CanvasStageState {
     // playbar takes a press picked or not.
     var onBar = element is SheetElement &&
         (sheetBarRect(element, _hit.posed(element))?.contains(doc) ?? false);
-    if (onBar &&
-        (controller.selection.length != 1 ||
-            controller.selection.first != element.id)) {
-      controller.selectOnly(element.id);
-    }
+    if (onBar) controller.selectAlone(element.id);
     if (element is SheetElement &&
         element.score.isNotEmpty &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       _pendingSheet = element;
       _pendingSheetAt = doc;
       _beginTransform(_DragMode.move, null);
@@ -458,8 +445,7 @@ extension StagePress on CanvasStageState {
     // down the key is harder, as on a real one.
     if (element is AudioElement &&
         element.instrument != null &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       var keys = keyboardLayout(element.instrument!, _hit.posed(element));
       if (keys.keyAt(doc) case (var key, var depth)?) {
         controller.noteOn(element, key,
@@ -472,8 +458,7 @@ extension StagePress on CanvasStageState {
     }
 
     if (element is AudioElement &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       var part = _audioPartAt(element, doc);
       if (part != null) {
         _pendingAudio = element;
@@ -488,8 +473,7 @@ extension StagePress on CanvasStageState {
     // press does not become a drag. A loose piece is both, so the press is
     // armed here and the mode moves the piece.
     if (element is CounterElement &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       var part = _counterPartUnder(element, doc);
       var at = element.live ? _counterButtonAt(element, doc) : -1;
       if (part != null) {
@@ -514,8 +498,7 @@ extension StagePress on CanvasStageState {
 
     // A chart's key entry switches its series, on the same terms.
     if (element is ChartElement &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id) {
+        controller.isOnlySelected(element.id)) {
       var at = _legendSeriesAt(element, doc);
       if (at >= 0) {
         _pendingLegend = element;
@@ -529,12 +512,8 @@ extension StagePress on CanvasStageState {
 
     // A second click on a selected drawing opens it for editing.
     if (element is VectorElement &&
-        !_shiftHeld &&
         !element.locked &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id &&
-        _pressedAt != Offset.zero &&
-        clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow) {
+        _secondClickOn(element)) {
       _mode = _DragMode.none;
       var at = doc;
       unawaited(startVectorEditing(context, controller, element).then((_) {
@@ -551,12 +530,8 @@ extension StagePress on CanvasStageState {
     // the click picked. With the base picked, a drag moves the picture
     // inside its box (see _framing).
     if (element is ImageElement &&
-        !_shiftHeld &&
         !element.locked &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id &&
-        _pressedAt != Offset.zero &&
-        clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow) {
+        _secondClickOn(element)) {
       controller.editImage(element.id, layer: layerAt(element, doc).id);
       _mode = _DragMode.none;
       return;
@@ -564,12 +539,8 @@ extension StagePress on CanvasStageState {
 
     // A second click on a selected table's cell opens it for typing.
     if (element is TableElement &&
-        !_shiftHeld &&
         !element.locked &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id &&
-        _pressedAt != Offset.zero &&
-        clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow) {
+        _secondClickOn(element)) {
       var at = tableCellAt(element, _hit.posed(element), doc);
       if (at != null) {
         setState(() => _editingCell = (element.id, at.$1, at.$2));
@@ -579,13 +550,7 @@ extension StagePress on CanvasStageState {
     }
 
     // A second click on a selected Layout picks the cell under it.
-    if (element is LayoutElement &&
-        !_shiftHeld &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id &&
-        _pressedAt != Offset.zero &&
-        clock.now().difference(_lastClickAt) <
-            CanvasStageState._doubleClickWindow) {
+    if (element is LayoutElement && _secondClickOn(element)) {
       _doubleClickLayout(element, doc);
       _mode = _DragMode.none;
       return;
@@ -598,11 +563,7 @@ extension StagePress on CanvasStageState {
     if (element is TextElement &&
         !element.document.on &&
         flowSourceOf(element, document) == null &&
-        !_shiftHeld &&
-        controller.selection.length == 1 &&
-        controller.selection.first == element.id &&
-        _pressedAt != Offset.zero &&
-        clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow) {
+        _secondClickOn(element)) {
       // A picture has no words: it is picked, which gives it its own box
       // to move, size, turn or delete (stage_text_pieces.dart).
       var piece = _textItemAt(element, doc);
@@ -640,6 +601,15 @@ extension StagePress on CanvasStageState {
 
     _beginTransform(_DragMode.move, null);
   }
+
+  /// _secondClickOn is whether this press is the second of a double click
+  /// on [e]: Shift is not held, [e] is the one element selected, and the
+  /// last click was within the double-click window.
+  bool _secondClickOn(CanvasElement e) =>
+      !_shiftHeld &&
+      controller.isOnlySelected(e.id) &&
+      clock.now().difference(_lastClickAt) <
+          CanvasStageState._doubleClickWindow;
 
   /// _pressCopy takes a press on reused [element] at [doc] for the copy
   /// there. Alt drags out new copies of it (or of those picked); Shift picks

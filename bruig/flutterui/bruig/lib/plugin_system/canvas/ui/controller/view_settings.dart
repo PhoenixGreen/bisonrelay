@@ -14,7 +14,7 @@ extension CanvasViewSettings on CanvasController {
     _fit = value;
     // A zoom chosen against the old frame means something else in the new.
     _zoom = 1;
-    _pan = const Offset2(0, 0);
+    _pan = Offset.zero;
     _notifyView();
   }
 

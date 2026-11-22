@@ -846,7 +846,7 @@ extension StageVectorTools on CanvasStageState {
       case StylusAction.pan:
         _mode = _DragMode.pan;
         _startPan = _clampedPan;
-        _dragStart = event.localPosition;
+        _panStartOnStage = event.localPosition;
       case StylusAction.undo:
         controller.undo();
       case StylusAction.select:

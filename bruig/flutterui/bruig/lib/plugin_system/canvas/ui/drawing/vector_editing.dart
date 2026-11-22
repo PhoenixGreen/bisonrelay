@@ -42,6 +42,24 @@ enum VectorTool {
   /// key is the letter that takes it up while a drawing is edited, or null.
   final String? key;
   const VectorTool(this.label, [this.key]);
+
+  /// showsPoints is whether a drawing's points and their box are shown while
+  /// this tool is taken up. Tools that pick no points put them away, so what
+  /// they work on (whole shapes, paint, text) can be seen. The pencil shows
+  /// them only when set to (CanvasController.vectorPencilPoints), and Align
+  /// hides them while it aligns shapes: the stage asks both of those.
+  bool get showsPoints => switch (this) {
+        select || pen || scale || boolean || align || corner || knife => true,
+        selectShapes ||
+        tint ||
+        shadow ||
+        highlight ||
+        pencil ||
+        eraser ||
+        shapes ||
+        text =>
+          false,
+      };
 }
 
 /// VectorPick is one point of a drawing: which shape, which run of it, and

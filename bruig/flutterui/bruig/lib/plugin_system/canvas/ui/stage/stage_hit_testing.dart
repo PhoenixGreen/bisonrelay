@@ -283,10 +283,7 @@ extension StageHitTesting on CanvasStageState {
   bool _pressSynth(SynthModuleElement e, Offset doc) {
     var part = synthPartAt(e, doc);
     if (part == null) return false;
-    if (controller.selection.length != 1 ||
-        controller.selection.first != e.id) {
-      controller.selectOnly(e.id);
-    }
+    controller.selectAlone(e.id);
     _mode = _DragMode.none;
     switch (part.kind) {
       case SynthPartKind.key:
@@ -349,12 +346,6 @@ extension StageHitTesting on CanvasStageState {
   bool _pressCode(CodeElement e, Offset doc) {
     var hit = codeHitAt(e, doc);
     if (hit == null) return false;
-    var picked =
-        controller.selection.length == 1 && controller.selection.first == e.id;
-    void pick() {
-      if (!picked) controller.selectOnly(e.id);
-    }
-
     switch (hit) {
       // Its playbar works picked or not; the track is dragged to scrub.
       case CodePlayHit(part: CodePlayPart.play):
@@ -379,24 +370,24 @@ extension StageHitTesting on CanvasStageState {
         setState(() => _mode = _DragMode.codeScrub);
         return true;
       case CodeDividerHit(:var divider):
-        pick();
+        controller.selectAlone(e.id);
         controller.beginInteraction();
         _codeDivider = (e.id, divider);
         setState(() => _mode = _DragMode.codeDivider);
         return true;
       case CodeTabHit(:var pane, :var file, close: true):
-        pick();
+        controller.selectAlone(e.id);
         controller.closeCodeTab(e, pane, file);
         _mode = _DragMode.none;
         return true;
       case CodeTabHit(:var pane, :var file):
-        pick();
+        controller.selectAlone(e.id);
         _codeTab = (id: e.id, pane: pane, file: file);
         _codeTabAt = null;
         setState(() => _mode = _DragMode.codeTab);
         return true;
       case CodeFileHit(:var file):
-        pick();
+        controller.selectAlone(e.id);
         controller.openCodeFile(e, file);
         _mode = _DragMode.none;
         return true;
@@ -415,8 +406,7 @@ extension StageHitTesting on CanvasStageState {
     var code = document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
     var boxes = codeRunBoxes(e, _hit.posed(e), runner: runner);
-    var picked =
-        controller.selection.length == 1 && controller.selection.first == e.id;
+    var picked = controller.isOnlySelected(e.id);
     if (picked &&
         !_shiftHeld &&
         (boxes.preview?.contains(doc) ?? false) &&
@@ -431,18 +421,14 @@ extension StageHitTesting on CanvasStageState {
     if (!boxes.runButton.contains(doc)) {
       return false;
     }
-    if (controller.selection.length != 1 ||
-        controller.selection.first != e.id) {
-      controller.selectOnly(e.id);
-    }
+    controller.selectAlone(e.id);
     // Run, then open live, so the next press goes to the app.
     controller.runCode(e).then((_) {
       if (!mounted || controller.codeLive != null) return;
       var now = document.elementById(e.id);
       if (now is CodeRunElement &&
           now.result?.preview.isNotEmpty == true &&
-          controller.selection.length == 1 &&
-          controller.selection.first == e.id &&
+          controller.isOnlySelected(e.id) &&
           (runner == CodeRunner.web || runner == CodeRunner.flutter)) {
         controller.liveCode(now);
       }
@@ -556,12 +542,11 @@ extension StageHitTesting on CanvasStageState {
     var file = controller.codeShownFile(e, pane);
     var rect = codeEditorRect(e, pane);
     if (file == null || rect == null) return null;
-    var tl = _toStage(rect.topLeft);
     return CodePaneEditor(
       key: ValueKey("codeEditing-$id-$pane-$file"),
       element: e,
       file: file,
-      rect: Rect.fromLTWH(tl.dx, tl.dy, rect.width * _scale, rect.height * _scale),
+      rect: _toStageRect(rect),
       scale: _scale,
       onChanged: (text) {
         var now = document.elementById(id);
@@ -594,9 +579,7 @@ extension StageHitTesting on CanvasStageState {
     var runner = runnerOf(e, code is CodeElement ? code : null);
     var preview = codeRunBoxes(e, _hit.posed(e), runner: runner).preview;
     if (preview == null) return null;
-    var tl = _toStage(preview.topLeft);
-    return Rect.fromLTWH(
-        tl.dx, tl.dy, preview.width * _scale, preview.height * _scale);
+    return _toStageRect(preview);
   }
 
   Widget? _codeLiveFor() {
@@ -610,29 +593,29 @@ extension StageHitTesting on CanvasStageState {
     var runner = runnerOf(e, code);
     var preview = codeRunBoxes(e, _hit.posed(e), runner: runner).preview;
     if (entry == null || preview == null) return null;
-    var tl = _toStage(preview.topLeft);
     return CodeLivePreview(
       key: ValueKey("codeLive-$id"),
       runner: runner,
       code: code,
       entry: entry,
-      rect: Rect.fromLTWH(
-          tl.dx, tl.dy, preview.width * _scale, preview.height * _scale),
+      rect: _toStageRect(preview),
       appSize: e.appSize(preview.size),
       onLog: controller.liveCodeLog,
       onSnap: (snap) => controller.codeLiveSnap = snap,
     );
   }
 
-  /// _hoverCode notes the code pane under the pointer, which then scrolls
-  /// instead of the page.
-  void _hoverCode(Offset stage) {
-    var over = _codePaneAt(stage);
+  /// _hoverCode notes the code pane under the pointer, at document point
+  /// [doc], which then scrolls instead of the page.
+  void _hoverCode(Offset doc) {
+    var over = _codePaneAt(doc);
     if (over != _codeOver) setState(() => _codeOver = over);
   }
 
-  (String, int)? _codePaneAt(Offset stage) {
-    var doc = _toDocument(stage);
+  /// _codePaneAt is the Code element's pane under document point [doc], as
+  /// (id, pane), when its code is shown rather than its tabs; null while a
+  /// pane is being typed in.
+  (String, int)? _codePaneAt(Offset doc) {
     var e = _hitElement(doc);
     if (e is CodeElement && controller.codeEditing == null) {
       if (codeHitAt(e, doc) case CodePaneHit(:var pane, inTabs: false)) {
@@ -646,14 +629,11 @@ extension StageHitTesting on CanvasStageState {
   void _scrollCodeBy((String, int) at, double by) {
     var e = document.elementById(at.$1);
     if (e is! CodeElement) return;
-    controller.scrollCode(e, at.$2, by / (_scale == 0 ? 1 : _scale));
+    controller.scrollCode(e, at.$2, by / _scaleOrOne);
   }
 
   void _pressMetronome(MetronomeElement e, MetronomePart part) {
-    if (controller.selection.length != 1 ||
-        controller.selection.first != e.id) {
-      controller.selectOnly(e.id);
-    }
+    controller.selectAlone(e.id);
     switch (part) {
       case MetronomePart.play:
         controller.toggleMetronome(e);
@@ -670,10 +650,7 @@ extension StageHitTesting on CanvasStageState {
 
   /// _pressSynthTask answers a task card's Hear and Check buttons.
   void _pressSynthTask(SynthTaskElement card, SynthTaskButton b) {
-    if (controller.selection.length != 1 ||
-        controller.selection.first != card.id) {
-      controller.selectOnly(card.id);
-    }
+    controller.selectAlone(card.id);
     switch (b) {
       case SynthTaskButton.hear:
         controller.hearSynthTarget(card);

@@ -182,7 +182,7 @@ extension StagePictureTools on CanvasStageState {
   }
 
   List<Offset> _warpPoints(ImageElement e, String id) {
-    var (toDoc, _) = _warpSpace(e, id);
+    var (toDoc, _) = warpSpace(e, id);
     return [for (var f in controller.warpOf(e, id).grid) toDoc(f)];
   }
 
@@ -213,7 +213,7 @@ extension StagePictureTools on CanvasStageState {
 
   StageLayers _warpView(ImageElement e, String id) {
     var warp = controller.warpOf(e, id);
-    var (toDoc, _) = _warpSpace(e, id);
+    var (toDoc, _) = warpSpace(e, id);
     var g = warp.grid;
     var points = [for (var f in g) toDoc(f)];
     const fine = 12;
@@ -320,7 +320,7 @@ extension StagePictureTools on CanvasStageState {
       setState(() => _marquee = Rect.fromPoints(_warpGrab, doc));
       return;
     }
-    var (toDoc, toFrac) = _warpSpace(e, id);
+    var (toDoc, toFrac) = warpSpace(e, id);
     var start = [for (var f in _warpStartPoints) toDoc(f)];
     Offset carried(Offset p) {
       switch (_mode) {
@@ -765,46 +765,4 @@ extension StagePictureTools on CanvasStageState {
     var image = controller.images.original(element.assetId);
     return image == null ? null : (element, image);
   }
-}
-
-/// _warpSpace maps the warp grid of layer [id] of [e] between fractions of
-/// the picture's box and canvas points, and back, through the element's turn
-/// and slant and the layer's turn and mirror.
-(Offset Function(Offset), Offset Function(Offset)) _warpSpace(
-    ImageElement e, String id) {
-  var layer = e.layerById(id) ?? ImageLayer.base;
-  var space = LayerSpace(e, layer);
-  var r = space.rect;
-  Offset mirror(Offset f) =>
-      Offset(layer.flipX ? 1 - f.dx : f.dx, layer.flipY ? 1 - f.dy : f.dy);
-  Offset toDoc(Offset f) {
-    var m = mirror(f);
-    return space.fromLayer(r.topLeft + Offset(m.dx * r.width, m.dy * r.height));
-  }
-
-  Offset toFrac(Offset doc) {
-    var l = space.toLayer(doc) - r.topLeft;
-    return mirror(Offset(
-        l.dx / math.max(1e-9, r.width), l.dy / math.max(1e-9, r.height)));
-  }
-
-  return (toDoc, toFrac);
-}
-
-/// nudgingWarp is whether the arrows move warp grid points: a picture's
-/// grid is shown with points picked on it.
-bool nudgingWarp(CanvasController c) =>
-    c.editingImage != null && c.warpLayer != null && c.warpPicks.isNotEmpty;
-
-/// nudgeWarpPicks moves the picked warp grid points by [by], in canvas units;
-/// nothing unless nudgingWarp.
-void nudgeWarpPicks(CanvasController c, Offset by) {
-  var e = c.editingImage, id = c.warpLayer;
-  if (e == null || id == null || c.warpPicks.isEmpty) return;
-  var (toDoc, toFrac) = _warpSpace(e, id);
-  var picks = c.warpPicks;
-  c.changeWarp((w) => w.withPoints([
-        for (var (k, f) in w.grid.indexed)
-          picks.contains(k) ? toFrac(toDoc(f) + by) : f
-      ]));
 }

@@ -40,7 +40,7 @@ extension CanvasSaving on CanvasController {
     // The zoom and the pan go: both are a position inside the document being
     // replaced. The fit stays, since it is about the reader's screen.
     _zoom = 1;
-    _pan = const Offset2(0, 0);
+    _pan = Offset.zero;
     // A piece of sound opens on what it is made with.
     if (document.kind.isAudio) _openSoundDesk();
     // Opened on the frame everything has arrived by, so a canvas whose

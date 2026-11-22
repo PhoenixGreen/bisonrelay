@@ -22,7 +22,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/quick_fill.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';

@@ -105,7 +105,7 @@ extension StageDrag on CanvasStageState {
     }
 
     if (_mode == _DragMode.pan) {
-      var delta = event.localPosition - _dragStart;
+      var delta = event.localPosition - _panStartOnStage;
       _setPan(Offset(_startPan.dx + delta.dx, _startPan.dy + delta.dy));
       return;
     }
@@ -179,7 +179,7 @@ extension StageDrag on CanvasStageState {
       case _DragMode.stagePan:
         if (controller.stageOf(_orbiting ?? "") case var s?) {
           var from = _orbitFrom ?? s.cameraAt(controller.frame);
-          var d = (event.localPosition - _orbitAt) / (_scale == 0 ? 1 : _scale);
+          var d = (event.localPosition - _orbitAt) / _scaleOrOne;
           controller.putStage(
               controller.stageFilmed(s, StageView(s.bounds, from).panned(d)),
               transient: true);
@@ -203,7 +203,7 @@ extension StageDrag on CanvasStageState {
             case (var p?, var from?)) {
           // Against the drag, in design units: dragging the scenery left
           // moves the camera right.
-          var d = (event.localPosition - _orbitAt) / (_scale == 0 ? 1 : _scale);
+          var d = (event.localPosition - _orbitAt) / _scaleOrOne;
           controller.putBackdrop(
               controller.parallaxFilmed(
                   p,
@@ -488,9 +488,7 @@ extension StageDrag on CanvasStageState {
     var box = start.bounds;
     // The drag in the element's turned frame but not its slanted one: the
     // slant is what changes.
-    var a = -start.rotation * math.pi / 180;
-    var d = Offset(delta.dx * math.cos(a) - delta.dy * math.sin(a),
-        delta.dx * math.sin(a) + delta.dy * math.cos(a));
+    var d = BoxFrame(-start.rotation, 0, 0).apply(delta);
     double tanOf(double deg) => math.tan(deg * math.pi / 180);
     double degOf(double t) =>
         (math.atan(t) * 180 / math.pi).clamp(-maxSkew, maxSkew);
@@ -510,9 +508,7 @@ extension StageDrag on CanvasStageState {
       default:
         return;
     }
-    var r = start.rotation * math.pi / 180;
-    var page = Offset(shift.dx * math.cos(r) - shift.dy * math.sin(r),
-        shift.dx * math.sin(r) + shift.dy * math.cos(r));
+    var page = BoxFrame(start.rotation, 0, 0).apply(shift);
     controller.replaceElement(
         start.withBase(
             skewX: skewX,

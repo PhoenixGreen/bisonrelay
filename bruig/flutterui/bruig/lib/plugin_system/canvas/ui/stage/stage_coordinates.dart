@@ -80,8 +80,8 @@ extension StageCoordinates on CanvasStageState {
     return reach == page ? null : reach;
   }
 
-  /// levelShown is whether a game's level reaches past the page.
-  bool get levelShown => _level != null;
+  /// _levelShown is whether a game's level reaches past the page.
+  bool get _levelShown => _level != null;
 
   /// _contentSize is the room the canvas and margins need, the excess over
   /// the visible box scrolled.
@@ -202,7 +202,7 @@ extension StageCoordinates on CanvasStageState {
     _jumpTo(to);
     var page = _pageRect.center;
     var at = page - Offset(_visible.width / 2, _visible.height / 2) - to;
-    controller.pan = Offset2(at.dx, at.dy);
+    controller.pan = at;
   }
 
   void _jumpTo(Offset to) {
@@ -219,13 +219,23 @@ extension StageCoordinates on CanvasStageState {
   /// _syncScroll scrolls to the view once the page is laid out at its size.
   void _syncScroll() {
     if (!mounted) return;
-    _jumpTo(_scrollFor(Offset(controller.pan.dx, controller.pan.dy)));
+    _jumpTo(_scrollFor(controller.pan));
   }
 
-  Offset _toDocument(Offset stage) =>
-      (stage - _origin) / (_scale == 0 ? 1 : _scale);
+  /// _scaleOrOne is _scale, or 1 while it is 0 (before the page is laid
+  /// out): what a stage length is divided by to give a document length.
+  double get _scaleOrOne => _scale == 0 ? 1 : _scale;
+
+  Offset _toDocument(Offset stage) => (stage - _origin) / _scaleOrOne;
 
   Offset _toStage(Offset doc) => doc * _scale + _origin;
+
+  /// _toStageRect is document rect [doc] on the stage: its corner moved
+  /// like a point, its size scaled.
+  Rect _toStageRect(Rect doc) {
+    var tl = _toStage(doc.topLeft);
+    return Rect.fromLTWH(tl.dx, tl.dy, doc.width * _scale, doc.height * _scale);
+  }
 
   /// toDocumentPoint is a widget point in document space, for sidebar drops.
   Offset toDocumentPoint(Offset local) => _toDocument(local + _scrolled);
@@ -266,7 +276,7 @@ extension StageCoordinates on CanvasStageState {
     return bounds == null ? Offset.zero : _handlePosition(handle, bounds);
   }
 
-  List<CanvasElement> get _chosen => _chosenOf(controller);
+  List<CanvasElement> get _chosen => chosenOf(controller);
 
   /// _selectionBounds is the axis-aligned box round the selection, in
   /// document space; rotation is ignored for several.
@@ -375,11 +385,3 @@ extension StageCoordinates on CanvasStageState {
       _skewOfSelection.dx,
       _skewOfSelection.dy);
 }
-
-/// _chosenOf is the selection on the canvas: a timeline sound is selected
-/// from its channel and has no box. A function of the controller alone, for
-/// the keys (stage_keys.dart) as well as the stage.
-List<CanvasElement> _chosenOf(CanvasController c) => [
-      for (var e in c.selectedElements)
-        if (!isTimelineSound(e)) e,
-    ];

@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart'
     show ImageTool;
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart'
     show VectorTool;
-import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart'
+import 'package:bruig/plugin_system/canvas/ui/stage/picked_parts.dart'
     show
         nudgeWarpPicks,
         nudgingWarp,

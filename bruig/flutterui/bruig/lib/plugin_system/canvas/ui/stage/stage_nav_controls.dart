@@ -56,8 +56,7 @@ class StageNavControls extends StatelessWidget {
           icon: Icons.open_with,
           tooltip: "Drag to slide the camera sideways and up",
           controller: controller,
-          onDrag: (d) => controller.panCameraBy(
-              d / _pageScale(context, controller),
+          onDrag: (d) => controller.panCameraBy(d / _pageScale(controller),
               transient: true),
         ),
         label("Pan"),
@@ -85,7 +84,7 @@ class StageNavControls extends StatelessWidget {
   }
 
   /// _pageScale is screen pixels to a page unit, so a pan follows the pointer.
-  static double _pageScale(BuildContext context, CanvasController c) =>
+  static double _pageScale(CanvasController c) =>
       c.viewScale <= 0 ? 1 : c.viewScale;
 }
 
@@ -189,7 +188,7 @@ class _OrbitBallState extends State<_OrbitBall> {
   bool _moved = false;
 
   void _click(Offset at) {
-    var hit = orbitAxes(widget.camera, _OrbitBall.size)
+    var hit = _orbitAxes(widget.camera, _OrbitBall.size)
         .reversed
         .where((a) => (a.at - at).distance < 12)
         .firstOrNull;
@@ -248,11 +247,11 @@ class _OrbitBallState extends State<_OrbitBall> {
   }
 }
 
-/// OrbitAxis is one end of a stage axis on the orbit ball: where it is drawn,
+/// _OrbitAxis is one end of a stage axis on the orbit ball: where it is drawn,
 /// its letter ("" for the negative ends), its colour, how far it points at
 /// the camera, and the yaw (null keeps the camera's) and pitch looking along
 /// it.
-typedef OrbitAxis = ({
+typedef _OrbitAxis = ({
   Offset at,
   String name,
   Color colour,
@@ -260,9 +259,9 @@ typedef OrbitAxis = ({
   (double?, double) look,
 });
 
-/// orbitAxes are the six ends of the stage's three axes as [camera] sees
+/// _orbitAxes are the six ends of the stage's three axes as [camera] sees
 /// them, on a ball [size] across, furthest first so the nearest draw on top.
-List<OrbitAxis> orbitAxes(StageCamera camera, double size) {
+List<_OrbitAxis> _orbitAxes(StageCamera camera, double size) {
   var yaw = camera.yaw * math.pi / 180, pitch = camera.pitch * math.pi / 180;
   // Forward, right along the floor, and up, as StageView has them.
   var f = (
@@ -289,7 +288,7 @@ List<OrbitAxis> orbitAxes(StageCamera camera, double size) {
     ("", (0, -1, 0), gizmoColours[GizmoPart.y]!, (null, -10)),
     ("", (0, 0, -1), gizmoColours[GizmoPart.z]!, (180, 0)),
   ];
-  var axes = <OrbitAxis>[
+  var axes = <_OrbitAxis>[
     for (var (name, v, colour, look) in ends)
       (
         at: Offset(c + dot(v, r) * reach, c - dot(v, u) * reach),
@@ -310,7 +309,7 @@ class _OrbitBallPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     var c = size.center(Offset.zero);
-    for (var a in orbitAxes(camera, size.width)) {
+    for (var a in _orbitAxes(camera, size.width)) {
       var named = a.name.isNotEmpty;
       var colour = named ? a.colour : a.colour.withValues(alpha: 0.45);
       if (named) {

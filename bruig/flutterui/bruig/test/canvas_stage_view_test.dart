@@ -202,7 +202,7 @@ void main() {
     var stage = await pump(tester, controller);
 
     controller.zoom = 4;
-    controller.pan = const Offset2(99999, -99999);
+    controller.pan = const Offset(99999, -99999);
     await tester.pumpAndSettle();
 
     var content = stage.contentRect;
@@ -215,7 +215,7 @@ void main() {
     addTearDown(controller.dispose);
     var stage = await pump(tester, controller);
 
-    controller.pan = const Offset2(200, 120);
+    controller.pan = const Offset(200, 120);
     await tester.pumpAndSettle();
     expect(stage.contentRect.center.dx, closeTo(stage.pageRect.center.dx, 0.5));
     expect(stage.contentRect.center.dy, closeTo(stage.pageRect.center.dy, 0.5));
@@ -257,7 +257,7 @@ void main() {
     expect(stage.contentRect.center.dy, closeTo(middle.dy - 80, 2));
 
     // As far as half a window past the window's edges, and no further.
-    controller.pan = const Offset2(99999, -99999);
+    controller.pan = const Offset(99999, -99999);
     await tester.pumpAndSettle();
     expect(stage.contentRect.top, closeTo(-viewport.height / 2 + 24, 30),
         reason: "lifted clear of what is open over the stage");
@@ -314,7 +314,7 @@ void main() {
     var stage = await pump(tester, controller);
 
     controller.zoom = 6;
-    controller.pan = const Offset2(400, 300);
+    controller.pan = const Offset(400, 300);
     await tester.pumpAndSettle();
 
     // Coming back to the whole canvas re-centres it, rather than leaving it
@@ -332,7 +332,7 @@ void main() {
     var fitted = stage.contentRect;
 
     controller.zoom = 5;
-    controller.pan = const Offset2(120, -80);
+    controller.pan = const Offset(120, -80);
     await tester.pumpAndSettle();
     expect(controller.atFit, isFalse);
 
@@ -1756,7 +1756,7 @@ void main() {
     var stage = await pump(tester, controller);
 
     controller.zoom = 2.5;
-    controller.pan = const Offset2(30, -20);
+    controller.pan = const Offset(30, -20);
     await tester.pumpAndSettle();
 
     var centre = stage.contentRect.center;

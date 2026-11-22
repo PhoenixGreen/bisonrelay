@@ -59,7 +59,7 @@ ChartElement? chartLabelDragged(
   var y = (at.dy - bounds.top) / bounds.height;
 
   if (grab.part == ChartLabelPart.legend) {
-    return grownFor(e.copyWith(legend: e.legend.copyWith(x: x, y: y)), bounds);
+    return _grownFor(e.copyWith(legend: e.legend.copyWith(x: x, y: y)), bounds);
   }
 
   // From where it is drawn (its own place or the default), so a first drag
@@ -82,18 +82,18 @@ ChartElement? chartLabelDragged(
         )
       : box.copyWith(x: x, y: y);
 
-  return grownFor(
+  return _grownFor(
       grab.part == ChartLabelPart.title
           ? e.copyWith(titleBox: next)
           : e.copyWith(descriptionBox: next),
       bounds);
 }
 
-/// grownFor sizes the chart's box to hold the chart and its placed labels,
+/// _grownFor sizes the chart's box to hold the chart and its placed labels,
 /// leaving everything where it is on screen, so a label dragged off the side
 /// stays in the selection. It shrinks too, which is safe only because the
 /// plot has its own rectangle (ChartBody) and does not follow the box.
-ChartElement grownFor(ChartElement e, Rect bounds) {
+ChartElement _grownFor(ChartElement e, Rect bounds) {
   var rects = chartLabelPlaces(e, bounds);
   if (rects.isEmpty) return e;
 
