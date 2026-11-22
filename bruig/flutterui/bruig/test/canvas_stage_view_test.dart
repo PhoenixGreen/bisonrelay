@@ -1728,7 +1728,7 @@ void main() {
 
     testWidgets("hiding them actually stops them being drawn", (tester) async {
       // The first version of this feature blanked the painter's selection set
-      // and did nothing at all, because _paintSelection reads selectionBounds
+      // and did nothing at all, because _paintHelpers reads selectionBounds
       // rather than the selection -- every mark stayed exactly where it was.
       // The existing tests all checked behaviour rather than pixels and passed
       // throughout, so this one counts them.

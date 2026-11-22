@@ -225,11 +225,11 @@ typedef StageSelectionMarks = ({
   /// drawn from [bounds], so emptying the selection would not hide them.
   bool showHelpers,
 
-  /// pickedCopies are the picked copies of a reused element (_paintCopies).
+  /// pickedCopies are the picked copies of a reused element (paintCopies).
   EqualSet<String> pickedCopies,
 
   /// trail shows the selected element's trail and onion skin while the
-  /// Chain is open on its motion (see _paintTrail).
+  /// Chain is open on its motion (see paintTrail).
   bool trail,
 
   /// anchors are the anchor points shown, on the page.
