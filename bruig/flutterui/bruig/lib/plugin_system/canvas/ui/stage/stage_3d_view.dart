@@ -1,7 +1,9 @@
 part of 'canvas_stage.dart';
 
 // The 3D stage's gizmo, and steering the view: scrolling, pinching and zooming.
-// Part of CanvasStageState: its fields, lifecycle and build are in
+// The gestures that take a camera or the gizmo are here too: a 3D stage's
+// camera orbited or panned, parallax scenery panned, a part of the gizmo
+// dragged. Part of CanvasStageState: its fields, lifecycle and build are in
 // canvas_stage.dart.
 
 extension Stage3dView on CanvasStageState {
@@ -26,8 +28,8 @@ extension Stage3dView on CanvasStageState {
     if (g == null) return false;
     var part = g.hit(doc, _gizmoReach);
     if (part == null) return false;
-    _gizmoDrag = (g, part, doc, controller.selection.first);
-    _mode = _DragMode.gizmo;
+    _gesture = _GizmoDrag(
+        gizmo: g, part: part, from: doc, elementId: controller.selection.first);
     controller.beginInteraction();
     setState(() => _gizmoHot = part);
     return true;
@@ -48,13 +50,10 @@ extension Stage3dView on CanvasStageState {
           (hit is BackgroundElement && hit.isStage);
       if (!onStage) return false;
     }
-    _orbiting = s.id;
-    _orbitFrom = s.cameraAt(controller.frame);
-    _orbitAt = event.localPosition;
-    _mode = middle || HardwareKeyboard.instance.isShiftPressed
-        ? _DragMode.stagePan
-        : _DragMode.stageOrbit;
-    _lockedPress = true;
+    var from = s.cameraAt(controller.frame);
+    _gesture = middle || HardwareKeyboard.instance.isShiftPressed
+        ? _StagePan(s.id, from, event.localPosition)
+        : _StageOrbit(s.id, from, event.localPosition, locked: true);
     controller.beginInteraction();
     return true;
   }
@@ -177,4 +176,188 @@ extension Stage3dView on CanvasStageState {
     _pinch = null;
     _codePinch = null;
   }
+}
+
+/// _StageCameraDrag is a 3D stage's camera taken by a drag: with Option
+/// held anywhere on the stage, or, with the page locked, by a press on the
+/// stage itself or the middle button anywhere. One undo step, opened as it
+/// begins. Its travel is measured on the stage, in pixels.
+sealed class _StageCameraDrag extends StageGesture {
+  _StageCameraDrag(this.stageId, this.from, this.start, {required this.locked});
+
+  /// stageId is the stage whose camera it is.
+  final String stageId;
+
+  /// from is the camera when the press began, which every step works from.
+  final StageCamera from;
+
+  /// start is where the press began, in stage pixels.
+  final Offset start;
+
+  /// locked is whether the press took the camera because the page is
+  /// locked. A press like that let go without travelling is a click on
+  /// nothing, and clears the selection.
+  final bool locked;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  MouseCursor get cursor => SystemMouseCursors.grabbing;
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {
+    if (!locked || travelled) return;
+    // The camera's step is closed first: letting go of the selection can
+    // finish editing a drawing, which changes the document, and that is
+    // not the camera's to take back.
+    stage.controller.endInteraction();
+    stage.controller.clearSelection();
+  }
+
+  @override
+  void cancel(CanvasStageState stage) {}
+}
+
+/// _StageOrbit is a 3D stage's camera swung round it: across turns it,
+/// down looks from higher.
+class _StageOrbit extends _StageCameraDrag {
+  _StageOrbit(super.stageId, super.from, super.start, {required super.locked});
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) {
+    var c = stage.controller;
+    if (c.stageOf(stageId) case var s?) {
+      var d = at - start;
+      var yaw = from.yaw + d.dx * CanvasOrbitPad.degreesPerPixel * 0.5;
+      var pitch = (from.pitch + d.dy * CanvasOrbitPad.degreesPerPixel * 0.5)
+          .clamp(-10.0, 89.0);
+      c.putStage(
+          c.stageFilmed(
+              s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
+          transient: true);
+    }
+  }
+}
+
+/// _StagePan is a 3D stage's camera slid sideways and up, by a shifted or
+/// middle-button drag. Only the page locked begins one.
+class _StagePan extends _StageCameraDrag {
+  _StagePan(super.stageId, super.from, super.start) : super(locked: true);
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) {
+    var c = stage.controller;
+    if (c.stageOf(stageId) case var s?) {
+      var d = (at - start) / stage._scaleOrOne;
+      c.putStage(c.stageFilmed(s, StageView(s.bounds, from).panned(d)),
+          transient: true);
+    }
+  }
+}
+
+/// _ParallaxPan is parallax scenery's camera moved by an Option-drag on it.
+/// One undo step, opened as it begins.
+class _ParallaxPan extends StageGesture {
+  _ParallaxPan(this.sceneryId, this.from, this.start);
+
+  /// sceneryId is the scenery whose camera it is.
+  final String sceneryId;
+
+  /// from is the camera when the press began, which every step works from.
+  final ParallaxCamera from;
+
+  /// start is where the press began, in stage pixels.
+  final Offset start;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) {
+    var c = stage.controller;
+    if (c.parallaxOf(sceneryId) case var p?) {
+      // Against the drag, in design units: dragging the scenery left moves
+      // the camera right.
+      var d = (at - start) / stage._scaleOrOne;
+      c.putBackdrop(
+          c.parallaxFilmed(
+              p,
+              from.copyWith(
+                  x: (from.x - d.dx).roundToDouble(),
+                  y: (from.y - d.dy).roundToDouble())),
+          transient: true);
+    }
+  }
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
+}
+
+/// _GizmoDrag is a part of the stage gizmo dragged, moving, turning or
+/// sizing the element it is on (see StageGizmo.dragged), worked out from
+/// where it stood when pressed. One undo step, opened as it begins. The
+/// part held is drawn lit while it runs.
+class _GizmoDrag extends StageGesture {
+  _GizmoDrag(
+      {required this.gizmo,
+      required this.part,
+      required this.from,
+      required this.elementId});
+
+  /// gizmo is the gizmo when it was pressed.
+  final StageGizmo gizmo;
+
+  /// part is the part held.
+  final GizmoPart part;
+
+  /// from is the page point taken.
+  final Offset from;
+
+  /// elementId is the element the gizmo is on.
+  final String elementId;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  MouseCursor get cursor => SystemMouseCursors.grabbing;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) {
+    var document = stage.document;
+    if (document.elementById(elementId) case var e?) {
+      var guides = document.guides;
+      var snap = guides.stageSnap && !HardwareKeyboard.instance.isAltPressed;
+      var spot = gizmo.dragged(part, from, doc,
+          pageScale: stage._scale,
+          step: snap ? guides.stageStep : 0,
+          turn: snap ? guides.stageTurn : 0);
+      stage.controller
+          .replaceElement(stage.controller.spotted(e, spot), transient: true);
+    }
+  }
+
+  /// release draws the stage again: the part held is no longer lit by it.
+  @override
+  void release(CanvasStageState stage, Offset at,
+          {required bool travelled, required bool clicked}) =>
+      stage.setState(() {});
+
+  @override
+  void cancel(CanvasStageState stage) => stage.setState(() {});
 }

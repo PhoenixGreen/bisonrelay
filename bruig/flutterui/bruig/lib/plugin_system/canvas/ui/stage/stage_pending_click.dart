@@ -3,9 +3,8 @@ part of 'canvas_stage.dart';
 // The clicks that ride on a press: a press on a selected element's controls
 // begins a drag of it and arms a click, made if the press is let go where it
 // began. PendingClick and its cases. A gesture holds the ones its press
-// armed and settles them as it ends (see _CarriesClicks); the copies
-// dragged, not yet a StageGesture case, hold theirs in _pendingClick. Part
-// of CanvasStageState: its fields, lifecycle and build are in
+// armed and settles them as it ends (see _CarriesClicks). Part of
+// CanvasStageState: its fields, lifecycle and build are in
 // canvas_stage.dart.
 
 /// PendingClick is a click a press has armed: made when the press ends as

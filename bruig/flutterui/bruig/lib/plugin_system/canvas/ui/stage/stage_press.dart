@@ -171,14 +171,14 @@ extension StagePress on CanvasStageState {
     // A sprite or tile map being painted takes a press on it first.
     if (controller.spritePaint case var session?) {
       if (session.sprite case var e? when !e.locked && e.bounds.contains(doc)) {
-        _mode = _DragMode.spritePaint;
+        _gesture = _SpritePaint();
         unawaited(session.strokeStart(doc));
         return true;
       }
     }
     if (controller.tilePaint case var session?) {
       if (session.map case var e? when !e.locked && e.bounds.contains(doc)) {
-        _mode = _DragMode.tilePaint;
+        _gesture = _TilePaint();
         session.strokeStart(doc);
         return true;
       }
@@ -214,18 +214,13 @@ extension StagePress on CanvasStageState {
         _ => null,
       };
       if (scenery case var p? when !p.locked) {
-        _orbiting = p.id;
-        _panFrom = p.cameraAt(controller.frame);
-        _orbitAt = stage;
-        _mode = _DragMode.parallaxPan;
+        _gesture = _ParallaxPan(p.id, p.cameraAt(controller.frame), stage);
         controller.beginInteraction();
         return true;
       }
       if (held case var s? when !s.locked) {
-        _orbiting = s.id;
-        _orbitFrom = s.cameraAt(controller.frame);
-        _orbitAt = stage;
-        _mode = _DragMode.stageOrbit;
+        _gesture = _StageOrbit(s.id, s.cameraAt(controller.frame), stage,
+            locked: false);
         controller.beginInteraction();
         return true;
       }
@@ -321,12 +316,7 @@ extension StagePress on CanvasStageState {
         // The one copy's box sizes and turns that copy by its own values. A
         // copy has no slant.
         if (_oneCopy case (var e, var i)?) {
-          _beginCopyBox(
-              e,
-              i,
-              handle == StageHandle.rotate
-                  ? _DragMode.copyTurn
-                  : _DragMode.copySize);
+          _gesture = _beginCopyBox(e, i, turning: handle == StageHandle.rotate);
           return true;
         }
         var skewing = side &&
@@ -683,12 +673,7 @@ extension StagePress on CanvasStageState {
   void _pressSelectAndMove(_Press press, CanvasElement element) {
     var _Press(:doc, :click) = press;
     var copy = _copyAt(element, doc);
-    if (copy != null && _pressCopy(element, copy)) {
-      // The copies dragged carry the click on the element's controls till
-      // the release: see _pendingClick.
-      _pendingClick = click;
-      return;
-    }
+    if (copy != null && _pressCopy(element, copy, click)) return;
 
     if (_shiftHeld) {
       controller.toggleSelected(element.id);
@@ -732,8 +717,9 @@ extension StagePress on CanvasStageState {
   /// new copies of it (or of those picked); Shift picks it in or out; with
   /// copies picked, it is picked and dragged alone. Otherwise the press goes
   /// on to the element: a drag moves them all, a click picks this one (see
-  /// _CopyPick). True if handled.
-  bool _pressCopy(CanvasElement element, _CopyPick copy) {
+  /// _CopyPick). The copies dragged carry [click], armed by an earlier step
+  /// on the element's own controls, till the release. True if handled.
+  bool _pressCopy(CanvasElement element, _CopyPick copy, PendingClick? click) {
     var set = element.base.motion.instances!;
     var id = copy.id;
     var picked = controller.pickedCopiesOf(element.id);
@@ -742,10 +728,10 @@ extension StagePress on CanvasStageState {
         controller.selectOnly(element.id);
       }
       controller.beginInteraction();
-      _dragCopies = controller.duplicateCopies(
+      var made = controller.duplicateCopies(
           element.id, picked.contains(id) ? picked : {id}, Offset.zero);
-      _copiesStart = controller.motionOf(element.id).instances;
-      _mode = _DragMode.copies;
+      _gesture = _CopiesDrag(controller.motionOf(element.id).instances, made,
+          click: click);
       return true;
     }
     if (_shiftHeld && controller.selection.contains(element.id)) {
@@ -759,36 +745,38 @@ extension StagePress on CanvasStageState {
         picked = {id};
       }
       controller.beginInteraction();
-      _dragCopies = picked;
-      _copiesStart = set;
-      _mode = _DragMode.copies;
+      _gesture = _CopiesDrag(set, picked, click: click);
       return true;
     }
     return false;
   }
 
-  void _beginCopyBox(CanvasElement e, int i, _DragMode mode) {
+  /// _beginCopyBox begins sizing or, [turning], turning copy [i] of reused
+  /// [e] by its own box, and opens the undo step the gesture's end closes.
+  _CopyBoxDrag _beginCopyBox(CanvasElement e, int i, {required bool turning}) {
     var set = e.base.motion.instances!;
-    _mode = mode;
-    _copyPivot = e.anchorIn(e.boundsWith(_copyPose(e, i)));
-    _copySize = set.sizeOf(i);
-    _copyTurn = set.turnOf(i);
+    var drag = _CopyBoxDrag(
+        turning: turning,
+        pivot: e.anchorIn(e.boundsWith(_copyPose(e, i))),
+        size: set.sizeOf(i),
+        turn: set.turnOf(i));
     controller.beginInteraction();
+    return drag;
   }
 
   /// _applyCopyBox sizes or turns the one picked copy as its handle is
-  /// dragged to [doc]: sized evenly (a copy has one Size) by how much farther
-  /// from its anchor the pointer is along the line pressed on; turned by the
-  /// angle swept, in 15-degree steps with Shift.
-  void _applyCopyBox(Offset doc) {
+  /// dragged to [doc], for [drag]: sized evenly (a copy has one Size) by how
+  /// much farther from its anchor the pointer is along the line pressed on;
+  /// turned by the angle swept, in 15-degree steps with Shift.
+  void _applyCopyBox(_CopyBoxDrag drag, Offset doc) {
     var e = controller.selected;
     if (e == null) return;
-    var from = _dragStart - _copyPivot, to = doc - _copyPivot;
-    if (_mode == _DragMode.copyTurn) {
+    var from = _dragStart - drag.pivot, to = doc - drag.pivot;
+    if (drag.turning) {
       var swept = (math.atan2(to.dy, to.dx) - math.atan2(from.dy, from.dx)) *
           180 /
           math.pi;
-      var turn = _copyTurn + swept;
+      var turn = drag.turn + swept;
       if (_shiftHeld) turn = (turn / 15).round() * 15;
       turn = (turn + 180) % 360 - 180;
       controller.setCopyOwn(e.id, CopyValue.turn.name, turn, transient: true);
@@ -797,14 +785,14 @@ extension StagePress on CanvasStageState {
     var along = from.distanceSquared;
     if (along < 1e-6) return;
     var f = (to.dx * from.dx + to.dy * from.dy) / along;
-    var size = (_copySize * f).clamp(CopyValue.size.min, CopyValue.size.max);
+    var size = (drag.size * f).clamp(CopyValue.size.min, CopyValue.size.max);
     controller.setCopyOwn(e.id, CopyValue.size.name, size, transient: true);
   }
 
-  /// _moveCopies puts the dragged copies [delta] from their start, along one
-  /// axis with Shift.
-  void _moveCopies(Offset delta) {
-    var from = _copiesStart, of = controller.selected?.id;
+  /// _moveCopies puts the copies [drag] moves [delta] from their start,
+  /// along one axis with Shift.
+  void _moveCopies(_CopiesDrag drag, Offset delta) {
+    var from = drag.start, of = controller.selected?.id;
     if (from == null || of == null) return;
     if (_shiftHeld) {
       delta = delta.dx.abs() >= delta.dy.abs()
@@ -815,7 +803,7 @@ extension StagePress on CanvasStageState {
         of,
         from.copyWith(items: [
           for (var x in from.items)
-            _dragCopies.contains(x.id)
+            drag.dragged.contains(x.id)
                 ? x.copyWith(dx: x.dx + delta.dx, dy: x.dy + delta.dy)
                 : x,
         ]),

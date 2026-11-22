@@ -7,10 +7,12 @@ part of 'canvas_stage.dart';
 // that belong with their subject sit in its part: a synth module's
 // (stage_synth_controls.dart), a Code panel's (stage_code_controls.dart), a
 // counter's piece (stage_element_controls.dart), a team's player
-// (stage_team_players.dart), the retouching stroke (stage_retouch.dart). The
-// kinds not yet made cases still run through _DragMode, in the switch in
-// stage_drag.dart and the branches in stage_release.dart. Part of
-// CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
+// (stage_team_players.dart), the retouching stroke (stage_retouch.dart), a
+// 3D stage's camera, parallax scenery's and the gizmo
+// (stage_3d_view.dart). The kinds not yet made cases still run through
+// _DragMode, in the switch in stage_drag.dart and the branches in
+// stage_release.dart. Part of CanvasStageState: its fields, lifecycle and
+// build are in canvas_stage.dart.
 
 /// StageGesture is what the pointer is doing on the stage, from the press
 /// that began it to its release or cancel. Each kind is a case that holds
@@ -43,8 +45,11 @@ sealed class StageGesture {
   void cancel(CanvasStageState stage);
 
   /// endsRelease is whether, once it has ended, the rest of _onPointerUp is
-  /// skipped: the resets there that the kinds still told by _DragMode need.
-  /// Read after [release] or [cancel], which may decide it.
+  /// skipped. Of what is there, only one reset touches a gesture: the snap
+  /// mark a move or resize of the selection's box leaves (_snappedTo),
+  /// cleared there, so a release that skips it leaves any mark set until
+  /// the next release that reaches it. The rest is for the kinds still told
+  /// by _DragMode. Read after [release] or [cancel], which may decide it.
   bool get endsRelease => false;
 
   /// takesAll is whether every move and the release are handed to it at the
@@ -53,6 +58,11 @@ sealed class StageGesture {
   /// none of the release's resets. For a press that is not on the page as
   /// it is drawn: the held marker's note over it, a live preview.
   bool get takesAll => false;
+
+  /// cursor is the pointer's look while it is under way, shown over what
+  /// the tool in hand or the hover would show, or null to leave it to the
+  /// stage: see _cursor.
+  MouseCursor? get cursor => null;
 }
 
 extension StageGestureSteps on CanvasStageState {
@@ -157,6 +167,9 @@ class _Pan extends StageGesture {
   bool get waitsToTravel => false;
 
   @override
+  MouseCursor get cursor => SystemMouseCursors.grabbing;
+
+  @override
   void move(CanvasStageState stage, Offset at, Offset doc) {
     var delta = at - from;
     stage._setPan(Offset(startPan.dx + delta.dx, startPan.dy + delta.dy));
@@ -217,6 +230,9 @@ class _GuideDrag extends StageGesture {
 
   @override
   bool get waitsToTravel => true;
+
+  @override
+  MouseCursor get cursor => SystemMouseCursors.grabbing;
 
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) =>
@@ -500,6 +516,9 @@ class _BoxMove extends _BoxDrag with _CarriesClicks {
   bool get waitsToTravel => false;
 
   @override
+  MouseCursor get cursor => SystemMouseCursors.move;
+
+  @override
   void move(CanvasStageState stage, Offset at, Offset doc) {
     if (click case var c?
         when (at - stage._pressedAt).distance >
@@ -542,6 +561,141 @@ class _BoxTurn extends _BoxDrag {
   _BoxTurn(super.start);
 
   @override
+  MouseCursor get cursor => SystemMouseCursors.grabbing;
+
+  @override
   void move(CanvasStageState stage, Offset at, Offset doc) =>
       stage._applyRotate(doc, start);
+}
+
+/// _CopiesDrag is copies of a reused element moved on their own: those
+/// picked, or the new ones an Alt-drag made of them. One undo step, opened
+/// as it begins (_pressCopy).
+class _CopiesDrag extends StageGesture with _CarriesClicks {
+  _CopiesDrag(this.start, this.dragged, {this.click});
+
+  /// start is the element's copies as they were when the drag began, which
+  /// every step works from.
+  final InstanceSet? start;
+
+  /// dragged is which of them move, by id.
+  final Set<String> dragged;
+
+  /// click is the click an earlier step of the press armed on the
+  /// element's own controls, if any: a Code panel's code, opened for
+  /// typing if the press stays put.
+  final PendingClick? click;
+
+  @override
+  Iterable<PendingClick> get carried => [click].nonNulls;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._moveCopies(this, doc - stage._dragStart);
+}
+
+/// _CopyBoxDrag is the one picked copy of a reused element sized or turned
+/// by its own box (see _oneCopy), by the copy's own Size and Turn, not the
+/// element's. One undo step, opened as it begins (_beginCopyBox).
+class _CopyBoxDrag extends StageGesture {
+  _CopyBoxDrag(
+      {required this.turning,
+      required this.pivot,
+      required this.size,
+      required this.turn});
+
+  /// turning is whether the box's turning handle was taken; otherwise one
+  /// of its corners or sides, which size it.
+  final bool turning;
+
+  /// pivot is the copy's anchor, which it is sized and turned about and
+  /// which stays put (see CanvasElement.boundsWith).
+  final Offset pivot;
+
+  /// size and turn are the copy's own Size and Turn when it was pressed.
+  final double size, turn;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._applyCopyBox(this, doc);
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
+}
+
+/// _SpritePaint is a stroke on the Sprite being painted (see
+/// sprite_painting.dart). The session keeps the stroke as one change of its
+/// own when the pen lifts, so the gesture opens no undo step.
+class _SpritePaint extends StageGesture {
+  @override
+  bool get opensUndoStep => false;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) {
+    if (stage.controller.spritePaint case var session?) {
+      unawaited(session.strokeTo(doc));
+    }
+  }
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+          {required bool travelled, required bool clicked}) =>
+      _lift(stage);
+
+  /// cancel lifts the pen as a release does: a cancel keeps what the drag
+  /// painted.
+  @override
+  void cancel(CanvasStageState stage) => _lift(stage);
+
+  /// _lift lifts the session's pen, if the sprite is still being painted.
+  void _lift(CanvasStageState stage) {
+    if (stage.controller.spritePaint case var session?) {
+      unawaited(session.strokeEnd());
+    }
+  }
+}
+
+/// _TilePaint is a stroke on the Tile map being painted (see
+/// tile_painting.dart). As for a sprite, the session keeps the stroke as
+/// one change of its own when the pen lifts.
+class _TilePaint extends StageGesture {
+  @override
+  bool get opensUndoStep => false;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage.controller.tilePaint?.strokeTo(doc);
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+          {required bool travelled, required bool clicked}) =>
+      stage.controller.tilePaint?.strokeEnd();
+
+  /// cancel lifts the pen as a release does: a cancel keeps what the drag
+  /// laid.
+  @override
+  void cancel(CanvasStageState stage) =>
+      stage.controller.tilePaint?.strokeEnd();
 }

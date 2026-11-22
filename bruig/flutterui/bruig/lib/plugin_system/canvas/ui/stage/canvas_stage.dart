@@ -147,18 +147,11 @@ part 'stage_layouts.dart';
 // document space (_toDocument) where a handler needs them, in some handlers
 // more than once; handles stay in stage space, one size at any zoom.
 
-/// _DragMode is what the pointer is currently doing.
+/// _DragMode is what the pointer is currently doing, for the kinds of
+/// gesture not yet cases of StageGesture: the vector tools, the picture
+/// tools and warp, a text element's picture pieces, and Layouts.
 enum _DragMode {
   none,
-
-  /// copies is copies of an element dragged on their own: those picked, or
-  /// made by an Alt-drag. See _moveCopies.
-  copies,
-
-  /// copySize and copyTurn size or turn the one copy picked (see _oneCopy)
-  /// by its own handles. See _applyCopyBox.
-  copySize,
-  copyTurn,
 
   /// pieceMove, pieceSize and pieceTurn move, size or turn a text element's
   /// picture piece by its own box. See stage_text_pieces.dart.
@@ -184,26 +177,6 @@ enum _DragMode {
   warpScale,
   warpTurn,
   warpMarquee,
-
-  /// spritePaint is a Sprite's frame being painted: see sprite_painting.dart.
-  spritePaint,
-
-  /// tilePaint is a Tile map being painted -- see tile_painting.dart.
-  tilePaint,
-
-  /// stageOrbit is a 3D stage's camera being swung round it, by a drag with
-  /// Option held anywhere on the stage, or with none, the page locked.
-  stageOrbit,
-
-  /// stagePan is a 3D stage's camera being slid sideways and up, by a
-  /// shifted or middle-button drag with the page locked.
-  stagePan,
-
-  /// gizmo is a part of the stage gizmo dragged: see stage_gizmo.dart.
-  gizmo,
-
-  /// parallaxPan is parallax scenery panned by an Option-drag on it.
-  parallaxPan,
 
   /// imageFrame is a picture moved inside its frame: only which part the
   /// frame shows changes. See ImageFraming.
@@ -299,11 +272,6 @@ class CanvasStageState extends State<CanvasStage>
   /// _gesture is what the pointer is doing, for the kinds that are cases of
   /// StageGesture; the kinds that are not yet are still told by [_mode].
   StageGesture? _gesture;
-
-  /// _pendingClick is a click armed by a press whose drag is not yet a
-  /// StageGesture case: a Code panel's code, on its copies dragged. A
-  /// gesture holds its own (see _CarriesClicks).
-  PendingClick? _pendingClick;
 
   /// _codeOver is the Code pane under the pointer, which the wheel and two
   /// fingers scroll instead of the page; _codePinch one a slide began over.
@@ -417,13 +385,6 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _dragStart is where the gesture began, in document space.
   Offset _dragStart = Offset.zero;
-
-  /// _orbiting is the stage an Option-drag is orbiting, with the camera as
-  /// it was and where the drag began.
-  String? _orbiting;
-  StageCamera? _orbitFrom;
-  ParallaxCamera? _panFrom;
-  Offset _orbitAt = Offset.zero;
 
   /// _marquee is the box dragged to pick a drawing's points or shapes, or a
   /// warp's points. The box that selects elements is its gesture's own.
@@ -619,17 +580,6 @@ class CanvasStageState extends State<CanvasStage>
   bool _liveTapPending = false;
   int _replayPointer = 0x7FFF0000;
 
-  /// _copiesStart and _dragCopies are the copies at the drag's start, and
-  /// which are dragged.
-  InstanceSet? _copiesStart;
-  Set<String> _dragCopies = const {};
-
-  /// _copyPivot is the one copy's anchor, which its box sizes and turns
-  /// about and which stays put (see CanvasElement.boundsWith). _copySize and
-  /// _copyTurn are its own Size and Turn at the drag's start.
-  Offset _copyPivot = Offset.zero;
-  double _copySize = 1, _copyTurn = 0;
-
   /// _pieceStart is the picture piece as it was when its box was pressed,
   /// which a drag of it measures from. See stage_text_pieces.dart.
   TextItem? _pieceStart;
@@ -773,14 +723,9 @@ class CanvasStageState extends State<CanvasStage>
   /// speaker or video control, or a live counter's button.
   bool _hoverPressable = false;
 
-  /// _gizmoDrag is the gizmo at the drag's start, the part held, the page
-  /// point taken, and the element's id.
-  (StageGizmo, GizmoPart, Offset, String)? _gizmoDrag;
-
+  /// _gizmoHot is the part of the gizmo the pointer was last over, drawn
+  /// lit. While a part is dragged, that part is lit instead (_GizmoDrag).
   GizmoPart? _gizmoHot;
-
-  /// _lockedPress is whether this press took the camera of a locked page.
-  bool _lockedPress = false;
 
   /// _steerTimer closes a run of camera steering as one undo step.
   Timer? _steerTimer;
@@ -1069,7 +1014,10 @@ class CanvasStageState extends State<CanvasStage>
           child: IgnorePointer(
             child: CustomPaint(
               painter: StageGizmoPainter(g,
-                  hot: _gizmoDrag?.$2 ?? _gizmoHot,
+                  hot: switch (_gesture) {
+                    _GizmoDrag(:var part) => part,
+                    _ => _gizmoHot,
+                  },
                   scale: _scale,
                   origin: _view.origin),
             ),
@@ -1440,11 +1388,9 @@ class CanvasStageState extends State<CanvasStage>
         (controller.imageTool.masks || controller.imageTool.paints)) {
       return SystemMouseCursors.precise;
     }
-    if (_gesture is _Pan) return SystemMouseCursors.grabbing;
-    if (_mode == _DragMode.stageOrbit || _mode == _DragMode.stagePan) {
-      return SystemMouseCursors.grabbing;
-    }
-    if (_mode == _DragMode.gizmo) return SystemMouseCursors.grabbing;
+    // What is being done says more than the tool in hand: the gesture's
+    // own look shows over the tools'.
+    if (_gesture?.cursor case var held?) return held;
     if (_gizmoHot != null) return SystemMouseCursors.grab;
     if (controller.tool == CanvasTool.pan && !controller.onStage3d) {
       return SystemMouseCursors.grab;
@@ -1465,9 +1411,6 @@ class CanvasStageState extends State<CanvasStage>
           ? SystemMouseCursors.precise
           : SystemMouseCursors.none;
     }
-    if (_gesture is _BoxTurn) return SystemMouseCursors.grabbing;
-    if (_gesture is _BoxMove) return SystemMouseCursors.move;
-    if (_gesture is _GuideDrag) return SystemMouseCursors.grabbing;
     if (_rulerUnder(_hoverAt) case var axis?) {
       return axis == GuideAxis.vertical
           ? SystemMouseCursors.resizeLeftRight

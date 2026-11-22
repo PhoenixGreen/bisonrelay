@@ -120,13 +120,8 @@ extension StageDrag on CanvasStageState {
     if (!_hasTravelled(event.localPosition)) return;
 
     var doc = _toDocument(event.localPosition);
-    var delta = doc - _dragStart;
 
     switch (_mode) {
-      case _DragMode.copies:
-        _moveCopies(delta);
-      case _DragMode.copySize || _DragMode.copyTurn:
-        _applyCopyBox(doc);
       case _DragMode.pieceMove || _DragMode.pieceSize || _DragMode.pieceTurn:
         _applyPiece(doc);
       case _DragMode.layoutCut ||
@@ -142,60 +137,6 @@ extension StageDrag on CanvasStageState {
             _DragMode.warpTurn ||
             _DragMode.warpMarquee:
         _dragWarp(doc);
-      case _DragMode.stageOrbit:
-        if (controller.stageOf(_orbiting ?? "") case var s?) {
-          var from = _orbitFrom ?? s.cameraAt(controller.frame);
-          var d = event.localPosition - _orbitAt;
-          var yaw = from.yaw + d.dx * CanvasOrbitPad.degreesPerPixel * 0.5;
-          var pitch = (from.pitch + d.dy * CanvasOrbitPad.degreesPerPixel * 0.5)
-              .clamp(-10.0, 89.0);
-          controller.putStage(
-              controller.stageFilmed(
-                  s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
-              transient: true);
-        }
-      case _DragMode.stagePan:
-        if (controller.stageOf(_orbiting ?? "") case var s?) {
-          var from = _orbitFrom ?? s.cameraAt(controller.frame);
-          var d = (event.localPosition - _orbitAt) / _scaleOrOne;
-          controller.putStage(
-              controller.stageFilmed(s, StageView(s.bounds, from).panned(d)),
-              transient: true);
-        }
-      case _DragMode.gizmo:
-        if (_gizmoDrag case (var g, var part, var from, var id)?) {
-          if (document.elementById(id) case var e?) {
-            var guides = document.guides;
-            var snap =
-                guides.stageSnap && !HardwareKeyboard.instance.isAltPressed;
-            var spot = g.dragged(part, from, doc,
-                pageScale: _scale,
-                step: snap ? guides.stageStep : 0,
-                turn: snap ? guides.stageTurn : 0);
-            controller.replaceElement(controller.spotted(e, spot),
-                transient: true);
-          }
-        }
-      case _DragMode.parallaxPan:
-        if ((controller.parallaxOf(_orbiting ?? ""), _panFrom)
-            case (var p?, var from?)) {
-          // Against the drag, in design units: dragging the scenery left
-          // moves the camera right.
-          var d = (event.localPosition - _orbitAt) / _scaleOrOne;
-          controller.putBackdrop(
-              controller.parallaxFilmed(
-                  p,
-                  from.copyWith(
-                      x: (from.x - d.dx).roundToDouble(),
-                      y: (from.y - d.dy).roundToDouble())),
-              transient: true);
-        }
-      case _DragMode.spritePaint:
-        if (controller.spritePaint case var session?) {
-          unawaited(session.strokeTo(doc));
-        }
-      case _DragMode.tilePaint:
-        controller.tilePaint?.strokeTo(doc);
       case _DragMode.vectorPoint:
         _applyVectorMove(doc);
       case _DragMode.vectorPoints:

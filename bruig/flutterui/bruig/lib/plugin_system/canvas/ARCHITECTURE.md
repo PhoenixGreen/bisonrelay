@@ -297,15 +297,17 @@ slop of where it began: a press can travel and come back) and `cancel`
 (the system took the pointer: nothing it does on finishing is done). A
 case's methods are short: they call the State's methods that do the work,
 with what the gesture holds. `endsRelease`, false unless a case says
-otherwise, skips the resets at the end of `_onPointerUp` that the kinds
-still on `_DragMode` need. `takesAll`, false unless a case says otherwise,
-hands it every move and the release at the very top of the two handlers,
-before anything of the stage's own (the hover, the brush ring, the
-resets): for a press that is not on the page as it is drawn, the held
-marker's note over it or a live preview. A press that turns out partway
-to be something else hands its gesture over with `_handOver`, which keeps
-the undo step open for the one that takes over: a chart key's entry held
-long enough becomes a drag of the key.
+otherwise, skips the resets at the end of `_onPointerUp`; the only one
+that touches a gesture is the box's snap mark cleared. `cursor`, null
+unless a case says otherwise, is the pointer's look while it runs, shown
+over the tools' own. `takesAll`, false unless a
+case says otherwise, hands it every move and the release at the very top
+of the two handlers, before anything of the stage's own (the hover, the
+brush ring, the resets): for a press that is not on the page as it is
+drawn, the held marker's note over it or a live preview. A press that
+turns out partway to be something else hands its gesture over with
+`_handOver`, which keeps the undo step open for the one that takes over: a
+chart key's entry held long enough becomes a drag of the key.
 
 The selection's box moved, resized, slanted or turned is four cases of one
 sealed `_BoxDrag`, sharing where the selection was when it was pressed
@@ -320,9 +322,8 @@ moves on a drag, write a case there and hand it to the `_BoxMove` its press
 step begins. A gesture that carries clicks (the box moved, a chart's placed
 label, a counter's loose piece) takes `_CarriesClicks`, which settles them
 in turn as it ends. Within one press, a click armed by an earlier step for
-the move a later one begins rides on the press's own value (`_Press.click`).
-The copies dragged, still on `_DragMode`, keep the click of a Code panel's
-code pressed on them in `_pendingClick` until they become a case.
+the move a later one begins rides on the press's own value (`_Press.click`),
+as a Code panel's code does on its copies dragged (`_CopiesDrag`).
 
 An element's own controls are cases beside their subject: a synth module's
 key held, knob turned, screen dragged and cable carried in
@@ -330,19 +331,21 @@ key held, knob turned, screen dragged and cable carried in
 dragged and tab carried, and a press left to a live preview, in
 `stage_code_controls.dart`; a counter's loose piece in
 `stage_element_controls.dart`; a team's player in `stage_team_players.dart`;
-the retouching stroke in `stage_retouch.dart`. A chart's label, a table's
-column rule and the held marker's note are in `stage_gesture.dart`.
+the retouching stroke in `stage_retouch.dart`; a 3D stage's camera orbited
+or panned, parallax scenery panned and the gizmo dragged in
+`stage_3d_view.dart`. A chart's label, a table's column rule, the held
+marker's note, a reused element's copies moved, sized or turned, and a
+sprite or tile map painted are in `stage_gesture.dart`.
 
 Not every kind is a case yet. The rest still run through the State's
 `_DragMode _mode` and the fields read under it: begun in their press steps,
 stepped in the `switch` in `stage_drag.dart`, and ended by the branches
 and the hand-kept lists of modes in `stage_release.dart`, which close
-their undo steps. These are: the copies moved, sized and turned; the 3D
-stage's orbit and pan, the parallax pan and the gizmo; sprite and tile
-painting; and the vector, picture, warp, text piece and Layout tools'
-gestures, in their own parts. So both exist for now: a press sets one or
-the other, never both. A press that opens a Run panel's preview live is
-neither: `_liveTapPending` replays its tap into the app on release.
+their undo steps. These are the vector tools, the picture tools and warp,
+a text element's picture pieces, and Layouts, in their own parts. So both
+exist for now: a press sets one or the other, never both. A press that
+opens a Run panel's preview live is neither: `_liveTapPending` replays its
+tap into the app on release.
 
 ## Preferences
 
