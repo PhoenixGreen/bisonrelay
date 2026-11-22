@@ -85,7 +85,6 @@ extension StagePress on CanvasStageState {
     _travelled = false;
     var doc = _toDocument(stage);
     _dragStart = doc;
-    _pressedCopy = null;
     return _Press(event, stage, doc);
   }
 
@@ -263,7 +262,7 @@ extension StagePress on CanvasStageState {
           _boxIsNotTheShape(chosen) &&
           _visualBounds(chosen).contains(doc) &&
           _hitElement(doc) == null) {
-        _beginTransform(_DragMode.move, null);
+        _gesture = _BoxMove(_beginTransform());
         return true;
       }
     }
@@ -327,20 +326,18 @@ extension StagePress on CanvasStageState {
               i,
               handle == StageHandle.rotate
                   ? _DragMode.copyTurn
-                  : _DragMode.copySize,
-              handle);
+                  : _DragMode.copySize);
           return true;
         }
         var skewing = side &&
             _chosen.length == 1 &&
             (controller.skewHandles || HardwareKeyboard.instance.isMetaPressed);
-        _beginTransform(
-            handle == StageHandle.rotate
-                ? _DragMode.rotate
-                : skewing
-                    ? _DragMode.skew
-                    : _DragMode.resize,
-            handle);
+        var start = _beginTransform();
+        _gesture = handle == StageHandle.rotate
+            ? _BoxTurn(start)
+            : skewing
+                ? _BoxSlant(start, handle)
+                : _BoxResize(start, handle);
         return true;
       }
     }
@@ -396,10 +393,7 @@ extension StagePress on CanvasStageState {
         if (grab.part == ChartLabelPart.legend &&
             controller.selection.length == 1) {
           var at = _legendSeriesAt(chart, doc);
-          if (at >= 0) {
-            _pendingLegend = chart;
-            _pendingLegendAt = at;
-          }
+          if (at >= 0) _pendingClick = _LegendClick(chart, at);
         }
         _labelGrab = grab;
         _mode = _DragMode.chartLabel;
@@ -510,10 +504,9 @@ extension StagePress on CanvasStageState {
     var _Press(:doc) = press;
     // A selected button is tried by a click and moved by a drag, so its
     // action waits for pointer-up, when the travel is known. See
-    // _onPointerUp.
+    // PendingClick.
     if (element is ButtonElement && controller.isOnlySelected(element.id)) {
-      _pendingButton = element;
-      _beginTransform(_DragMode.move, null);
+      _gesture = _BoxMove(_beginTransform(), click: _ButtonClick(element));
       return true;
     }
 
@@ -523,10 +516,8 @@ extension StagePress on CanvasStageState {
     if (element is VideoElement && controller.isOnlySelected(element.id)) {
       var part = _videoPartAt(element, doc);
       if (part != null) {
-        _pendingVideo = element;
-        _pendingVideoPart = part;
-        _pendingVideoAt = doc;
-        _beginTransform(_DragMode.move, null);
+        _gesture =
+            _BoxMove(_beginTransform(), click: _VideoClick(element, part, doc));
         return true;
       }
     }
@@ -540,9 +531,7 @@ extension StagePress on CanvasStageState {
     if (element is SheetElement &&
         element.score.isNotEmpty &&
         controller.isOnlySelected(element.id)) {
-      _pendingSheet = element;
-      _pendingSheetAt = doc;
-      _beginTransform(_DragMode.move, null);
+      _gesture = _BoxMove(_beginTransform(), click: _SheetClick(element, doc));
       return true;
     }
 
@@ -557,8 +546,7 @@ extension StagePress on CanvasStageState {
         controller.noteOn(element, key,
             velocity: (50 + depth * 77).round(),
             place: neckPlaceAt(keys, element.instrument!, doc));
-        _keyDown = (element, key);
-        _beginTransform(_DragMode.move, null);
+        _gesture = _BoxMove(_beginTransform(), click: _KeyHeld(element, key));
         return true;
       }
     }
@@ -566,10 +554,8 @@ extension StagePress on CanvasStageState {
     if (element is AudioElement && controller.isOnlySelected(element.id)) {
       var part = _audioPartAt(element, doc);
       if (part != null) {
-        _pendingAudio = element;
-        _pendingAudioPart = part;
-        _pendingAudioAt = doc;
-        _beginTransform(_DragMode.move, null);
+        _gesture =
+            _BoxMove(_beginTransform(), click: _AudioClick(element, part, doc));
         return true;
       }
     }
@@ -586,16 +572,14 @@ extension StagePress on CanvasStageState {
         _counterPartAt = part;
         _dragStart = doc;
         if (at >= 0 && element.live) {
-          _pendingCounter = element;
-          _pendingCounterAt = at;
+          _pendingClick = _CounterClick(element, at);
         }
         setState(() => _mode = _DragMode.counterPart);
         return true;
       }
       if (at >= 0) {
-        _pendingCounter = element;
-        _pendingCounterAt = at;
-        _beginTransform(_DragMode.move, null);
+        _gesture =
+            _BoxMove(_beginTransform(), click: _CounterClick(element, at));
         return true;
       }
     }
@@ -604,12 +588,13 @@ extension StagePress on CanvasStageState {
     if (element is ChartElement && controller.isOnlySelected(element.id)) {
       var at = _legendSeriesAt(element, doc);
       if (at >= 0) {
-        _pendingLegend = element;
-        _pendingLegendAt = at;
+        var click = _LegendClick(element, at);
         // Held rather than tapped, the press moves the key instead.
-        _legendHold = Timer(
-            CanvasStageState._legendHoldDelay, () => _holdLegend(element));
-        _beginTransform(_DragMode.move, null);
+        click.hold = Timer(CanvasStageState._legendHoldDelay, () {
+          click.hold = null;
+          _holdLegend(element);
+        });
+        _gesture = _BoxMove(_beginTransform(), click: click);
         return true;
       }
     }
@@ -700,7 +685,8 @@ extension StagePress on CanvasStageState {
   /// and its move begun.
   void _pressSelectAndMove(_Press press, CanvasElement element) {
     var _Press(:doc) = press;
-    if (_pressCopy(element, doc)) return;
+    var copy = _copyAt(element, doc);
+    if (copy != null && _pressCopy(element, copy)) return;
 
     if (_shiftHeld) {
       controller.toggleSelected(element.id);
@@ -715,7 +701,11 @@ extension StagePress on CanvasStageState {
       return;
     }
 
-    _beginTransform(_DragMode.move, null);
+    // The click an earlier step armed on the element's own controls (a Code
+    // panel's code) rides on the move, and then the copy pressed.
+    var click = _pendingClick;
+    _pendingClick = null;
+    _gesture = _BoxMove(_beginTransform(), click: click, copy: copy);
   }
 
   /// _secondClickOn is whether this press is the second of a double click
@@ -727,20 +717,25 @@ extension StagePress on CanvasStageState {
       clock.now().difference(_lastClickAt) <
           CanvasStageState._doubleClickWindow;
 
-  /// _pressCopy takes a press on reused [element] at [doc] for the copy
-  /// there. Alt drags out new copies of it (or of those picked); Shift picks
-  /// it in or out; with copies picked, it is picked and dragged alone.
-  /// Otherwise the press goes on to the element: a drag moves them all, a
-  /// click picks this one (see _onPointerUp). True if handled.
-  bool _pressCopy(CanvasElement element, Offset doc) {
+  /// _copyAt is the copy of reused [element] at [doc], as the click that
+  /// would pick it, or null where there is none.
+  _CopyPick? _copyAt(CanvasElement element, Offset doc) {
     var set = element.base.motion.instances;
-    if (set == null) return false;
+    if (set == null) return null;
     var i = element.instanceAt(doc, controller.frame, controller.document,
         live: controller.liveMotion);
-    if (i == null) return false;
-    var id = set.items[i].id;
-    _pressedCopy = id;
-    _pressedCopyOf = element.id;
+    if (i == null) return null;
+    return _CopyPick(element.id, set.items[i].id);
+  }
+
+  /// _pressCopy takes a press on [copy] of reused [element]. Alt drags out
+  /// new copies of it (or of those picked); Shift picks it in or out; with
+  /// copies picked, it is picked and dragged alone. Otherwise the press goes
+  /// on to the element: a drag moves them all, a click picks this one (see
+  /// _CopyPick). True if handled.
+  bool _pressCopy(CanvasElement element, _CopyPick copy) {
+    var set = element.base.motion.instances!;
+    var id = copy.id;
     var picked = controller.pickedCopiesOf(element.id);
     if (HardwareKeyboard.instance.isAltPressed) {
       if (!controller.selection.contains(element.id)) {
@@ -750,13 +745,11 @@ extension StagePress on CanvasStageState {
       _dragCopies = controller.duplicateCopies(
           element.id, picked.contains(id) ? picked : {id}, Offset.zero);
       _copiesStart = controller.motionOf(element.id).instances;
-      _pressedCopy = null;
       _mode = _DragMode.copies;
       return true;
     }
     if (_shiftHeld && controller.selection.contains(element.id)) {
       controller.pickCopy(element.id, id, toggle: true);
-      _pressedCopy = null;
       _mode = _DragMode.none;
       return true;
     }
@@ -768,18 +761,15 @@ extension StagePress on CanvasStageState {
       controller.beginInteraction();
       _dragCopies = picked;
       _copiesStart = set;
-      _pressedCopy = null;
       _mode = _DragMode.copies;
       return true;
     }
     return false;
   }
 
-  void _beginCopyBox(
-      CanvasElement e, int i, _DragMode mode, StageHandle? handle) {
+  void _beginCopyBox(CanvasElement e, int i, _DragMode mode) {
     var set = e.base.motion.instances!;
     _mode = mode;
-    _handle = handle;
     _copyPivot = e.anchorIn(e.boundsWith(_copyPose(e, i)));
     _copySize = set.sizeOf(i);
     _copyTurn = set.turnOf(i);

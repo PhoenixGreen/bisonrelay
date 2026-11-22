@@ -63,8 +63,8 @@ extension StageCodeControls on CanvasStageState {
       case CodePaneHit(:var pane, :var inTabs):
         controller.pressCodePane(e, pane);
         // One click on the code opens it for typing; a press that becomes a
-        // drag moves the panel instead. See _onPointerUp.
-        if (!inTabs && !_shiftHeld) _pendingCodeEdit = (e.id, pane);
+        // drag moves the panel instead. See _CodePaneClick.
+        if (!inTabs && !_shiftHeld) _pendingClick = _CodePaneClick(e.id, pane);
         return false;
     }
   }

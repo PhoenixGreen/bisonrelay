@@ -39,7 +39,7 @@ reason, as debts to pay off; nothing may be added to the list without one.
 |---|---|
 | (top) | `canvas_controller.dart` and what every part uses: `controls.dart`, `canvas_dialogs.dart`, `element_factory.dart`, `element_settings.dart`, presets, studio colours. |
 | `controller/` | The controller's own parts, as `extension` files (see below). |
-| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates` (the view made from the controller and layout, and the selection's box), `stage_hit_testing` (what is under the pointer), `stage_press` (every press, editing or playing, as a list of steps), `stage_synth_controls` (a synth module's keys, knobs, jacks and cables), `stage_code_controls` (a Code or Run panel's controls and the editor and live preview over them), `stage_element_controls` (the other elements' controls: counter, chart key, video, speaker, metronome, a flow link dropped), `stage_gesture` (what the pointer is doing, as one value from press to release: see Gestures on the stage, below), `stage_drag` (a move, resize, slant or turn, from its start), `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing` (a picture reframed inside its frame), `stage_guides` (guides taken, pulled from a ruler, moved and dropped), `stage_retouch` (the retouching stroke's preview and commit), `stage_team_players` (a team's players pressed and dragged), `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, five libraries beside it do not import it (`test/canvas_layers_test.dart` holds all six to that): `stage_hit_test.dart`, what is at a point of the document now; `picked_parts.dart`, the parts picked inside one element, which the keys act on too; `stage_transform.dart`, where the page sits in the window and how a stage point becomes a document point; `stage_scroll.dart`, the scroll views kept in step with the controller's pan; and `in_place_edit.dart`, the one thing open for typing on the page (a text, a cell or a counter's Set field). Drawing is `stage_painter.dart` and its parts. |
+| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates` (the view made from the controller and layout, and the selection's box), `stage_hit_testing` (what is under the pointer), `stage_press` (every press, editing or playing, as a list of steps), `stage_synth_controls` (a synth module's keys, knobs, jacks and cables), `stage_code_controls` (a Code or Run panel's controls and the editor and live preview over them), `stage_element_controls` (the other elements' controls: counter, chart key, video, speaker, metronome, a flow link dropped), `stage_gesture` (what the pointer is doing, as one value from press to release: see Gestures on the stage, below), `stage_pending_click` (the clicks that ride on a press, made if it is let go where it began), `stage_drag` (a move, resize, slant or turn, from its start), `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing` (a picture reframed inside its frame), `stage_guides` (guides taken, pulled from a ruler, moved and dropped), `stage_retouch` (the retouching stroke's preview and commit), `stage_team_players` (a team's players pressed and dragged), `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, five libraries beside it do not import it (`test/canvas_layers_test.dart` holds all six to that): `stage_hit_test.dart`, what is at a point of the document now; `picked_parts.dart`, the parts picked inside one element, which the keys act on too; `stage_transform.dart`, where the page sits in the window and how a stage point becomes a document point; `stage_scroll.dart`, the scroll views kept in step with the controller's pan; and `in_place_edit.dart`, the one thing open for typing on the page (a text, a cell or a counter's Set field). Drawing is `stage_painter.dart` and its parts. |
 | `screen/` | The editor around the stage: settings bar, dock, play bar, publishing, the file player. |
 | `timeline/` | Rows, channels, scenes, markers, keys, automation. |
 | `mixer/` | The mixer, its strips and devices, the clip slots. |
@@ -281,11 +281,11 @@ What the pointer is doing on the stage, from the press that begins it to
 its release or cancel, is a `StageGesture` (`ui/stage/stage_gesture.dart`):
 a sealed type, one case per kind of gesture, each holding what it needs
 while it runs. The State holds one, `_gesture`; `_onPointerMove` hands each
-move to it and `_onPointerUp` hands it the release or the cancel, after
-the pending clicks are settled. Ending it clears it and, when its
-`opensUndoStep` says it began an undo step, closes that step after the
-gesture has done what it does on finishing, so nothing is left set and no
-undo step is left open.
+move to it and `_onPointerUp` hands it the release or the cancel, after a
+click riding on a drag still on `_DragMode` is settled. Ending it clears
+it and, when its `opensUndoStep` says it began an undo step, closes that
+step after the gesture has done what it does on finishing, so nothing is
+left set and no undo step is left open.
 
 To add one, write a case in `stage_gesture.dart` holding the gesture's
 state, and set `_gesture` to it in the press step that begins it (in
@@ -293,9 +293,27 @@ state, and set `_gesture` to it in the press step that begins it (in
 it is a change. The compiler then asks for the rest: `opensUndoStep`,
 `waitsToTravel` (whether it waits for the press to go the drag threshold,
 so a click does not move what it lands on), `move`, `release` (told
-whether the press travelled) and `cancel` (the system took the pointer:
-nothing it does on finishing is done). A case's methods are short: they
-call the State's methods that do the work, with what the gesture holds.
+whether the press travelled, and whether it was let go within the click
+slop of where it began: a press can travel and come back) and `cancel`
+(the system took the pointer: nothing it does on finishing is done). A
+case's methods are short: they call the State's methods that do the work,
+with what the gesture holds. `endsRelease`, false unless a case says
+otherwise, skips the resets at the end of `_onPointerUp` that the kinds
+still on `_DragMode` need.
+
+The selection's box moved, resized, slanted or turned is four cases of one
+sealed `_BoxDrag`, sharing where the selection was when it was pressed
+(`_BoxStart`, from `_beginTransform`). A press on a selected element's
+controls (a button, a video's or speaker's controls, a sheet, a counter's
+button, a chart's key, an instrument's key, a Code panel's code, a copy)
+begins a move that carries a `PendingClick` (`stage_pending_click.dart`),
+made on release if the press ends as a click and dropped otherwise; a case
+says what makes it, what it does, and what it lets go of when the press
+travels or ends without it. To add a control that clicks on release and
+moves on a drag, write a case there and hand it to the `_BoxMove` its press
+step begins. A drag still on `_DragMode` that carries a click (a counter's
+loose piece, a chart's placed key) keeps it in `_pendingClick` until it
+becomes a case.
 
 Not every kind is a case yet. The rest still run through the State's
 `_DragMode _mode` and the fields read under it: begun in their press steps,

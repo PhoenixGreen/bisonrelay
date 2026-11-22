@@ -207,7 +207,6 @@ extension StageLayouts on CanvasStageState {
                 ? _DragMode.layoutCellTurn
                 : _DragMode.layoutCellSize);
         _layoutMiddle = _freeCellBounds(l, c).center;
-        _handle = handle;
         return true;
       }
       var box = _freeCellBounds(l, c);

@@ -117,7 +117,6 @@ extension StageElementControls on CanvasStageState {
   /// rather than press a switch. The key keeps its drawn place and becomes a
   /// placed label like the title, reset from the Legend settings.
   void _holdLegend(ChartElement e) {
-    _legendHold = null;
     var current = document.elementById(e.id);
     if (current is! ChartElement || current.locked) return;
     var bounds = _hit.posed(current);
@@ -125,8 +124,9 @@ extension StageElementControls on CanvasStageState {
     var block = chartLegendBlock(current, bounds);
     if (block.isEmpty) return;
 
-    _pendingLegend = null;
-    _pendingLegendAt = -1;
+    // The press is the key's now: the move it began, and the switch it
+    // armed, give way to a label drag, which keeps the move's undo step.
+    _gesture = null;
 
     if (!current.legend.hasPlace) {
       controller.replaceElement(

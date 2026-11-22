@@ -49,7 +49,6 @@ extension StageTextPieces on CanvasStageState {
           handle == StageHandle.rotate
               ? _DragMode.pieceTurn
               : _DragMode.pieceSize);
-      _handle = handle;
       return true;
     }
     var box = _pieceBounds(e, i);

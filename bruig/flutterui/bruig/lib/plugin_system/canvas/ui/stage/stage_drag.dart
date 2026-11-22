@@ -106,18 +106,6 @@ extension StageDrag on CanvasStageState {
     // Pressed as well as hovering: the brush ring must follow a stroke.
     _hoverAt = event.localPosition;
     if (_brushAt != null) _moveBrush(event.localPosition);
-    if (_keyDown case (var e, var key)?
-        when (event.localPosition - _pressedAt).distance >
-            CanvasStageState._buttonClickSlop) {
-      controller.noteOff(e, key);
-      _keyDown = null;
-    }
-    if (_legendHold != null &&
-        (event.localPosition - _pressedAt).distance >
-            CanvasStageState._buttonClickSlop) {
-      _legendHold?.cancel();
-      _legendHold = null;
-    }
     if (_painting != null) {
       _paintStrokeAt(_toDocument(event.localPosition));
       return;
@@ -152,19 +140,11 @@ extension StageDrag on CanvasStageState {
             _DragMode.layoutCellSize ||
             _DragMode.layoutCellTurn:
         _applyLayout(doc);
-      case _DragMode.move:
-        _applyMove(delta);
-      case _DragMode.resize:
-        _applyResize(delta);
-      case _DragMode.skew:
-        _applySkew(delta);
       case _DragMode.warpMove ||
             _DragMode.warpScale ||
             _DragMode.warpTurn ||
             _DragMode.warpMarquee:
         _dragWarp(doc);
-      case _DragMode.rotate:
-        _applyRotate(doc);
       case _DragMode.player:
         _applyPlayerMove(doc);
       case _DragMode.stageOrbit:
@@ -336,45 +316,50 @@ extension StageDrag on CanvasStageState {
     }
   }
 
-  /// _beginTransform begins a move, resize, slant or turn of the selection
-  /// by [handle] (none for a move): it notes where each selected element
-  /// started, which every step of the drag works from, and opens the undo
-  /// step that the release closes.
-  void _beginTransform(_DragMode mode, StageHandle? handle) {
-    _mode = mode;
-    _handle = handle;
-    _startBounds = {
-      for (var e in controller.selectedElements) e.id: e.bounds,
-    };
-    // And the elements themselves, for a resize that scales what is inside:
-    // its factor is measured from the drag's start.
-    _startElements = {
-      for (var e in controller.selectedElements) e.id: e,
-    };
-    // Where each element is on this frame, which a move works from. A resize
-    // works from the resting bounds instead: it writes the base size, and a
-    // posed size would bake a scale in. A move from the resting bounds would
-    // lose the frame's pose.
-    _startPosed = {
-      for (var e in controller.selectedElements) e.id: _hit.posed(e),
-    };
-    // The box the handles are on, bigger than the element's own for a line
-    // or path (see _visualBounds). A resize is measured against it and
-    // applied to the real rectangle in proportion.
-    _startVisual = {
-      for (var e in controller.selectedElements) e.id: _visualBounds(e),
-    };
-    _startRotation = {
-      for (var e in controller.selectedElements) e.id: e.rotation,
-    };
+  /// _beginTransform begins a move, resize, slant or turn of the selection:
+  /// it notes where each selected element started, which every step of the
+  /// drag works from, and opens the undo step that the gesture's end
+  /// closes. The press that calls it makes the gesture (a _BoxDrag) from
+  /// what it returns.
+  _BoxStart _beginTransform() {
+    // Whatever mode an earlier press left: this press is the box's.
+    _mode = _DragMode.none;
+    var start = _BoxStart(
+      bounds: {
+        for (var e in controller.selectedElements) e.id: e.bounds,
+      },
+      // And the elements themselves, for a resize that scales what is
+      // inside: its factor is measured from the drag's start.
+      elements: {
+        for (var e in controller.selectedElements) e.id: e,
+      },
+      // Where each element is on this frame, which a move works from. A
+      // resize works from the resting bounds instead: it writes the base
+      // size, and a posed size would bake a scale in. A move from the
+      // resting bounds would lose the frame's pose.
+      posed: {
+        for (var e in controller.selectedElements) e.id: _hit.posed(e),
+      },
+      // The box the handles are on, bigger than the element's own for a
+      // line or path (see _visualBounds). A resize is measured against it
+      // and applied to the real rectangle in proportion.
+      visual: {
+        for (var e in controller.selectedElements) e.id: _visualBounds(e),
+      },
+      rotation: {
+        for (var e in controller.selectedElements) e.id: e.rotation,
+      },
+    );
     controller.beginInteraction();
+    return start;
   }
 
   /// _otherBounds is everything not dragged, locked included, to snap to:
-  /// where each is drawn now, which is where it is seen.
-  List<Rect> _otherBounds() {
+  /// where each is drawn now, which is where it is seen. [start] is the
+  /// selection being dragged.
+  List<Rect> _otherBounds(_BoxStart start) {
     if (!document.guides.snapTo.objects) return const [];
-    var moving = _startPosed.keys.toSet();
+    var moving = start.posed.keys.toSet();
     var hit = _hit;
     return [
       for (var element in document.elements)
@@ -383,15 +368,15 @@ extension StageDrag on CanvasStageState {
     ];
   }
 
-  Rect? _startBoxOfSelection() {
+  Rect? _startBoxOfSelection(_BoxStart start) {
     Rect? box;
-    for (var entry in _startPosed.entries) {
+    for (var entry in start.posed.entries) {
       box = box == null ? entry.value : box.expandToInclude(entry.value);
     }
     return box;
   }
 
-  void _applyMove(Offset delta) {
+  void _applyMove(Offset delta, _BoxStart start) {
     if (_shiftHeld) {
       delta = delta.dx.abs() > delta.dy.abs()
           ? Offset(delta.dx, 0)
@@ -399,10 +384,10 @@ extension StageDrag on CanvasStageState {
     }
     // Snapped once, against the whole selection's box, so things moved
     // together stay together. Alt turns it off.
-    var box = _startBoxOfSelection();
+    var box = _startBoxOfSelection(start);
     // Not on a 3D stage, where page lines mean nothing: staged elements snap
     // to the floor's 3D steps (see CanvasController.movedTo).
-    var onStage = _startPosed.keys
+    var onStage = start.posed.keys
         .any((id) => document.elementById(id)?.base.spot != null);
     if (box != null && !onStage && !HardwareKeyboard.instance.isAltPressed) {
       var snapped = snapTopLeft(
@@ -411,7 +396,7 @@ extension StageDrag on CanvasStageState {
         document.guides,
         document.size.size,
         within: document.guides.snapWithin / _scale,
-        others: _otherBounds(),
+        others: _otherBounds(start),
       );
       delta = snapped.at - box.topLeft;
       _snappedTo = snapped;
@@ -420,13 +405,13 @@ extension StageDrag on CanvasStageState {
     }
 
     var next = document;
-    for (var entry in _startPosed.entries) {
+    for (var entry in start.posed.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
       // A camera moves by where it looks, from its start: its frame is not
       // its box (see cameraFraming).
-      if (_startElements[entry.key] case CameraElement start) {
-        next = next.withElement(controller.cameraShifted(start, delta));
+      if (start.elements[entry.key] case CameraElement camera) {
+        next = next.withElement(controller.cameraShifted(camera, delta));
         continue;
       }
       // Through the controller, so an animated element is posed rather than
@@ -442,18 +427,18 @@ extension StageDrag on CanvasStageState {
   /// box is at least eight pixels deep, so a line could never be level). The
   /// end snaps to level, upright or diagonal within a few degrees, always
   /// with Shift; Alt frees it.
-  bool _applyLineEnd(StageHandle handle, Offset delta) {
-    if (_startVisual.length != 1 || !_frameOfSelection.upright) return false;
+  bool _applyLineEnd(StageHandle handle, Offset delta, _BoxStart from) {
+    if (from.visual.length != 1 || !_frameOfSelection.upright) return false;
     // The line at the drag's start: every step works from it, since crossing
     // one end past the other swaps the ends and their arrows.
-    var line = _startElements[_startVisual.keys.first];
+    var line = from.elements[from.visual.keys.first];
     if (line is! LineElement || line.curvature != 0 || line.locked) {
       return false;
     }
     var was = line.bounds;
     var start = line.flipped ? was.bottomLeft : was.topLeft;
     var end = line.flipped ? was.topRight : was.bottomRight;
-    var box = _startVisual.values.first;
+    var box = from.visual.values.first;
     var corner = switch (handle) {
       StageHandle.topLeft => box.topLeft,
       StageHandle.topRight => box.topRight,
@@ -478,11 +463,11 @@ extension StageDrag on CanvasStageState {
   /// _applyCameraZoom zooms the one selected camera by a handle dragged
   /// [delta], and says whether it did: out shows more, in less, about the
   /// frame's middle, which keeps the page's shape.
-  bool _applyCameraZoom(StageHandle handle, Offset delta) {
-    if (_startElements.length != 1) return false;
-    var start = _startElements.values.first;
+  bool _applyCameraZoom(StageHandle handle, Offset delta, _BoxStart from) {
+    if (from.elements.length != 1) return false;
+    var start = from.elements.values.first;
     if (start is! CameraElement || start.locked) return false;
-    var frame = _startPosed[start.id];
+    var frame = from.posed[start.id];
     if (frame == null) return false;
     var mid = frame.center;
     double? ratio(double edge, double centre, double by) {
@@ -513,10 +498,9 @@ extension StageDrag on CanvasStageState {
   /// [delta]: top or bottom across, left or right up and down. The held side
   /// follows the pointer and the opposite stays put, so the element slants
   /// about its middle and moves by half as much.
-  void _applySkew(Offset delta) {
-    var handle = _handle;
-    if (handle == null || _startElements.length != 1) return;
-    var start = _startElements.values.first;
+  void _applySkew(Offset delta, StageHandle handle, _BoxStart from) {
+    if (from.elements.length != 1) return;
+    var start = from.elements.values.first;
     if (start.locked) return;
     var box = start.bounds;
     // The drag in the element's turned frame but not its slanted one: the
@@ -551,16 +535,14 @@ extension StageDrag on CanvasStageState {
         transient: true);
   }
 
-  void _applyResize(Offset delta) {
-    var handle = _handle;
-    if (handle == null) return;
-    if (_applyLineEnd(handle, delta)) return;
-    if (_applyCameraZoom(handle, delta)) return;
+  void _applyResize(Offset delta, StageHandle handle, _BoxStart start) {
+    if (_applyLineEnd(handle, delta, start)) return;
+    if (_applyCameraZoom(handle, delta, start)) return;
 
     // The dragged edge lands on the lines a move does: upright boxes only,
     // and Alt turns it off.
     if (_frameOfSelection.upright && !HardwareKeyboard.instance.isAltPressed) {
-      delta = _snapResize(handle, delta);
+      delta = _snapResize(handle, delta, start);
     } else {
       _snappedTo = null;
     }
@@ -572,11 +554,11 @@ extension StageDrag on CanvasStageState {
     // One box for the whole drag, so things resized together keep their sizes
     // and gaps in proportion.
     Rect? group;
-    for (var box in _startVisual.values) {
+    for (var box in start.visual.values) {
       group = group == null ? box : group.expandToInclude(box);
     }
     if (group == null) return;
-    var several = _startVisual.length > 1;
+    var several = start.visual.length > 1;
 
     var left = group.left + (handle.movesLeft ? delta.dx : 0);
     var right = group.right + (handle.movesRight ? delta.dx : 0);
@@ -587,7 +569,7 @@ extension StageDrag on CanvasStageState {
     // keeps them without the key, Shift freeing it (see
     // CanvasElement.keepsAspect), as does a group: pulled out of shape, every
     // gap would be.
-    var first = document.elementById(_startVisual.keys.first);
+    var first = document.elementById(start.visual.keys.first);
     var keep = several
         ? !_shiftHeld
         : ((first?.keepsAspect ?? false) ? !_shiftHeld : _shiftHeld);
@@ -616,15 +598,15 @@ extension StageDrag on CanvasStageState {
     var sy = group.height == 0 ? 1.0 : (bottom - top) / group.height;
 
     var next = document;
-    for (var entry in _startVisual.entries) {
+    for (var entry in start.visual.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
-      var start = entry.value;
-      var real = _startBounds[entry.key] ?? start;
+      var visual = entry.value;
+      var real = start.bounds[entry.key] ?? visual;
 
       // Keeping proportions scales everything inside (type, spacing, a chip's
       // padding), from the element at the drag's start.
-      var from = _startElements[entry.key] ?? element;
+      var from = start.elements[entry.key] ?? element;
       element = keep ? from.scaledBy(sx) : element;
       next = next.withElement(element.withBase(
         x: left + (real.left - group.left) * sx,
@@ -642,10 +624,10 @@ extension StageDrag on CanvasStageState {
 
   /// _snapResize snaps the dragged edge alone onto a line, against the union
   /// of what is resized.
-  Offset _snapResize(StageHandle handle, Offset delta) {
+  Offset _snapResize(StageHandle handle, Offset delta, _BoxStart start) {
     Rect? box;
-    for (var start in _startVisual.values) {
-      box = box == null ? start : box.expandToInclude(start);
+    for (var visual in start.visual.values) {
+      box = box == null ? visual : box.expandToInclude(visual);
     }
     if (box == null) {
       _snappedTo = null;
@@ -655,7 +637,7 @@ extension StageDrag on CanvasStageState {
     var guides = document.guides;
     var within = guides.snapWithin / _scale;
     var canvas = document.size.size;
-    var others = _otherBounds();
+    var others = _otherBounds(start);
     var dx = delta.dx;
     var dy = delta.dy;
     double? onVertical;
@@ -700,7 +682,7 @@ extension StageDrag on CanvasStageState {
     return null;
   }
 
-  void _applyRotate(Offset doc) {
+  void _applyRotate(Offset doc, _BoxStart start) {
     var bounds = _selectionBounds;
     if (bounds == null) return;
     var centre = bounds.center;
@@ -718,7 +700,7 @@ extension StageDrag on CanvasStageState {
     var degrees = (to - from) * 180 / math.pi;
 
     var next = document;
-    for (var entry in _startRotation.entries) {
+    for (var entry in start.rotation.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
       var rotation = entry.value + degrees;

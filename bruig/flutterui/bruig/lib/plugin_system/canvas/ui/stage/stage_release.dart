@@ -33,113 +33,41 @@ extension StageRelease on CanvasStageState {
     if (_releaseCode(_toDocument(event.localPosition), cancelled: cancelled)) {
       return;
     }
-    var codeEdit = _pendingCodeEdit;
-    _pendingCodeEdit = null;
-    if (document.elementById(codeEdit?.$1 ?? "") case CodeElement e
-        when codeEdit != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      if (controller.playing) controller.pause();
-      _codeEditBegun = false;
-      controller.editCodePane(e, codeEdit.$2);
-      return;
-    }
-    _legendHold?.cancel();
-    _legendHold = null;
     if (_painting != null) {
       _commitStroke();
       return;
     }
     _playerIndex = -1;
 
-    // A press on a selected button that never became a drag is a click,
-    // which runs it. Measured in stage pixels, so it holds at any zoom.
-    var counter = _pendingCounter;
-    var counterAt = _pendingCounterAt;
-    _pendingCounter = null;
-    _pendingCounterAt = -1;
     if (_counterPart != null) {
       _counterPart = null;
       controller.endInteraction();
       _mode = _DragMode.none;
     }
-    if (counter != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      _pressCounter(counter, counterAt);
-      return;
+    // A click riding on a drag that is not yet a StageGesture case (see
+    // _pendingClick). Measured in stage pixels, so it holds at any zoom.
+    // Made, it is a change of its own, after the drag's undo step is
+    // closed, and all the release does.
+    if (_pendingClick case var click?) {
+      _pendingClick = null;
+      if (click.madeBy(this,
+          clicked: clicked, travelled: _travelled, cancelled: cancelled)) {
+        controller.endInteraction();
+        _mode = _DragMode.none;
+        click.click(this);
+        return;
+      }
+      click.dropped(this);
     }
 
-    var legend = _pendingLegend;
-    var legendAt = _pendingLegendAt;
-    _pendingLegend = null;
-    _pendingLegendAt = -1;
-    if (legend != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      _toggleSeries(legend, legendAt);
-      return;
-    }
-
-    var sheet = _pendingSheet;
-    _pendingSheet = null;
-    if (sheet != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      controller.sheetPressed(sheet, _hit.posed(sheet), _pendingSheetAt);
-      return;
-    }
-
-    var film = _pendingVideo;
-    _pendingVideo = null;
-    if (film != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      _pressVideo(film, _pendingVideoPart, _pendingVideoAt);
-      return;
-    }
-
-    if (_keyDown case (var e, var key)?) {
-      _keyDown = null;
-      controller.noteOff(e, key);
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      return;
-    }
-
-    var sound = _pendingAudio;
-    _pendingAudio = null;
-    if (sound != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      _pressAudio(sound, _pendingAudioPart, _pendingAudioAt);
-      return;
-    }
-
-    var button = _pendingButton;
-    _pendingButton = null;
-    if (button != null && clicked) {
-      controller.endInteraction();
-      _mode = _DragMode.none;
-      _handle = null;
-      var url = controller.runButtonAction(button.action);
-      if (url != null && url.isNotEmpty) widget.onButtonLink?.call(url);
-      return;
-    }
-
-    // A gesture ends itself. A flow link's end is the whole of its release;
-    // the others go on to the resets at the end, which they reached when
-    // they were modes.
+    // A gesture ends itself, and with it any click riding on it. Most go on
+    // to the resets at the end, which they reached when they were modes: a
+    // snap mark can be left set by a release that ended early, which the
+    // next one that reaches them clears.
     if (_gesture case var gesture?) {
-      _endGesture(gesture, event.localPosition, cancelled: cancelled);
-      if (gesture is _FlowLinkDrag) return;
+      _endGesture(gesture, event.localPosition,
+          cancelled: cancelled, clicked: clicked);
+      if (gesture.endsRelease) return;
     }
 
     if (_mode == _DragMode.vectorMarquee) {
@@ -228,12 +156,6 @@ extension StageRelease on CanvasStageState {
       }
       setState(() => _marquee = null);
     }
-    if (_mode == _DragMode.move && !_travelled && !cancelled) {
-      if ((_pressedCopy, _pressedCopyOf) case (var id?, var of?)) {
-        controller.pickCopy(of, id);
-      }
-    }
-    _pressedCopy = null;
     if (_mode == _DragMode.copies ||
         _mode == _DragMode.copySize ||
         _mode == _DragMode.copyTurn ||
@@ -247,13 +169,9 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.layoutCellMove ||
         _mode == _DragMode.layoutCellSize ||
         _mode == _DragMode.layoutCellTurn ||
-        _mode == _DragMode.move ||
-        _mode == _DragMode.resize ||
-        _mode == _DragMode.skew ||
         _mode == _DragMode.warpMove ||
         _mode == _DragMode.warpScale ||
         _mode == _DragMode.warpTurn ||
-        _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.stagePan ||
@@ -285,7 +203,6 @@ extension StageRelease on CanvasStageState {
     _lockedPress = false;
     if (_gizmoDrag != null) setState(() => _gizmoDrag = null);
     _mode = _DragMode.none;
-    _handle = null;
     _maskOn = null;
     _strokeAt = null;
     if (_snappedTo != null) setState(() => _snappedTo = null);

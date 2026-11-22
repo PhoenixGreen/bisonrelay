@@ -132,6 +132,7 @@ part 'stage_guides.dart';
 part 'stage_retouch.dart';
 part 'stage_team_players.dart';
 part 'stage_gesture.dart';
+part 'stage_pending_click.dart';
 part 'stage_drag.dart';
 part 'stage_release.dart';
 part 'stage_3d_view.dart';
@@ -170,9 +171,6 @@ enum _DragMode {
   /// made by an Alt-drag. See _moveCopies.
   copies,
 
-  /// skew is a side handle dragged to slant the element. See _applySkew.
-  skew,
-
   /// copySize and copyTurn size or turn the one copy picked (see _oneCopy)
   /// by its own handles. See _applyCopyBox.
   copySize,
@@ -202,9 +200,6 @@ enum _DragMode {
   warpScale,
   warpTurn,
   warpMarquee,
-  move,
-  resize,
-  rotate,
   player,
 
   /// spritePaint is a Sprite's frame being painted: see sprite_painting.dart.
@@ -339,30 +334,19 @@ class CanvasStageState extends State<CanvasStage>
   /// not jump to centre under the cursor.
   Offset _playerGrab = Offset.zero;
 
-  /// _pendingButton is a selected button pressed: it runs on release, unless
-  /// the press became a drag.
-  ButtonElement? _pendingButton;
-
   /// _noteWas is the marker whose canvas label is dragged (sized by its grip
   /// if [_noteSizing]), as it was at the press; _noteFrom where it began.
   TimelineAction? _noteWas;
   bool _noteSizing = false;
   Offset _noteFrom = Offset.zero;
 
-  /// _pendingCounter and _pendingCounterAt are a live counter's button
-  /// pressed: a press that becomes a drag moves the counter instead.
-  CounterElement? _pendingCounter;
-  int _pendingCounterAt = -1;
-
-  /// _pendingCodeEdit is a Code pane pressed: released in place, it opens.
-  (String, int)? _pendingCodeEdit;
-
-  /// _pendingAudio is a selected speaker pressed on a control: which, and
-  /// where (the volume bar needs how far along).
-  AudioElement? _pendingAudio;
-
-  /// _keyDown is an instrument's key held under the pointer.
-  (AudioElement, int)? _keyDown;
+  /// _pendingClick is a click armed by a press whose drag is not yet a
+  /// StageGesture case: a counter's button on its loose piece dragged, a
+  /// chart key's entry on its placed label dragged, or a Code panel's code
+  /// on its copies dragged. It is also where _pressCode leaves a Code pane's
+  /// click for the move a later step of the same press begins, which takes
+  /// it (_pressSelectAndMove). A move of the box holds its own (_BoxMove).
+  PendingClick? _pendingClick;
 
   /// _synthKey is a synth keyboard key held; _synthKnob a knob turned (its
   /// module, knob, start value and press point); _synthCable a cable carried
@@ -402,26 +386,9 @@ class CanvasStageState extends State<CanvasStage>
     Offset at,
   })? _synthCable;
 
-  /// _pendingSheet is a selected score sheet pressed: let go in place, the
-  /// playhead goes to the note there (see sheetPressed).
-  SheetElement? _pendingSheet;
-  Offset _pendingSheetAt = Offset.zero;
-
-  /// _pendingVideo is the same for a selected video's controls.
-  VideoElement? _pendingVideo;
-  VideoPart _pendingVideoPart = VideoPart.picture;
-  Offset _pendingVideoAt = Offset.zero;
-  AudioControl _pendingAudioPart = AudioControl.playPause;
-  Offset _pendingAudioAt = Offset.zero;
-
-  /// _pendingLegend is a chart whose key was pressed, and _pendingLegendAt
-  /// which entry: a press that becomes a drag moves the chart instead.
-  ChartElement? _pendingLegend;
-  int _pendingLegendAt = -1;
-
-  /// _legendHold times a key held down for _legendHoldDelay, after which it
-  /// can be moved: press and drag are taken, and a key has no grip.
-  Timer? _legendHold;
+  /// _legendHoldDelay is how long a chart key's entry is held down before
+  /// the press takes the key to move it (see _LegendClick): press and drag
+  /// are taken, and a key has no grip.
   static const Duration _legendHoldDelay = Duration(milliseconds: 400);
 
   /// _hoveredCounter and _hoveredCounterAt are the counter button hovered.
@@ -534,10 +501,7 @@ class CanvasStageState extends State<CanvasStage>
   /// text's words, a table's cell, or a counter's Set field.
   InPlaceEdit? _editing;
 
-  StageHandle? _handle;
-
-  /// _dragStart is where the gesture began, in document space, and
-  /// _startBounds the selection then: kept so rounding does not accumulate.
+  /// _dragStart is where the gesture began, in document space.
   Offset _dragStart = Offset.zero;
 
   /// _orbiting is the stage an Option-drag is orbiting, with the camera as
@@ -546,17 +510,6 @@ class CanvasStageState extends State<CanvasStage>
   StageCamera? _orbitFrom;
   ParallaxCamera? _panFrom;
   Offset _orbitAt = Offset.zero;
-  Map<String, Rect> _startBounds = {};
-
-  /// _startPosed is each element's place at the start: see _beginTransform.
-  Map<String, Rect> _startPosed = {};
-
-  /// _startVisual is the box the handles were on. See _beginTransform.
-  Map<String, Rect> _startVisual = {};
-
-  /// _startElements are the selection at the start, for a scaling resize.
-  Map<String, CanvasElement> _startElements = {};
-  Map<String, double> _startRotation = {};
 
   /// _marquee is the box dragged to pick a drawing's points or shapes, or a
   /// warp's points. The box that selects elements is its gesture's own.
@@ -664,7 +617,7 @@ class CanvasStageState extends State<CanvasStage>
     _typing.dispose();
     _typingFocus.dispose();
     _previewDebounce?.cancel();
-    _legendHold?.cancel();
+    if (_gesture case _BoxMove(click: _LegendClick(:var hold?))) hold.cancel();
     if (_steerTimer?.isActive ?? false) {
       _steerTimer!.cancel();
       controller.endInteraction();
@@ -756,10 +709,6 @@ class CanvasStageState extends State<CanvasStage>
   /// the app on release (_replayTap).
   bool _liveTapPending = false;
   int _replayPointer = 0x7FFF0000;
-
-  /// _pressedCopy is the copy of [_pressedCopyOf] a press landed on, picked
-  /// if the press is a click.
-  String? _pressedCopy, _pressedCopyOf;
 
   /// _copiesStart and _dragCopies are the copies at the drag's start, and
   /// which are dragged.
@@ -1592,8 +1541,8 @@ class CanvasStageState extends State<CanvasStage>
           ? SystemMouseCursors.precise
           : SystemMouseCursors.none;
     }
-    if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
-    if (_mode == _DragMode.move) return SystemMouseCursors.move;
+    if (_gesture is _BoxTurn) return SystemMouseCursors.grabbing;
+    if (_gesture is _BoxMove) return SystemMouseCursors.move;
     if (_gesture is _GuideDrag) return SystemMouseCursors.grabbing;
     if (_rulerUnder(_hoverAt) case var axis?) {
       return axis == GuideAxis.vertical
