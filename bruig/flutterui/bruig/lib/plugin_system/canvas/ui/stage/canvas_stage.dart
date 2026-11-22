@@ -111,6 +111,9 @@ import 'package:bruig/plugin_system/canvas/ui/stage/stage_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/carried_synth_cable.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/picked_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/in_place_edit.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_scroll.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_transform.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
@@ -429,10 +432,6 @@ class CanvasStageState extends State<CanvasStage>
   Timer? _legendHold;
   static const Duration _legendHoldDelay = Duration(milliseconds: 400);
 
-  /// _settingCounter and _settingAt are the counter Set button typed into.
-  String? _settingCounter;
-  int _settingAt = -1;
-
   /// _hoveredCounter and _hoveredCounterAt are the counter button hovered.
   String? _hoveredCounter;
   int _hoveredCounterAt = -1;
@@ -541,25 +540,9 @@ class CanvasStageState extends State<CanvasStage>
   /// _previewDelay spans the gap between keystrokes yet still feels prompt.
   static const Duration _previewDelay = Duration(milliseconds: 220);
 
-  /// _editorRect is where the editor opened, in document space, frozen: for
-  /// text on a line the box follows the letters, which move as you type.
-  Rect? _editorRect;
-
-  /// _editingCell is the table cell typed into, or null: a record, since a
-  /// cell has no identity and its table is the selection.
-  (String, int, int)? _editingCell;
-
-  /// _editingText is the text element typed into, or null: by id, since the
-  /// element is replaced on every keystroke.
-  String? _editingText;
-
-  /// _editingItem is the id of the element's extra piece typed into, or null
-  /// for its own paragraph. See TextItem.
-  String? _editingItem;
-
-  /// _editingClick is where the click that opened the editor landed,
-  /// globally, so the caret goes there. See CanvasTextEditor.clickAt.
-  Offset? _editingClick;
+  /// _editing is what is open for typing where it is drawn, if anything: a
+  /// text's words, a table's cell, or a counter's Set field.
+  InPlaceEdit? _editing;
 
   /// _nodeIndex is the selected path's point being dragged, and
   /// _nodeHandleOut which handle, when a handle is. The path stays selected.
@@ -618,19 +601,11 @@ class CanvasStageState extends State<CanvasStage>
   /// getters, which use widget coordinates.
   Size _viewport = Size.zero;
 
-  /// _scroll and _scrollX scroll the page down and across.
-  final ScrollController _scroll = ScrollController();
-  final ScrollController _scrollX = ScrollController();
+  /// _scroller scrolls the page down and across, in step with the view.
+  final StageScroll _scroller = StageScroll();
 
-  Offset get _scrolled => Offset(_scrollX.hasClients ? _scrollX.offset : 0,
-      _scroll.hasClients ? _scroll.offset : 0);
-
-  /// _stageMargin is the gap kept round the whole canvas.
-  static const double _stageMargin = 24;
-
-  /// _overspillFraction is how much world beyond the page shows when
-  /// CanvasController.showOverspill is on, as a fraction of the page.
-  static const double _overspillFraction = 0.12;
+  /// _scrolled is how far the page is scrolled: see StageScroll.scrolled.
+  Offset get _scrolled => _scroller.scrolled;
 
   final FocusNode _focus = FocusNode(debugLabel: "canvas stage");
 
@@ -665,8 +640,8 @@ class CanvasStageState extends State<CanvasStage>
     for (var l in _heardOn(controller)) {
       l.addListener(_onChanged);
     }
-    _scroll.addListener(_followScroll);
-    _scrollX.addListener(_followScroll);
+    _scroller.down.addListener(_followScroll);
+    _scroller.across.addListener(_followScroll);
     // Counters set to start running do; a stopwatch waits.
     controller.startCounters();
     // Until the key shader lands a keyed video is drawn unkeyed, and so on.
@@ -708,8 +683,7 @@ class CanvasStageState extends State<CanvasStage>
       controller.endInteraction();
     }
     _backgrounds.dispose();
-    _scroll.dispose();
-    _scrollX.dispose();
+    _scroller.dispose();
     for (var l in [..._heardOn(controller), ..._shadersReady]) {
       l.removeListener(_onChanged);
     }
@@ -751,33 +725,38 @@ class CanvasStageState extends State<CanvasStage>
   /// presses, and the undo step the typing opened would take in the next
   /// change.
   void _forgetGoneEdits() {
-    if (_editingText case var id?
-        when document.elementById(id) is! TextElement) {
-      _forgetTextEdit();
-      controller.endInteraction();
-    }
-    if (_editingCell case (var id, _, _)?
-        when document.elementById(id) is! TableElement) {
-      _editingCell = null;
-      controller.endInteraction();
-    }
-    if (_settingCounter case var id?
-        when document.elementById(id) is! CounterElement) {
-      _settingCounter = null;
-      _settingAt = -1;
+    var edit = _editing;
+    var gone = switch (edit) {
+      null => false,
+      TextEdit() => document.elementById(edit.elementId) is! TextElement,
+      CellEdit() => document.elementById(edit.elementId) is! TableElement,
+      CounterSet() => document.elementById(edit.elementId) is! CounterElement,
+    };
+    if (!gone) return;
+    _editing = null;
+    switch (edit) {
+      // Typing words or a cell opens an undo step; the Set field changes
+      // the counter once, when Enter takes it.
+      case TextEdit() || CellEdit():
+        controller.endInteraction();
+      case CounterSet() || null:
+        break;
     }
   }
 
   ((CanvasDocument, int, double?), Rect?)? _levelOf;
 
-  /// _syncing is set while the scroll views follow the view, so
-  /// _followScroll does not take it for a scroll by hand.
-  bool _syncing = false;
+  /// _viewKept is the last view made (see _view), with the document and
+  /// the values it was made from.
+  (
+    (CanvasDocument, (CanvasFit, double, bool, bool, Size, Size, Rect?)),
+    StageTransform
+  )? _viewKept;
 
   /// _followScroll keeps the view where the page was scrolled by hand, so
   /// the zoom buttons zoom about what is looked at.
   void _followScroll() {
-    if (_syncing || !mounted) return;
+    if (_scroller.syncing || !mounted) return;
     controller.followPan(_clampedPan);
   }
 
@@ -994,7 +973,7 @@ class CanvasStageState extends State<CanvasStage>
   Widget _buildStage() => LayoutBuilder(
         builder: (context, constraints) {
           _visible = Size(constraints.maxWidth, constraints.maxHeight);
-          var content = _contentSize(_visible);
+          var content = _view.contentSize;
           _viewport = content;
           WidgetsBinding.instance.addPostFrameCallback((_) => _syncScroll());
           // How much the canvas shrank to fit, for the band's percentage.
@@ -1096,6 +1075,10 @@ class CanvasStageState extends State<CanvasStage>
   /// _stagePainter is what paints the page, made afresh each build from the
   /// controller and the stage's gestures.
   StagePainter _stagePainter() {
+    var typed = switch (_editing) {
+      TextEdit edit => edit,
+      _ => null,
+    };
     return StagePainter(
       between: _between,
       // A tile tried on under the pointer is drawn as a
@@ -1103,12 +1086,12 @@ class CanvasStageState extends State<CanvasStage>
       drafting: controller.interacting || controller.trying,
       backgrounds: _backgrounds,
       page: _pageRect,
-      view: _viewRect,
-      levelShown: _levelShown,
+      view: _view.viewRect,
+      levelShown: _view.levelShown,
       facing: _facingPage,
       facingFrame: _facingPage == null ? 0 : controller.frameOn(_facingPage!),
-      facingOnLeft: _facingOnLeft,
-      facingShown: _spreadShown,
+      facingOnLeft: _view.facingOnLeft,
+      facingShown: _view.spread,
       // A game's own view; playing, without guide paths.
       document: controller.gaming || controller.playing
           ? withoutGuides(controller.gameView ?? controller.spoken(document))
@@ -1120,7 +1103,7 @@ class CanvasStageState extends State<CanvasStage>
       markerNoteGrip: !controller.gaming,
       anchors: _anchorsShown(),
       scale: _scale,
-      origin: _origin,
+      origin: _view.origin,
       images: controller.images,
       hoveredButton: controller.hoveredButton,
       counterValue: controller.counterValue,
@@ -1206,8 +1189,8 @@ class CanvasStageState extends State<CanvasStage>
       chartLabels: _selectedChartLabels(),
       layoutMarks: _layoutMarks(),
       tableColumns: _selectedTableColumns(),
-      editingText: _editingText,
-      editingItem: _editingItem,
+      editingText: typed?.elementId,
+      editingItem: typed?.itemId,
       preview: _preview,
       previewOn: _previewPlacement(),
       liveStroke: _liveCanvas,
@@ -1244,7 +1227,7 @@ class CanvasStageState extends State<CanvasStage>
               painter: StageGizmoPainter(g,
                   hot: _gizmoDrag?.$2 ?? _gizmoHot,
                   scale: _scale,
-                  origin: _origin),
+                  origin: _view.origin),
             ),
           ),
         ),
@@ -1261,7 +1244,7 @@ class CanvasStageState extends State<CanvasStage>
                       .signal),
                   synthScaleOf(c.from),
                   _scale,
-                  _origin),
+                  _view.origin),
             ),
           ),
         ),
@@ -1282,21 +1265,21 @@ class CanvasStageState extends State<CanvasStage>
       {required bool down, required bool across}) {
     if (down && across) {
       painter = Scrollbar(
-        controller: _scroll,
+        controller: _scroller.down,
         thumbVisibility: true,
         notificationPredicate: (n) => n.depth == 1,
         child: Scrollbar(
-          controller: _scrollX,
+          controller: _scroller.across,
           thumbVisibility: true,
           child: SingleChildScrollView(
-            controller: _scrollX,
+            controller: _scroller.across,
             scrollDirection: Axis.horizontal,
             physics: _scrollPhysics,
             child: SizedBox(
               width: content.width,
               height: _visible.height,
               child: SingleChildScrollView(
-                controller: _scroll,
+                controller: _scroller.down,
                 physics: _scrollPhysics,
                 child: painter,
               ),
@@ -1306,20 +1289,20 @@ class CanvasStageState extends State<CanvasStage>
       );
     } else if (down) {
       painter = Scrollbar(
-        controller: _scroll,
+        controller: _scroller.down,
         thumbVisibility: true,
         child: SingleChildScrollView(
-          controller: _scroll,
+          controller: _scroller.down,
           physics: _scrollPhysics,
           child: painter,
         ),
       );
     } else if (across) {
       painter = Scrollbar(
-        controller: _scrollX,
+        controller: _scroller.across,
         thumbVisibility: true,
         child: SingleChildScrollView(
-          controller: _scrollX,
+          controller: _scroller.across,
           scrollDirection: Axis.horizontal,
           physics: _scrollPhysics,
           child: painter,
@@ -1346,13 +1329,13 @@ class CanvasStageState extends State<CanvasStage>
       Positioned.fill(
         child: IgnorePointer(
           child: AnimatedBuilder(
-            animation: Listenable.merge([_scroll, _scrollX]),
+            animation: Listenable.merge([_scroller.down, _scroller.across]),
             builder: (context, _) => CustomPaint(
               painter: _RulerLayer(
                   guides: document.guides,
                   sheet: document.size.size,
                   scale: _scale,
-                  origin: _origin - _scrolled,
+                  origin: _view.origin - _scrolled,
                   page: _pageRect.shift(-_scrolled)),
             ),
           ),
@@ -1394,9 +1377,9 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _cellEditorFor is the overlay for the cell being typed into.
   Widget? _cellEditorFor() {
-    var editing = _editingCell;
-    if (editing == null) return null;
-    var (id, row, col) = editing;
+    var editing = _editing;
+    if (editing is! CellEdit) return null;
+    var (id, row, col) = (editing.elementId, editing.row, editing.column);
     var element = document.elementById(id);
     if (element is! TableElement) return null;
 
@@ -1418,7 +1401,7 @@ class CanvasStageState extends State<CanvasStage>
         },
         onDone: () {
           controller.endInteraction();
-          if (mounted) setState(() => _editingCell = null);
+          if (mounted) setState(_endCellEdit);
         },
         onPickPicture: () async {
           var asset = await pickCanvasImage(context);
@@ -1427,7 +1410,7 @@ class CanvasStageState extends State<CanvasStage>
           controller.replaceElement(tableWithCell(
               element, row, col, "${TableElement.pictureCell}$asset"));
           controller.endInteraction();
-          setState(() => _editingCell = null);
+          setState(_endCellEdit);
         },
       ),
     );
@@ -1436,14 +1419,15 @@ class CanvasStageState extends State<CanvasStage>
   /// _editorFor is the text editor overlay, if open: built here because it
   /// sits in the painting's coordinates, which only the stage knows.
   Widget? _editorFor() {
-    var id = _editingText;
-    if (id == null) return null;
+    final edit = _editing;
+    if (edit is! TextEdit) return null;
+    var id = edit.elementId;
     var element = document.elementById(id);
     if (element is! TextElement) return null;
 
     // The piece the second click landed on, if any, held by id: the element
     // and its list are rebuilt on every keystroke.
-    var itemId = _editingItem;
+    var itemId = edit.itemId;
     var at = itemId == null
         ? -1
         : element.items.indexWhere((item) => item.id == itemId);
@@ -1455,7 +1439,7 @@ class CanvasStageState extends State<CanvasStage>
     // whose box is frozen where it opened (the letters move as they come).
     var bounds = _hit.posed(element);
     var box = element.curve != null
-        ? (_editorRect ??= _editorBoxFor(element))
+        ? _frozenBox(edit, element)
         : item != null
             ? _wordsBlockFor(element, bounds, item: item, at: at)
             : bodyIsBlock(element)
@@ -1469,7 +1453,7 @@ class CanvasStageState extends State<CanvasStage>
       pivot: _toStage(bounds.center),
       scale: _scale,
       showWords: shows,
-      clickAt: _editingClick,
+      clickAt: edit.click,
       onChanged: (text) {
         controller.beginInteraction();
         controller.replaceElement(
@@ -1483,17 +1467,29 @@ class CanvasStageState extends State<CanvasStage>
       },
       onDone: () {
         controller.endInteraction();
-        if (mounted) setState(_forgetTextEdit);
+        if (mounted) setState(_endTextEdit);
       },
     );
   }
 
-  /// _forgetTextEdit lets go of the text being typed into.
-  void _forgetTextEdit() {
-    _editingText = null;
-    _editingItem = null;
-    _editingClick = null;
-    _editorRect = null;
+  /// _frozenBox is where [edit]'s editor stays on text on a line: worked out
+  /// when it is first built and kept in the edit after.
+  Rect _frozenBox(TextEdit edit, TextElement element) {
+    if (edit.frozenRect case var kept?) return kept;
+    var box = _editorBoxFor(element);
+    _editing = edit.frozenAt(box);
+    return box;
+  }
+
+  /// _endTextEdit lets go of the text being typed into. Only a text edit:
+  /// an editor's last word can come after another edit has taken its place.
+  void _endTextEdit() {
+    if (_editing is TextEdit) _editing = null;
+  }
+
+  /// _endCellEdit lets go of the cell being typed into, as _endTextEdit.
+  void _endCellEdit() {
+    if (_editing is CellEdit) _editing = null;
   }
 
   /// _wordsBlockFor is where a block of words is laid out -- piece [item]

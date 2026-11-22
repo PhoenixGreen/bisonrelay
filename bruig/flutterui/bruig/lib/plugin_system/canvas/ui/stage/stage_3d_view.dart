@@ -123,7 +123,7 @@ extension Stage3dView on CanvasStageState {
     var was = pan ?? _clampedPan;
     var before = scale ?? _scale;
     controller.zoom = zoom;
-    var after = _fitScale * controller.zoom;
+    var after = _view.fitScale * controller.zoom;
     var middle = Offset(document.size.width / 2, document.size.height / 2);
     var next = was + (under - middle) * (before - after);
     controller.pan = next;

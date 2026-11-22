@@ -50,12 +50,13 @@ extension StagePress on CanvasStageState {
     // Not while typing: an editor is a real text field with its own
     // pointers, and clicking off it moves focus, which closes it (see
     // CanvasTextEditor._onFocus). Taking focus would also close a cell editor
-    // before its own picture button's tap finished.
-    if (_editingText != null ||
-        _editingCell != null ||
-        controller.codeEditing != null) {
-      return true;
-    }
+    // before its own picture button's tap finished. A counter's Set field
+    // does not hold presses back: the focus a press takes closes it.
+    var typing = switch (_editing) {
+      TextEdit() || CellEdit() => true,
+      CounterSet() || null => false,
+    };
+    if (typing || controller.codeEditing != null) return true;
     // A press off a live preview shuts it. One on it belongs to the preview:
     // shutting it would pull the page from under the click.
     if (controller.codeLive != null) {
@@ -106,7 +107,7 @@ extension StagePress on CanvasStageState {
     // it), unless it is on a grip: a picture across the spread has handles on
     // the other leaf.
     if (_facingPage case var beside?
-        when _onFacingPage(stage) && !_onSelectionGrip(stage, doc)) {
+        when _view.onFacingPage(stage) && !_onSelectionGrip(stage, doc)) {
       controller.goToScene(beside);
       _mode = _DragMode.none;
       return true;
@@ -273,7 +274,7 @@ extension StagePress on CanvasStageState {
     }
 
     // Outside the frame there is nothing to hit: a click clears the selection.
-    if (!_viewRect.contains(stage) && _hitHandle(stage) == null) {
+    if (!_view.viewRect.contains(stage) && _hitHandle(stage) == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.none;
       return true;
@@ -661,7 +662,8 @@ extension StagePress on CanvasStageState {
     if (element is TableElement && !element.locked && _secondClickOn(element)) {
       var at = tableCellAt(element, _hit.posed(element), doc);
       if (at != null) {
-        setState(() => _editingCell = (element.id, at.$1, at.$2));
+        setState(
+            () => _editing = CellEdit(element.id, row: at.$1, column: at.$2));
         _mode = _DragMode.none;
         return true;
       }
@@ -691,12 +693,11 @@ extension StagePress on CanvasStageState {
         return true;
       }
       setState(() {
-        _editingText = element.id;
-        _editingItem = piece?.id;
-        _editingClick = _pointer?.position;
+        _editing =
+            TextEdit(element.id, itemId: piece?.id, click: _pointer?.position);
       });
       // Pick the typed piece in Layers, so its settings show.
-      controller.pickTextLayer(element.id, _editingItem);
+      controller.pickTextLayer(element.id, piece?.id);
       _mode = _DragMode.none;
       return true;
     }

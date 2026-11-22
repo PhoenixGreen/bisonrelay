@@ -30,28 +30,30 @@ extension StageElementControls on CanvasStageState {
     var button = e.buttons[at];
     if (controller.pressCounterButton(e, button)) return;
     setState(() {
-      _settingCounter = e.id;
-      _settingAt = at;
+      _editing = CounterSet(e.id, at: at);
     });
   }
 
   /// _counterInputFor is the field on a counter's Set button: Enter takes
   /// it; closing it otherwise changes nothing.
   Widget? _counterInputFor() {
-    var id = _settingCounter;
-    if (id == null) return null;
+    var setting = _editing;
+    if (setting is! CounterSet) return null;
+    var id = setting.elementId;
     var element = document.elementById(id);
     if (element is! CounterElement) return null;
     var rects = counterButtonRects(element, _hit.posed(element));
-    if (_settingAt < 0 || _settingAt >= rects.length) return null;
+    if (setting.at < 0 || setting.at >= rects.length) return null;
 
-    var box = rects[_settingAt];
+    var box = rects[setting.at];
     var topLeft = _toStage(box.topLeft);
     void close() {
       if (mounted) {
+        // Only a Set field: its last word can come after a press has
+        // opened something else (see _pressOverlays, which lets it close
+        // by taking the focus).
         setState(() {
-          _settingCounter = null;
-          _settingAt = -1;
+          if (_editing is CounterSet) _editing = null;
         });
       }
     }

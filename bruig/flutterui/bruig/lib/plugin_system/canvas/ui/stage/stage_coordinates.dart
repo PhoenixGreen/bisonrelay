@@ -1,59 +1,42 @@
 part of 'canvas_stage.dart';
 
-// The page and the screen: where a document point is drawn, and which point a
-// pointer is over. Part of CanvasStageState: its fields, lifecycle and build
-// are in canvas_stage.dart.
+// The page and the screen: the view (stage_transform.dart) made from the
+// controller, the document and the stage's layout, which says where a
+// document point is drawn and which point a pointer is over; the scroll kept
+// in step with it (stage_scroll.dart); and the selection's box. Part of
+// CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
 
 extension StageCoordinates on CanvasStageState {
-  /// _fitScale is the scale at which the whole canvas fits, with
-  /// [CanvasStageState._stageMargin] to spare. Worked out on every build: it changes with the
-  /// window and sidebar, which the controller does not know.
-  double get _fitScale {
-    var size = document.size.size;
-    if (size.width <= 0 || size.height <= 0) return 1;
-    // A spread is two pages across: only the width makes room.
-    var across = size.width * (_spreadShown ? 2 : 1);
-    var byWidth = (_visible.width - CanvasStageState._stageMargin * 2) / across;
-    // Fit to width ignores the height: a 9:16 story would be a narrow strip.
-    var fit = controller.fit == CanvasFit.width
-        ? byWidth
-        : math.min(
-            byWidth,
-            (_visible.height - CanvasStageState._stageMargin * 2) /
-                size.height);
-    // The page gives up room for the overspill, not the margin.
-    if (controller.showOverspill) {
-      fit /= 1 + CanvasStageState._overspillFraction * 2;
+  /// _view is how the page sits in the window now: see StageTransform. Asked
+  /// many times a frame, and the facing leaf it reads walks the document's
+  /// scenes, so the last one made is kept while what it is made from holds.
+  StageTransform get _view {
+    var level = _level;
+    var rest = (
+      controller.fit,
+      controller.zoom,
+      controller.showOverspill,
+      controller.previewAt != null,
+      _visible,
+      _viewport,
+      level,
+    );
+    if (_viewKept case ((var doc, var made), var known)
+        when identical(doc, document) && made == rest) {
+      return known;
     }
-    return fit.isFinite && fit > 0 ? fit : 1;
-  }
-
-  /// _viewRect is everything drawn: the page, plus overspill when showing.
-  /// Clipped and hit-tested against, so off-page elements are grabbable
-  /// exactly when seen.
-  Rect get _viewRect {
-    var page = _pageRect;
-    // The neighbour's half of the spread, on its own side. The edited page
-    // keeps its frame and origin, so the pointer code knows of one leaf.
-    if (_spreadShown) {
-      page = _facingOnLeft
-          ? Rect.fromLTWH(page.left, page.top, page.width * 2, page.height)
-          : Rect.fromLTWH(
-              page.left - page.width, page.top, page.width * 2, page.height);
-    }
-    var shown = !controller.showOverspill
-        ? page
-        : Rect.fromCenter(
-            center: page.center,
-            width: page.width * (1 + CanvasStageState._overspillFraction * 2),
-            height: page.height * (1 + CanvasStageState._overspillFraction * 2),
-          );
-    // A game's level, drawn, grabbable and scrollable while not played.
-    if (_level case var level?) {
-      shown = shown.expandToInclude(Rect.fromPoints(
-          _toStage(level.topLeft), _toStage(level.bottomRight)));
-    }
-    return shown;
+    var view = StageTransform.of(
+      document,
+      fit: rest.$1,
+      zoom: rest.$2,
+      overspill: rest.$3,
+      previewing: rest.$4,
+      visible: _visible,
+      viewport: _viewport,
+      level: level,
+    );
+    _viewKept = ((document, rest), view);
+    return view;
   }
 
   /// _level is a game scene's reach past the page, in document units, so it
@@ -76,47 +59,15 @@ extension StageCoordinates on CanvasStageState {
   Rect? _levelNow() {
     var page = Offset.zero & document.size.size;
     var reach = page;
-    var hit = _hit;
     for (var e in document.elements) {
       // Sounds are kept off the canvas, and a backdrop fills the page.
       if (e is AudioElement || e is BackgroundElement) continue;
-      reach = reach.expandToInclude(hit.posed(e));
+      // Where it is drawn, as StageHitTest.posed has it. Not through _hit:
+      // its scale comes from the view this level is made into.
+      reach = reach.expandToInclude(e.movedBoundsAt(controller.frame, document,
+          live: controller.liveMotion));
     }
     return reach == page ? null : reach;
-  }
-
-  /// _levelShown is whether a game's level reaches past the page.
-  bool get _levelShown => _level != null;
-
-  /// _contentSize is the room the canvas and margins need, the excess over
-  /// the visible box scrolled.
-  Size _contentSize(Size visible) {
-    if (visible.width <= 0 || visible.height <= 0) return visible;
-    var spill = controller.showOverspill
-        ? 1 + CanvasStageState._overspillFraction * 2
-        : 1.0;
-    var page = document.size.size * _scale;
-    var wide = page.width * spill * (_spreadShown ? 2 : 1) +
-        CanvasStageState._stageMargin * 2;
-    var tall = page.height * spill + CanvasStageState._stageMargin * 2;
-    // A game's level: the page stays centred, so each side gets as much room
-    // as the level reaches past the far side.
-    if (_level case var level?) {
-      var doc = document.size.size;
-      var across = math.max(-level.left, level.right - doc.width) * _scale;
-      var down = math.max(-level.top, level.bottom - doc.height) * _scale;
-      wide = math.max(
-          wide, page.width + across * 2 + CanvasStageState._stageMargin * 2);
-      tall = math.max(
-          tall, page.height + down * 2 + CanvasStageState._stageMargin * 2);
-    }
-    // Zoomed, room to move it about: half a window past its edges, so it can
-    // be lifted clear of the timeline and mixer. Unzoomed it stays centred.
-    if ((controller.zoom - 1).abs() > 0.001) {
-      wide = math.max(wide, visible.width * 2 - wide) + visible.width;
-      tall = math.max(tall, visible.height * 2 - tall) + visible.height;
-    }
-    return Size(math.max(visible.width, wide), math.max(visible.height, tall));
   }
 
   /// _facingPage is the page drawn beside the edited one, or null when it
@@ -126,128 +77,47 @@ extension StageCoordinates on CanvasStageState {
   int? get _facingPage =>
       document.editingMaster ? null : document.facingAt(document.at);
 
-  /// _bookPreview is whether the document plays as a book: every leaf drawn
-  /// in its spread place, so a transition between spreads moves both.
-  bool get _bookPreview => controller.previewAt != null && document.hasSpread;
+  /// _pageRect is the page on screen: see StageTransform.pageRect.
+  Rect get _pageRect => _view.pageRect;
 
-  /// _spreadShown is whether room is given to the facing leaf. Fitted to
-  /// width there is none, but the neighbour is still drawn, since a picture
-  /// across the gutter is part of this page.
-  bool get _spreadShown =>
-      (_facingPage != null || _bookPreview) &&
-      controller.fit != CanvasFit.width;
-
-  /// _facingOnLeft is whether the edited page is the left leaf.
-  bool get _facingOnLeft {
-    if (_bookPreview) {
-      return document.spreadOf(document.at)?.left == document.at;
-    }
-    if (document.editingMaster) return false;
-    return document.facingIsLeft(document.at) ?? false;
-  }
-
-  /// _onFacingPage is whether a stage point is over the facing leaf.
-  bool _onFacingPage(Offset stage) {
-    if (!_spreadShown) return false;
-    var page = _pageRect;
-    if (stage.dy < page.top || stage.dy > page.bottom) return false;
-    return _facingOnLeft ? stage.dx > page.right : stage.dx < page.left;
-  }
-
-  /// _pageRect is the page on screen at [_scale], centred in the viewport.
-  Rect get _pageRect {
-    var size = document.size.size * _scale;
-    // The spread is centred, the edited page taking its half, so it does not
-    // shift when the edited page changes sides.
-    var across = !_spreadShown
-        ? 0.0
-        : (_facingOnLeft ? -size.width / 2 : size.width / 2);
-    return Rect.fromCenter(
-      center: Offset(_viewport.width / 2 + across, _viewport.height / 2),
-      width: size.width,
-      height: size.height,
-    );
-  }
-
-  /// _scale is one document unit on screen: the fit times the zoom.
-  double get _scale => _fitScale * controller.zoom;
+  /// _scale is one document unit on screen: see StageTransform.scale.
+  double get _scale => _view.scale;
 
   /// _tellControllerTheScale reports the fitted scale to the controller after
   /// the frame: notifying during layout is "setState called during build".
   void _tellControllerTheScale() {
-    var found = _fitScale;
+    var found = _view.fitScale;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) controller.reportFitScale(found);
     });
   }
 
-  Size get _scaledSize => document.size.size * _scale;
-
-  /// _origin is the document's top-left in stage space: the page's own.
-  Offset get _origin => _pageRect.topLeft;
-
   /// _clampedPan is the view as CanvasController.pan holds it: the page's
   /// middle from the window's, in screen pixels.
-  Offset get _clampedPan {
-    var page = _pageRect.center;
-    var at = _scrolled + Offset(_visible.width / 2, _visible.height / 2);
-    return page - at;
-  }
-
-  /// _scrollFor is the scroll that puts the view at [pan], within range.
-  Offset _scrollFor(Offset pan) {
-    var page = _pageRect.center;
-    var want = page - Offset(_visible.width / 2, _visible.height / 2) - pan;
-    return Offset(
-      want.dx
-          .clamp(0.0, math.max(0.0, _viewport.width - _visible.width))
-          .toDouble(),
-      want.dy
-          .clamp(0.0, math.max(0.0, _viewport.height - _visible.height))
-          .toDouble(),
-    );
-  }
+  Offset get _clampedPan => _scroller.panOf(_view);
 
   /// _setPan moves the view as near [pan] as the page can be scrolled.
   void _setPan(Offset pan) {
-    var to = _scrollFor(pan);
-    _jumpTo(to);
-    var page = _pageRect.center;
-    var at = page - Offset(_visible.width / 2, _visible.height / 2) - to;
-    controller.pan = at;
-  }
-
-  void _jumpTo(Offset to) {
-    _syncing = true;
-    if (_scrollX.hasClients && (_scrollX.offset - to.dx).abs() > 0.5) {
-      _scrollX.jumpTo(to.dx.clamp(0.0, _scrollX.position.maxScrollExtent));
-    }
-    if (_scroll.hasClients && (_scroll.offset - to.dy).abs() > 0.5) {
-      _scroll.jumpTo(to.dy.clamp(0.0, _scroll.position.maxScrollExtent));
-    }
-    _syncing = false;
+    controller.pan = _scroller.moveTo(_view, pan);
   }
 
   /// _syncScroll scrolls to the view once the page is laid out at its size.
   void _syncScroll() {
     if (!mounted) return;
-    _jumpTo(_scrollFor(controller.pan));
+    _scroller.jumpTo(_view.scrollFor(controller.pan));
   }
 
-  /// _scaleOrOne is _scale, or 1 while it is 0 (before the page is laid
-  /// out): what a stage length is divided by to give a document length.
-  double get _scaleOrOne => _scale == 0 ? 1 : _scale;
+  /// _scaleOrOne is a stage length's divisor: see StageTransform.scaleOrOne.
+  double get _scaleOrOne => _view.scaleOrOne;
 
-  Offset _toDocument(Offset stage) => (stage - _origin) / _scaleOrOne;
+  /// _toDocument is stage point [stage] in document space.
+  Offset _toDocument(Offset stage) => _view.toDocument(stage);
 
-  Offset _toStage(Offset doc) => doc * _scale + _origin;
+  /// _toStage is document point [doc] in stage space.
+  Offset _toStage(Offset doc) => _view.toStage(doc);
 
-  /// _toStageRect is document rect [doc] on the stage: its corner moved
-  /// like a point, its size scaled.
-  Rect _toStageRect(Rect doc) {
-    var tl = _toStage(doc.topLeft);
-    return Rect.fromLTWH(tl.dx, tl.dy, doc.width * _scale, doc.height * _scale);
-  }
+  /// _toStageRect is document rect [doc] on the stage.
+  Rect _toStageRect(Rect doc) => _view.toStageRect(doc);
 
   /// toDocumentPoint is a widget point in document space, for sidebar drops.
   Offset toDocumentPoint(Offset local) => _toDocument(local + _scrolled);
@@ -258,11 +128,14 @@ extension StageCoordinates on CanvasStageState {
   Rect get pageRect => _pageRect.shift(-_scrolled);
 
   @visibleForTesting
-  Rect get contentRect => (_origin & _scaledSize).shift(-_scrolled);
+  Rect get contentRect {
+    var view = _view;
+    return (view.origin & view.scaledSize).shift(-_scrolled);
+  }
 
   /// spreadRect is the page and facing leaf's frame together, for tests.
   @visibleForTesting
-  Rect get spreadRect => _viewRect.shift(-_scrolled);
+  Rect get spreadRect => _view.viewRect.shift(-_scrolled);
 
   /// textFlowGrips is a selected text box's overflow dots, for tests.
   @visibleForTesting

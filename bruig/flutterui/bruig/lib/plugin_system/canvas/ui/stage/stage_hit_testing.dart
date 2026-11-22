@@ -67,7 +67,7 @@ extension StageHitTesting on CanvasStageState {
     for (var handle in StageHandle.values) {
       var at = _handlePosition(handle, bounds);
       // Clipped out of sight is out of reach.
-      if (!_viewRect.inflate(reach).contains(at)) continue;
+      if (!_view.viewRect.inflate(reach).contains(at)) continue;
       var d = (stage - at).distance;
       if (d <= reach && d < away) {
         best = handle;
