@@ -17,9 +17,14 @@ extension StageCoordinates on CanvasStageState {
     // Fit to width ignores the height: a 9:16 story would be a narrow strip.
     var fit = controller.fit == CanvasFit.width
         ? byWidth
-        : math.min(byWidth, (_visible.height - CanvasStageState._stageMargin * 2) / size.height);
+        : math.min(
+            byWidth,
+            (_visible.height - CanvasStageState._stageMargin * 2) /
+                size.height);
     // The page gives up room for the overspill, not the margin.
-    if (controller.showOverspill) fit /= 1 + CanvasStageState._overspillFraction * 2;
+    if (controller.showOverspill) {
+      fit /= 1 + CanvasStageState._overspillFraction * 2;
+    }
     return fit.isFinite && fit > 0 ? fit : 1;
   }
 
@@ -45,8 +50,8 @@ extension StageCoordinates on CanvasStageState {
           );
     // A game's level, drawn, grabbable and scrollable while not played.
     if (_level case var level?) {
-      shown = shown.expandToInclude(
-          Rect.fromPoints(_toStage(level.topLeft), _toStage(level.bottomRight)));
+      shown = shown.expandToInclude(Rect.fromPoints(
+          _toStage(level.topLeft), _toStage(level.bottomRight)));
     }
     return shown;
   }
@@ -87,9 +92,12 @@ extension StageCoordinates on CanvasStageState {
   /// the visible box scrolled.
   Size _contentSize(Size visible) {
     if (visible.width <= 0 || visible.height <= 0) return visible;
-    var spill = controller.showOverspill ? 1 + CanvasStageState._overspillFraction * 2 : 1.0;
+    var spill = controller.showOverspill
+        ? 1 + CanvasStageState._overspillFraction * 2
+        : 1.0;
     var page = document.size.size * _scale;
-    var wide = page.width * spill * (_spreadShown ? 2 : 1) + CanvasStageState._stageMargin * 2;
+    var wide = page.width * spill * (_spreadShown ? 2 : 1) +
+        CanvasStageState._stageMargin * 2;
     var tall = page.height * spill + CanvasStageState._stageMargin * 2;
     // A game's level: the page stays centred, so each side gets as much room
     // as the level reaches past the far side.
@@ -97,8 +105,10 @@ extension StageCoordinates on CanvasStageState {
       var doc = document.size.size;
       var across = math.max(-level.left, level.right - doc.width) * _scale;
       var down = math.max(-level.top, level.bottom - doc.height) * _scale;
-      wide = math.max(wide, page.width + across * 2 + CanvasStageState._stageMargin * 2);
-      tall = math.max(tall, page.height + down * 2 + CanvasStageState._stageMargin * 2);
+      wide = math.max(
+          wide, page.width + across * 2 + CanvasStageState._stageMargin * 2);
+      tall = math.max(
+          tall, page.height + down * 2 + CanvasStageState._stageMargin * 2);
     }
     // Zoomed, room to move it about: half a window past its edges, so it can
     // be lifted clear of the timeline and mixer. Unzoomed it stays centred.
@@ -129,7 +139,9 @@ extension StageCoordinates on CanvasStageState {
 
   /// _facingOnLeft is whether the edited page is the left leaf.
   bool get _facingOnLeft {
-    if (_bookPreview) return document.spreadOf(document.at)?.left == document.at;
+    if (_bookPreview) {
+      return document.spreadOf(document.at)?.left == document.at;
+    }
     if (document.editingMaster) return false;
     return document.facingIsLeft(document.at) ?? false;
   }
@@ -373,11 +385,10 @@ extension StageCoordinates on CanvasStageState {
   }
 
   /// _skewOfSelection is the lone selection's slant in degrees, or zero.
-  Offset get _skewOfSelection => _chosen.length == 1 &&
-          _onePiece == null &&
-          _oneFreeCell == null
-      ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
-      : Offset.zero;
+  Offset get _skewOfSelection =>
+      _chosen.length == 1 && _onePiece == null && _oneFreeCell == null
+          ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
+          : Offset.zero;
 
   /// _frameOfSelection is the selection box's turn and slant on the page.
   BoxFrame get _frameOfSelection => BoxFrame(

@@ -1070,8 +1070,9 @@ class CanvasStageState extends State<CanvasStage>
                         counterValue: controller.counterValue,
                         liveMotion: controller.liveMotion,
                         motionTick: controller.motionTick,
-                        directed: (controller.playing || controller.cameraView) &&
-                            !document.editingMaster,
+                        directed:
+                            (controller.playing || controller.cameraView) &&
+                                !document.editingMaster,
                         counterPressed: (e) =>
                             e.id == _hoveredCounter ? _hoveredCounterAt : -1,
                         counterRunning: controller.counterRunning,
@@ -1087,7 +1088,8 @@ class CanvasStageState extends State<CanvasStage>
                         gameChange: controller.gameChange,
                         pickedCopies: controller.selected == null
                             ? const {}
-                            : controller.pickedCopiesOf(controller.selected!.id),
+                            : controller
+                                .pickedCopiesOf(controller.selected!.id),
                         showHelpers: controller.showHelpers,
                         // The scene's slow move while it plays (see
                         // SceneCamera); still while editing, so a press lands
@@ -1096,11 +1098,11 @@ class CanvasStageState extends State<CanvasStage>
                         camera: controller.gaming
                             ? controller.gameFraming
                             : (controller.playing || controller.cameraView) &&
-                                !document.editingMaster
-                            // Its Camera, or its slow move: see sceneFraming.
-                            ? sceneFraming(document, controller.frame,
-                                live: controller.liveMotion)
-                            : null,
+                                    !document.editingMaster
+                                // Its Camera, or its slow move: see sceneFraming.
+                                ? sceneFraming(document, controller.frame,
+                                    live: controller.liveMotion)
+                                : null,
                         selectedPath: _selectedPath(),
                         rulersApart: _viewport.width > _visible.width + 0.5 ||
                             _viewport.height > _visible.height + 0.5,
@@ -1352,8 +1354,7 @@ class CanvasStageState extends State<CanvasStage>
     var element = document.elementById(id);
     if (element is! TableElement) return null;
 
-    var box =
-        tableCellRect(element, _hit.posed(element), row, col);
+    var box = tableCellRect(element, _hit.posed(element), row, col);
     var topLeft = _toStage(box.topLeft);
     return Positioned(
       left: topLeft.dx,

@@ -27,12 +27,10 @@ extension StageRelease on CanvasStageState {
       controller.endInteraction();
       return;
     }
-    if (_releaseSynth(_toDocument(event.localPosition),
-        cancelled: cancelled)) {
+    if (_releaseSynth(_toDocument(event.localPosition), cancelled: cancelled)) {
       return;
     }
-    if (_releaseCode(_toDocument(event.localPosition),
-        cancelled: cancelled)) {
+    if (_releaseCode(_toDocument(event.localPosition), cancelled: cancelled)) {
       return;
     }
     var codeEdit = _pendingCodeEdit;
@@ -92,10 +90,7 @@ extension StageRelease on CanvasStageState {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
-      controller.sheetPressed(
-          sheet,
-          _hit.posed(sheet),
-          _pendingSheetAt);
+      controller.sheetPressed(sheet, _hit.posed(sheet), _pendingSheetAt);
       return;
     }
 
@@ -301,9 +296,7 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.guide) {
       controller.endInteraction();
     }
-    if (_mode == _DragMode.imageQuick &&
-        _quickTrail.isNotEmpty &&
-        !cancelled) {
+    if (_mode == _DragMode.imageQuick && _quickTrail.isNotEmpty && !cancelled) {
       unawaited(controller.imageTool == ImageTool.refine
           ? controller.refineEdge(_quickTrail)
           : controller.quickSelect(_quickTrail, subtract: _quickSubtract));

@@ -46,9 +46,11 @@ extension StageVectorTools on CanvasStageState {
   /// the press goes on.
   bool _pressVector(VectorElement e, Offset doc) {
     var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
-    var twice = clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow;
+    var twice = clock.now().difference(_lastClickAt) <
+        CanvasStageState._doubleClickWindow;
     // A double-click here is two clicks on one spot.
-    var sameSpot = (doc - _lastVectorClick).distance * _scale <= CanvasStageState._penPullMin;
+    var sameSpot = (doc - _lastVectorClick).distance * _scale <=
+        CanvasStageState._penPullMin;
     _lastClickAt = clock.now();
     _lastVectorClick = doc;
     // The pen takes hold of points and handles as picking does, and its next

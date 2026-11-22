@@ -249,7 +249,9 @@ extension StagePress on CanvasStageState {
         // The one copy's box sizes and turns that copy by its own values. A
         // copy has no slant.
         if (_oneCopy case (var e, var i)?) {
-          _beginCopyBox(e, i,
+          _beginCopyBox(
+              e,
+              i,
               handle == StageHandle.rotate
                   ? _DragMode.copyTurn
                   : _DragMode.copySize,
@@ -361,8 +363,7 @@ extension StagePress on CanvasStageState {
 
     // A text element's piece counts as that element wherever it is drawn
     // (gaps or sides can put it outside its box), and beats what is under it.
-    var element =
-        held ?? _topmostOf(_hitElement(doc), _textPieceOwner(doc));
+    var element = held ?? _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.marquee;
@@ -403,8 +404,7 @@ extension StagePress on CanvasStageState {
     // A selected button is tried by a click and moved by a drag, so its
     // action waits for pointer-up, when the travel is known. See
     // _onPointerUp.
-    if (element is ButtonElement &&
-        controller.isOnlySelected(element.id)) {
+    if (element is ButtonElement && controller.isOnlySelected(element.id)) {
       _pendingButton = element;
       _beginTransform(_DragMode.move, null);
       return;
@@ -413,8 +413,7 @@ extension StagePress on CanvasStageState {
     // A selected speaker's or video's controls, on the same terms: a press
     // that stays put plays, mutes, sets the volume or seeks; one that
     // travels moves it.
-    if (element is VideoElement &&
-        controller.isOnlySelected(element.id)) {
+    if (element is VideoElement && controller.isOnlySelected(element.id)) {
       var part = _videoPartAt(element, doc);
       if (part != null) {
         _pendingVideo = element;
@@ -457,8 +456,7 @@ extension StagePress on CanvasStageState {
       }
     }
 
-    if (element is AudioElement &&
-        controller.isOnlySelected(element.id)) {
+    if (element is AudioElement && controller.isOnlySelected(element.id)) {
       var part = _audioPartAt(element, doc);
       if (part != null) {
         _pendingAudio = element;
@@ -472,8 +470,7 @@ extension StagePress on CanvasStageState {
     // A live counter's buttons, on the same terms: only when selected and the
     // press does not become a drag. A loose piece is both, so the press is
     // armed here and the mode moves the piece.
-    if (element is CounterElement &&
-        controller.isOnlySelected(element.id)) {
+    if (element is CounterElement && controller.isOnlySelected(element.id)) {
       var part = _counterPartUnder(element, doc);
       var at = element.live ? _counterButtonAt(element, doc) : -1;
       if (part != null) {
@@ -497,14 +494,14 @@ extension StagePress on CanvasStageState {
     }
 
     // A chart's key entry switches its series, on the same terms.
-    if (element is ChartElement &&
-        controller.isOnlySelected(element.id)) {
+    if (element is ChartElement && controller.isOnlySelected(element.id)) {
       var at = _legendSeriesAt(element, doc);
       if (at >= 0) {
         _pendingLegend = element;
         _pendingLegendAt = at;
         // Held rather than tapped, the press moves the key instead.
-        _legendHold = Timer(CanvasStageState._legendHoldDelay, () => _holdLegend(element));
+        _legendHold = Timer(
+            CanvasStageState._legendHoldDelay, () => _holdLegend(element));
         _beginTransform(_DragMode.move, null);
         return;
       }
@@ -529,18 +526,14 @@ extension StagePress on CanvasStageState {
     // A second click on a selected picture opens its layers, the one under
     // the click picked. With the base picked, a drag moves the picture
     // inside its box (see _framing).
-    if (element is ImageElement &&
-        !element.locked &&
-        _secondClickOn(element)) {
+    if (element is ImageElement && !element.locked && _secondClickOn(element)) {
       controller.editImage(element.id, layer: layerAt(element, doc).id);
       _mode = _DragMode.none;
       return;
     }
 
     // A second click on a selected table's cell opens it for typing.
-    if (element is TableElement &&
-        !element.locked &&
-        _secondClickOn(element)) {
+    if (element is TableElement && !element.locked && _secondClickOn(element)) {
       var at = tableCellAt(element, _hit.posed(element), doc);
       if (at != null) {
         setState(() => _editingCell = (element.id, at.$1, at.$2));

@@ -26,8 +26,7 @@ extension StageHitTesting on CanvasStageState {
 
   /// _containsPoint is whether [point] is inside [e] as drawn, turn and slant
   /// undone.
-  bool _containsPoint(CanvasElement e, Offset point) =>
-      _hit.contains(e, point);
+  bool _containsPoint(CanvasElement e, Offset point) => _hit.contains(e, point);
 
   /// _onSelectionGrip is whether a press takes hold of the selection: a
   /// handle, a flow grip, or a path's points.
@@ -121,9 +120,7 @@ extension StageHitTesting on CanvasStageState {
     var at = _flowAt;
     var from = _flowFrom == null ? null : document.elementById(_flowFrom!);
     if (at == null || from == null) return null;
-    return FlowLine(
-        _toStage(_flowPointOf(_hit.posed(from), top: false)),
-        at);
+    return FlowLine(_toStage(_flowPointOf(_hit.posed(from), top: false)), at);
   }
 
   /// _flowLines is every text link worth drawing: either box selected, or
@@ -292,7 +289,8 @@ extension StageHitTesting on CanvasStageState {
       case SynthPartKind.knob:
         if (e.fixed) break;
         var knob = synthKnobs[e.module]![part.index];
-        var twice = clock.now().difference(_lastClickAt) < CanvasStageState._doubleClickWindow;
+        var twice = clock.now().difference(_lastClickAt) <
+            CanvasStageState._doubleClickWindow;
         _lastClickAt =
             twice ? DateTime.fromMillisecondsSinceEpoch(0) : clock.now();
         if (twice) {

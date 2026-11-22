@@ -86,12 +86,14 @@ extension StageDrag on CanvasStageState {
     _hoverAt = event.localPosition;
     if (_brushAt != null) _moveBrush(event.localPosition);
     if (_keyDown case (var e, var key)?
-        when (event.localPosition - _pressedAt).distance > CanvasStageState._buttonClickSlop) {
+        when (event.localPosition - _pressedAt).distance >
+            CanvasStageState._buttonClickSlop) {
       controller.noteOff(e, key);
       _keyDown = null;
     }
     if (_legendHold != null &&
-        (event.localPosition - _pressedAt).distance > CanvasStageState._buttonClickSlop) {
+        (event.localPosition - _pressedAt).distance >
+            CanvasStageState._buttonClickSlop) {
       _legendHold?.cancel();
       _legendHold = null;
     }
@@ -118,7 +120,8 @@ extension StageDrag on CanvasStageState {
     // Nothing moves until the press travels far enough to be a drag, except
     // the marquee, drawn from the press itself.
     if (!_travelled && _mode != _DragMode.marquee) {
-      if ((event.localPosition - _pressedAt).distance <= CanvasStageState._dragThreshold) {
+      if ((event.localPosition - _pressedAt).distance <=
+          CanvasStageState._dragThreshold) {
         return;
       }
       _travelled = true;
@@ -265,7 +268,8 @@ extension StageDrag on CanvasStageState {
         if (e != null && pick != null) {
           // A hand that shifts a little as it clicks puts a corner down:
           // handles a few pixels long would round it off.
-          var pulled = (doc - _vectorFrom).distance * _scale >= CanvasStageState._penPullMin;
+          var pulled = (doc - _vectorFrom).distance * _scale >=
+              CanvasStageState._penPullMin;
           controller.replaceElement(
               withPenHandles(e, pick, pulled ? doc : _vectorFrom),
               transient: true);
@@ -295,7 +299,8 @@ extension StageDrag on CanvasStageState {
         }
       case _DragMode.codeTab:
         if (_codeTabAt != null ||
-            (_toStage(doc) - _pressedAt).distance > CanvasStageState._buttonClickSlop) {
+            (_toStage(doc) - _pressedAt).distance >
+                CanvasStageState._buttonClickSlop) {
           setState(() => _codeTabAt = doc);
         }
       case _DragMode.synthScreen:

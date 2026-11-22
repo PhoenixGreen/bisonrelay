@@ -34,9 +34,15 @@ extension StageFramingDrag on CanvasStageState {
 
       var base =
           e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
-      return StageFraming(image, placement.whole, placement.wholeDst,
-          _framingRect(e), e.movedRotationAt(controller.frame, controller.document,
-            live: controller.liveMotion) * math.pi / 180,
+      return StageFraming(
+          image,
+          placement.whole,
+          placement.wholeDst,
+          _framingRect(e),
+          e.movedRotationAt(controller.frame, controller.document,
+                  live: controller.liveMotion) *
+              math.pi /
+              180,
           pivot: _hit.posed(e).center,
           flipX: base.flipX,
           flipY: base.flipY);
@@ -155,7 +161,7 @@ extension StageFramingDrag on CanvasStageState {
       // the pointer.
       var travel = doc - _dragStart;
       var turn = -e.movedRotationAt(controller.frame, controller.document,
-            live: controller.liveMotion);
+          live: controller.liveMotion);
       if (turn != 0) travel = BoxFrame(turn, 0, 0).apply(travel);
       var base =
           e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
@@ -385,8 +391,7 @@ extension StageFramingDrag on CanvasStageState {
     // posed size would bake a scale in. A move from the resting bounds would
     // lose the frame's pose.
     _startPosed = {
-      for (var e in controller.selectedElements)
-        e.id: _hit.posed(e),
+      for (var e in controller.selectedElements) e.id: _hit.posed(e),
     };
     // The box the handles are on, bigger than the element's own for a line
     // or path (see _visualBounds). A resize is measured against it and

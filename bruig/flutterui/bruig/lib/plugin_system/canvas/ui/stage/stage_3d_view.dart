@@ -79,8 +79,7 @@ extension Stage3dView on CanvasStageState {
     if (keys.isControlPressed || keys.isMetaPressed) {
       controller.dollyBy(math.exp(d.dy * 0.01), transient: true);
     } else if (keys.isShiftPressed) {
-      controller.panCameraBy(-d / _scaleOrOne,
-          transient: true);
+      controller.panCameraBy(-d / _scaleOrOne, transient: true);
     } else {
       controller.orbitBy(-d.dx * 0.4, -d.dy * 0.4, transient: true);
     }
@@ -106,8 +105,8 @@ extension Stage3dView on CanvasStageState {
                         (event.scrollDelta.dy > 0 ? 0.94 : 1.06))),
             transient: true);
         _wheelRests?.cancel();
-        _wheelRests = Timer(
-            const Duration(milliseconds: 400), controller.endInteraction);
+        _wheelRests =
+            Timer(const Duration(milliseconds: 400), controller.endInteraction);
         return;
       }
     }
@@ -161,8 +160,7 @@ extension Stage3dView on CanvasStageState {
       if ((spread - 1).abs() > 0.002) {
         controller.dollyBy(1 / spread, transient: true);
       } else if (HardwareKeyboard.instance.isShiftPressed) {
-        controller.panCameraBy(e.panDelta / _scaleOrOne,
-            transient: true);
+        controller.panCameraBy(e.panDelta / _scaleOrOne, transient: true);
       } else {
         controller.orbitBy(e.panDelta.dx * 0.4, e.panDelta.dy * 0.4,
             transient: true);
