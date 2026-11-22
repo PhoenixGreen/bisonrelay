@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
@@ -12,7 +13,6 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -286,8 +286,7 @@ Widget _screen(CanvasController c, double width) => ListenableBuilder(
         Expanded(
           child: Align(
               alignment: Alignment.topLeft,
-              child: SizedBox(
-                  width: width, child: CanvasDesignPanel(controller: c))),
+              child: SizedBox(width: width, child: designSidebar(c))),
         ),
         if (c.effectsOpen)
           SizedBox(

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -9,7 +10,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -121,7 +121,7 @@ void main() {
   group("the controls", () {
     Widget host(CanvasController c, {bool stage = false}) =>
         canvasApp(Row(children: [
-          SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
+          SizedBox(width: 420, child: designSidebar(c)),
           if (stage)
             Expanded(
                 child: CanvasStage(key: const ValueKey("stage"), controller: c))

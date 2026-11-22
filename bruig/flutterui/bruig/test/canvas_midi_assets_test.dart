@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
@@ -116,11 +117,13 @@ void main() {
   });
 
   Future<CanvasController> showBoth(WidgetTester tester) async {
-    setTestScreen(tester, const Size(1600, 980));
+    // Tall enough that the Audio panel, one of eight in the Assets sidebar,
+    // lists every sound.
+    setTestScreen(tester, const Size(1600, 1500));
     var c = make();
     addTearDown(c.dispose);
     await tester.pumpWidget(canvasApp(Row(children: [
-      SizedBox(width: 280, child: CanvasAssetsPanel(controller: c)),
+      SizedBox(width: 280, child: assetsSidebar(c)),
       Expanded(
           child: Align(
               alignment: Alignment.bottomCenter,

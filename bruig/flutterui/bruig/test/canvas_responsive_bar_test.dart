@@ -1,4 +1,5 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -6,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:flutter/material.dart';
@@ -126,8 +126,7 @@ void main() {
     setTestScreen(tester, const Size(600, 1400));
 
     Future<void> show() async {
-      await tester
-          .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
+      await tester.pumpWidget(canvasApp(designSidebar(controller)));
       await tester.pumpAndSettle();
     }
 
@@ -196,8 +195,7 @@ void main() {
 
     setTestScreen(tester, const Size(600, 1400));
 
-    await tester
-        .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
+    await tester.pumpWidget(canvasApp(designSidebar(controller)));
     await tester.pumpAndSettle();
     // In its Layout's Position, since batch 4 of the rebuild.
     await openSection(tester, "image.picture.position");

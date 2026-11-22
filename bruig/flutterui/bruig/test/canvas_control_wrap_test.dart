@@ -1,10 +1,10 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,7 +38,7 @@ void main() {
     var controller = CanvasController(document.addElement(element));
     addTearDown(controller.dispose);
     controller.selectOnly(element.id);
-    await pump(tester, CanvasDesignPanel(controller: controller), width: width);
+    await pump(tester, designSidebar(controller), width: width);
     await openSection(tester, "shape.layout");
   }
 
@@ -90,7 +90,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller), width: 360);
+      await pump(tester, designSidebar(controller), width: 360);
 
       var font = tester.getRect(find.byKey(const ValueKey("typeFont")));
       // A new text is fitted to its box, and its Size says so.
@@ -111,8 +111,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller),
-          width: width);
+      await pump(tester, designSidebar(controller), width: width);
       return element.id;
     }
 
@@ -158,8 +157,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller),
-          width: width);
+      await pump(tester, designSidebar(controller), width: width);
     }
 
     testWidgets("in a card, there is no button: everything is out",

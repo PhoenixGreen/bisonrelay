@@ -1,4 +1,5 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'dart:io';
@@ -15,7 +16,6 @@ import 'package:bruig/plugin_system/canvas/ui/data/table_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/own_style.dart'
     show OwnStyle;
@@ -57,7 +57,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("t");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -377,9 +377,7 @@ void main() {
       // Constrained here rather than by shrinking the view, which the pump
       // helper sets for itself.
       await pump(
-          tester,
-          SizedBox(
-              width: 200, child: CanvasDesignPanel(controller: controller)));
+          tester, SizedBox(width: 200, child: designSidebar(controller)));
 
       // The panel already overflows by 32 pixels at this width with every
       // section shut, and has since before any of this existed -- something
@@ -465,7 +463,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -1134,7 +1132,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -1254,7 +1252,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       // In its Content, a fold of its own (batch 3 of the rebuild).
       await openFold(tester, "chartSource",
           shows: find.byKey(const ValueKey("source-c")));

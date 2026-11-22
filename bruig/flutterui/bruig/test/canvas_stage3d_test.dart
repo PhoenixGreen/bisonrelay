@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -17,7 +18,6 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -185,7 +185,7 @@ void main() {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
 
-    Widget host(CanvasController c) => canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
+    Widget host(CanvasController c) => canvasApp(SizedBox(width: 420, child: designSidebar(c)));
 
     Future<void> tap(WidgetTester tester, String key) async {
       var f = find.byKey(ValueKey(key));
@@ -347,7 +347,7 @@ void main() {
       var c = CanvasController(const CanvasDocument(frames: 48));
       addTearDown(c.dispose);
       tall(tester);
-      await tester.pumpWidget(host(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(host(designSidebar(c)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("addLayer")), findsOneWidget,
           reason: "a 2D background has its pattern layers");
@@ -379,7 +379,7 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("bg");
       tall(tester);
-      await tester.pumpWidget(host(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(host(designSidebar(c)));
       await tester.pumpAndSettle();
       BackgroundElement get() => c.document.elementById("bg")! as BackgroundElement;
       await tap(tester, "backdropKind-stage");

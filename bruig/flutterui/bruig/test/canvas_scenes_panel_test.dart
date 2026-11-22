@@ -15,10 +15,10 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 
 // canvas_scenes_panel_test.dart is the list of canvases in the sidebar.
 //
@@ -579,8 +579,8 @@ void main() {
 
     setTestScreen(tester, const Size(900, 1200));
 
-    await tester.pumpWidget(canvasApp(SizedBox(
-        width: 320, child: CanvasDesignPanel(controller: controller))));
+    await tester.pumpWidget(
+        canvasApp(SizedBox(width: 320, child: designSidebar(controller))));
     await tester.pumpAndSettle();
 
     ProceduralSettings settings() =>
@@ -629,8 +629,8 @@ void main() {
 
     setTestScreen(tester, const Size(900, 1200));
 
-    await tester.pumpWidget(canvasApp(SizedBox(
-        width: 320, child: CanvasDesignPanel(controller: controller))));
+    await tester.pumpWidget(
+        canvasApp(SizedBox(width: 320, child: designSidebar(controller))));
     await tester.pumpAndSettle();
 
     ProceduralSettings settings() =>
@@ -670,8 +670,8 @@ void main() {
 
     setTestScreen(tester, const Size(900, 1200));
 
-    await tester.pumpWidget(canvasApp(SizedBox(
-        width: 320, child: CanvasDesignPanel(controller: controller))));
+    await tester.pumpWidget(
+        canvasApp(SizedBox(width: 320, child: designSidebar(controller))));
     await tester.pumpAndSettle();
 
     // On the shared canvas, where the switch lives.
@@ -713,8 +713,8 @@ void main() {
 
     setTestScreen(tester, const Size(900, 1200));
 
-    await tester.pumpWidget(canvasApp(SizedBox(
-        width: 320, child: CanvasDesignPanel(controller: controller))));
+    await tester.pumpWidget(
+        canvasApp(SizedBox(width: 320, child: designSidebar(controller))));
     await tester.pumpAndSettle();
     expect(find.text("Background — Dot grid"), findsOneWidget);
 

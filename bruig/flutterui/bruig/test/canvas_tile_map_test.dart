@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -18,7 +19,6 @@ import 'package:bruig/plugin_system/canvas/storage/stock/kenney_tiles.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/tile_map_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/tile_painting.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
@@ -488,7 +488,7 @@ void main() {
       c.images.hold("sheet", sheet!);
       c.selectOnly("m");
       setTestScreen(tester, const ui.Size(420, 3000));
-      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 30)));
       await tester.pumpAndSettle();
       TileMapElement get() => c.document.elementById("m") as TileMapElement;

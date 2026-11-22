@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
@@ -10,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -196,8 +196,8 @@ void main() {
   });
 
   group("in the panel", () {
-    Widget panel(CanvasController c) => canvasApp(
-        SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
+    Widget panel(CanvasController c) =>
+        canvasApp(SizedBox(width: 420, child: designSidebar(c)));
 
     Future<CanvasController> pumpPanel(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});

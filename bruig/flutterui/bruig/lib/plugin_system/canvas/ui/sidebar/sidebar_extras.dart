@@ -42,25 +42,38 @@ class CanvasSidebarExtra {
 class CanvasSidebarExtras {
   CanvasSidebarExtras._();
 
-  static final ValueNotifier<List<CanvasSidebarExtra>> _registered =
-      ValueNotifier(const []);
+  static List<CanvasSidebarExtra> _registered = const [];
+
+  /// _changed tells of an extra registered, and of one coming or going.
+  static final _Told _changed = _Told();
 
   /// forgetForTest takes every extra away, as a new run has none.
   @visibleForTesting
-  static void forgetForTest() => _registered.value = const [];
+  static void forgetForTest() => _put(const []);
 
   /// register adds [extra], replacing one of the same id (a hot reload).
-  static void register(CanvasSidebarExtra extra) {
-    _registered.value = [
-      for (var e in _registered.value)
-        if (e.id != extra.id) e,
-      extra,
-    ];
+  static void register(CanvasSidebarExtra extra) => _put([
+        for (var e in _registered)
+          if (e.id != extra.id) e,
+        extra,
+      ]);
+
+  /// _put makes [extras] the ones registered, listening to each for its
+  /// coming and going, and tells of the change.
+  static void _put(List<CanvasSidebarExtra> extras) {
+    for (var e in _registered) {
+      e.shown.removeListener(_changed.tell);
+    }
+    _registered = extras;
+    for (var e in extras) {
+      e.shown.addListener(_changed.tell);
+    }
+    _changed.tell();
   }
 
   /// shown are the extras there now.
   static List<CanvasSidebarExtra> get shown => [
-        for (var e in _registered.value)
+        for (var e in _registered)
           if (e.shown.value) e
       ];
 
@@ -68,10 +81,13 @@ class CanvasSidebarExtras {
   static CanvasSidebarExtra? byId(String id) =>
       shown.where((e) => e.id == id).firstOrNull;
 
-  /// isExtra is whether [id] names an extra, shown or not.
-  static bool isExtra(String id) => _registered.value.any((e) => e.id == id);
+  /// changes fires as an extra is registered, or comes or goes. The one
+  /// listenable for as long as the app runs, so what listens to it hears
+  /// of an extra registered after it began listening.
+  static Listenable get changes => _changed;
+}
 
-  /// changes fires as an extra is registered, or comes or goes.
-  static Listenable get changes =>
-      Listenable.merge([_registered, for (var e in _registered.value) e.shown]);
+/// _Told is a notifier told from outside.
+class _Told extends ChangeNotifier {
+  void tell() => notifyListeners();
 }

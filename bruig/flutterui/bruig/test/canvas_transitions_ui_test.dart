@@ -1,8 +1,8 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show DeviceKnob;
@@ -386,8 +386,8 @@ void main() {
 
     setTestScreen(tester, const Size(900, 1400));
 
-    await tester.pumpWidget(canvasApp(SizedBox(
-        width: 320, child: CanvasDesignPanel(controller: controller))));
+    await tester.pumpWidget(
+        canvasApp(SizedBox(width: 320, child: designSidebar(controller))));
     await tester.pumpAndSettle();
     expect(find.text("VOCAL CUES"), findsOneWidget);
     expect(find.text("TRANSITION"), findsNothing);

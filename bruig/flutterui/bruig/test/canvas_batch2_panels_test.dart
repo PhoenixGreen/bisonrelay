@@ -1,4 +1,5 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
@@ -7,7 +8,6 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
@@ -42,7 +42,7 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly(element.id);
       setTestScreen(tester, const Size(420, 6000));
-      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("quickStrip")), findsOneWidget);
       expect(find.byKey(ValueKey("${kind.name}Looks")), findsOneWidget);

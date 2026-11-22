@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -20,7 +21,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -256,7 +256,7 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("s");
       setTestScreen(tester, const ui.Size(900, 4000));
-      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
       await tester.pumpAndSettle();
       SpriteElement get() => c.document.elementById("s") as SpriteElement;
       expect(find.byKey(const ValueKey("spriteSheetView")), findsOneWidget);

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -11,7 +12,6 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -349,8 +349,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("i");
       setTestScreen(tester, const Size(900, 4000));
-      await tester.pumpWidget(
-          _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester
+          .pumpWidget(_host(SizedBox(width: 420, child: designSidebar(c))));
       await _seed(tester, c);
       await tester.pumpAndSettle();
       var chip = find.byKey(ValueKey("imageLayer-${_a.id}"));
@@ -417,8 +417,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("i");
       setTestScreen(tester, const Size(900, 4000));
-      await tester.pumpWidget(
-          _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester
+          .pumpWidget(_host(SizedBox(width: 420, child: designSidebar(c))));
       await _seed(tester, c);
       await tester.pumpAndSettle();
       return c;

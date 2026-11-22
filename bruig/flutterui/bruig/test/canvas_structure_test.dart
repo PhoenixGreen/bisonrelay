@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -8,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,7 +94,7 @@ void main() {
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
     c.setKind(CanvasKind.audio);
-    await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+    await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
     await tester.pumpAndSettle();
     // Panel headings are drawn in capitals.
     expect(find.text("STRUCTURE"), findsWidgets);

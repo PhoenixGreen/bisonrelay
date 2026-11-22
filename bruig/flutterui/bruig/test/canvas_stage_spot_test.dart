@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
@@ -24,7 +25,6 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -304,8 +304,8 @@ void main() {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
 
-    Widget host(CanvasController c) => canvasApp(
-        SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
+    Widget host(CanvasController c) =>
+        canvasApp(SizedBox(width: 420, child: designSidebar(c)));
 
     testWidgets("put on a stage, moved and turned, and taken off it",
         (tester) async {

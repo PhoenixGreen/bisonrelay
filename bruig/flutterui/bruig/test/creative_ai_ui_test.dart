@@ -117,6 +117,7 @@ void main() {
                           controller: rig.canvas,
                           layout: l,
                           onLayout: (next) => laid.value = next,
+                          onHide: () {},
                           bodies: bodies,
                           onCustomise: () {})),
                   const Expanded(child: SizedBox()),

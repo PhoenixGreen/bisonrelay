@@ -21,6 +21,10 @@ import 'support/canvas_app.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  /// hides counts the presses that asked for the sidebar to be put away.
+  var hides = 0;
+  setUp(() => hides = 0);
+
   /// shown pumps the sidebar on [layout], keeping what it is set out as.
   Future<ValueNotifier<SidebarLayout>> shown(WidgetTester tester,
       {SidebarLayout layout = const SidebarLayout(current: "design"),
@@ -46,6 +50,7 @@ void main() {
                       controller: c,
                       layout: l,
                       onLayout: (next) => laid.value = next,
+                      onHide: () => hides++,
                       bodies: bodies,
                       canSitAbove: canSitAbove,
                       onCustomise: () => showCustomiseSidebars(context,
@@ -210,9 +215,36 @@ void main() {
     expect(find.byKey(const ValueKey("customiseDone")), findsNothing);
   });
 
+  testWidgets("hiding is asked for, not set out as a layout", (tester) async {
+    // A piece of sound's sidebar is put away for the visit, and the design
+    // sidebar's kept layout left alone, so the page has to be told "hide"
+    // and not handed a layout whose mode is hidden: with the kept mode
+    // already hidden, every change looked like one, and the first press in
+    // a piece of sound's sidebar put it away.
+    var laid = await shown(tester,
+        layout:
+            const SidebarLayout(mode: SidebarMode.hidden, current: "design"));
+    await tester.tap(find.byKey(const ValueKey("sidebarTab-assets")));
+    await tester.pump();
+    expect(laid.value.current, "assets");
+    expect(hides, 0, reason: "choosing another sidebar is not hiding it");
+
+    await tester.tap(find.byKey(const ValueKey("sidebarHide")));
+    await tester.pump();
+    expect(hides, 1);
+    await tester.tap(find.byKey(const ValueKey("sidebarMenu")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Hide the sidebar"));
+    await tester.pumpAndSettle();
+    expect(hides, 2);
+    expect(laid.value.mode, SidebarMode.hidden,
+        reason: "the layout is as it was: where it goes is the page's to say");
+    expect(laid.value.current, "assets");
+  });
+
   group("what the settings panel needs of the sidebar it is in", () {
-    // Both were once done by a Design column the app no longer mounts, and
-    // so were done only in tests.
+    // Both were once done by a widget the app had stopped mounting, and so
+    // were done only in tests.
     testWidgets("settings as a menu is as it was left", (tester) async {
       await tester
           .runAsync(() => StorageManager.saveData("canvasSettingsMenu", true));

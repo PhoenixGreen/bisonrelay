@@ -18,10 +18,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 
 // canvas_editing_fixes_test.dart is a pass over the editor after a video was
 // made with it: several layers picked at once, the Colour section reaching
@@ -254,7 +254,7 @@ void main() {
         ]));
     addTearDown(c.dispose);
     c.pickClip("music");
-    await _show(tester, CanvasDesignPanel(controller: c), settle: false);
+    await _show(tester, designSidebar(c), settle: false);
     expect(find.byKey(const ValueKey("strip-music")), findsOneWidget,
         reason: "its channel's mixer");
   });

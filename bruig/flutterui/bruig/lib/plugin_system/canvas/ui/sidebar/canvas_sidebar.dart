@@ -40,6 +40,11 @@ class CanvasSidebar extends StatefulWidget {
   final CanvasController controller;
   final SidebarLayout layout;
   final ValueChanged<SidebarLayout> onLayout;
+
+  /// onHide puts the sidebar away. Its own callback, not a layout whose
+  /// mode is hidden: where it goes is the page's to say (a piece of sound's
+  /// sidebar is put away for the visit, and the kept layout is not touched).
+  final VoidCallback onHide;
   final SidebarPanelBodies bodies;
 
   final VoidCallback onCustomise;
@@ -53,6 +58,7 @@ class CanvasSidebar extends StatefulWidget {
     required this.controller,
     required this.layout,
     required this.onLayout,
+    required this.onHide,
     required this.bodies,
     required this.onCustomise,
     this.canSitAbove = true,
@@ -167,7 +173,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
             message: "Hide the sidebar",
             child: InkWell(
               key: const ValueKey("sidebarHide"),
-              onTap: () => _set(layout.withMode(SidebarMode.hidden)),
+              onTap: widget.onHide,
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(6), bottomLeft: Radius.circular(6)),
               child: Container(
@@ -307,7 +313,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
         ],
         onSelected: (v) => switch (v) {
           "customise" => widget.onCustomise(),
-          "hide" => _set(layout.withMode(SidebarMode.hidden)),
+          "hide" => widget.onHide(),
           _ => _set(layout.withMode(SidebarMode.fromName(v))),
         },
       );

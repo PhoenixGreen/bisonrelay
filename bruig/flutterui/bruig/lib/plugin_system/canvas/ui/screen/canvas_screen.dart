@@ -263,8 +263,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
         _sidebars.current != _holding(SidebarPanel.settings) &&
         _sidebars.current != SidebarSet.gameId &&
         // A feature's own sidebar (an assistant picking what it works on)
-        // keeps the column: see sidebar_extras.dart.
-        !CanvasSidebarExtras.isExtra(_sidebars.current)) {
+        // keeps the column while it is there: see sidebar_extras.dart.
+        CanvasSidebarExtras.byId(_sidebars.current) == null) {
       _showPanel(SidebarPanel.settings);
     }
   }
@@ -330,11 +330,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   void _setSidebars(SidebarLayout next) {
     if (!mounted) return;
-    // An audio document's sidebar is per session; a design's is kept.
-    if (_audioKind && next.mode == SidebarMode.hidden) {
-      setState(() => _audioSidebarShown = false);
-      return;
-    }
     var shows = next.byId(next.current);
     if (shows?.panels.contains(SidebarPanel.settings) == true) {
       _designUsed = true;
@@ -343,6 +338,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _controller.gameTabOpen = next.current == SidebarSet.gameId;
     _prefs.sidebars = next;
   }
+
+  /// _hideSidebar puts the sidebar away: a design's as it is kept, a piece
+  /// of sound's for this visit only (_audioSidebarShown).
+  void _hideSidebar() => _audioKind
+      ? setState(() => _audioSidebarShown = false)
+      : _setSidebars(_sidebars.withMode(SidebarMode.hidden));
 
   void _customise() =>
       showCustomiseSidebars(context, layout: _sidebars, write: _setSidebars);
@@ -547,6 +548,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       controller: _controller,
       layout: _sidebars,
       onLayout: _setSidebars,
+      onHide: _hideSidebar,
       bodies: _bodies,
       onCustomise: _customise,
       canSitAbove: _aboveAllowed,

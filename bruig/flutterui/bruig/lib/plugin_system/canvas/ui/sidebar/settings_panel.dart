@@ -1,112 +1,18 @@
-import 'package:flutter/material.dart';
-
-import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
+import 'package:flutter/material.dart';
 
-// design_panel.dart is the three things used to build a canvas, in one
-// column: what can be added, what is already there, and the selection's
-// settings. A panel stack (components/panel_stack.dart), so each panel
-// opens, shuts, resizes and moves, and all of that is remembered.
+// settings_panel.dart is the Settings panel of the sidebar: the settings of
+// whatever is selected. What they are for each selection (one element,
+// several, a clip, the background) is in element_settings_pane.dart, and
+// each kind's own panel is in ui/settings/.
 
-class CanvasDesignPanel extends StatefulWidget {
-  final CanvasController controller;
-  const CanvasDesignPanel({required this.controller, super.key});
-
-  @override
-  State<CanvasDesignPanel> createState() => _CanvasDesignPanelState();
-}
-
-class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
-  CanvasController get controller => widget.controller;
-
-  /// The three bodies, built once and handed to the stack unchanged. The
-  /// stack rebuilds on every controller notification (one per pixel of a
-  /// drag); handed the same widget instance, Flutter leaves the subtree
-  /// alone, so each body listens for what it shows and rebuilds itself.
-  late Widget _add;
-  late Widget _scenes;
-  late Widget _structure;
-  late Widget _cues;
-  late Widget _layers;
-  late Widget _settings;
-  late Widget _colour;
-
-  @override
-  void initState() {
-    super.initState();
-    _makeBodies();
-  }
-
-  @override
-  void didUpdateWidget(CanvasDesignPanel old) {
-    super.didUpdateWidget(old);
-    // Built once per controller: keeping the old bodies would leave the
-    // column bound to a document nobody is looking at.
-    if (old.controller != widget.controller) _makeBodies();
-  }
-
-  void _makeBodies() {
-    _add = CanvasElementsPanel(controller: controller);
-    _scenes = CanvasScenesPanel(controller: controller);
-    _structure = CanvasStructurePanel(controller: controller);
-    _cues = CanvasVocalCuesPanel(controller: controller);
-    _layers = CanvasLayersPanel(controller: controller);
-    _settings = SettingsPanelBody(controller: controller);
-    _colour = ColourPanel(controller: controller);
-  }
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        // The headings only (two of them describe the document), and the
-        // settings' layout, which its heading's icon shows. Through chrome:
-        // no heading changes with a drag's steps or a frame of play.
-        listenable: Listenable.merge([controller.chrome, settingsAsMenu]),
-        builder: (context, _) => _stack(context),
-      );
-
-  Widget _stack(BuildContext context) => PanelStack(
-        storageKey: "canvasDesign",
-        panels: [
-          for (var panel in designPanelIds)
-            canvasSidebarPanel(panel, controller, _body(panel)),
-        ],
-      );
-
-  Widget _body(SidebarPanel panel) => switch (panel) {
-        SidebarPanel.add => _add,
-        SidebarPanel.scenes =>
-          controller.document.kind.isAudio ? _structure : _scenes,
-        SidebarPanel.vocalCues => _cues,
-        SidebarPanel.layers => _layers,
-        SidebarPanel.colour => _colour,
-        _ => _settings,
-      };
-}
-
-/// designPanelIds are the Design column's panels, in order.
-const designPanelIds = [
-  SidebarPanel.add,
-  SidebarPanel.scenes,
-  SidebarPanel.vocalCues,
-  SidebarPanel.layers,
-  SidebarPanel.colour,
-  SidebarPanel.settings,
-];
-
-/// SettingsPanelBody is the selection's settings: its own widget with its
-/// own listener, because it is the column's most expensive body and must
-/// not rebuild when a heading elsewhere changes.
+/// SettingsPanelBody is the Settings panel's body: the selection's
+/// settings, scrolled. It listens for itself, since it is the sidebar's
+/// most expensive body and must not be built again when a heading
+/// elsewhere changes.
 class SettingsPanelBody extends StatefulWidget {
   final CanvasController controller;
   const SettingsPanelBody({required this.controller, super.key});

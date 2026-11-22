@@ -10,8 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
-// layers_panel.dart is the layer list: what is on the canvas, top to bottom,
-// as one of the Design column's panels (see design_panel.dart).
+// layers_panel.dart is the Layers panel of the sidebar: what is on the
+// canvas, top to bottom, with the background as its last row.
 
 class CanvasLayersPanel extends StatelessWidget {
   final CanvasController controller;

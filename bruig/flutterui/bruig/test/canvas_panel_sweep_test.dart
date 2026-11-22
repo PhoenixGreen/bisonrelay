@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'support/element_samples.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -13,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,7 +90,7 @@ void main() {
   for (var (name, e) in elements()) {
     testWidgets("$name's settings, narrow to wide, both text sizes",
         (tester) async {
-      await pump(tester, e, (c) => CanvasDesignPanel(controller: c),
+      await pump(tester, e, (c) => designSidebar(c),
           size: const Size(300, 9000));
       await sweepSizes(tester, sizes: const [Size(300, 9000), Size(420, 9000)]);
     });

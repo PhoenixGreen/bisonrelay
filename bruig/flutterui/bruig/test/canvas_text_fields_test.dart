@@ -1,4 +1,5 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -11,7 +12,6 @@ import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -232,12 +232,13 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("t1");
       setTestScreen(tester, const Size(1400, 1200));
-      await tester
-          .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
+      await tester.pumpWidget(canvasApp(designSidebar(controller)));
       await tester.pumpAndSettle();
 
       // Content may be folded shut: opened by its heading.
       if (find.byKey(const ValueKey("textWords")).evaluate().isEmpty) {
+        await tester.ensureVisible(find.text("Content").first);
+        await tester.pumpAndSettle();
         await tester.tap(find.text("Content").first);
         await tester.pumpAndSettle();
       }

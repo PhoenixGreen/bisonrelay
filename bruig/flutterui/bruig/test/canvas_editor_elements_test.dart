@@ -1,4 +1,5 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -16,7 +17,6 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -54,7 +54,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -224,7 +224,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
 
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       // The layer row has them.
       expect(byTip("Lock"), findsOneWidget);
@@ -246,7 +246,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("t");
 
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
       var more = find.byKey(const ValueKey("more-0-t"));
@@ -288,7 +288,7 @@ void main() {
       var (controller, _) = moving();
       addTearDown(controller.dispose);
       controller.frame = 10;
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       var x = find.byKey(const ValueKey("elementX"));
       expect(find.descendant(of: x, matching: find.text("200")), findsOneWidget,
@@ -300,7 +300,7 @@ void main() {
       var (controller, _) = moving();
       addTearDown(controller.dispose);
       controller.frame = 10;
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       await typeNumber(tester, "elementX", "500");
 
@@ -317,7 +317,7 @@ void main() {
       controller.setKeyframe(
           "s", const Keyframe(frame: 20, rotate: 90, opacity: 0.5));
       controller.frame = 20;
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(
           find.descendant(
@@ -336,7 +336,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -869,7 +869,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(image));
       addTearDown(controller.dispose);
       controller.selectOnly(image.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await openSection(tester, "image.picture.colour");
       return controller;
     }
@@ -994,7 +994,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(find.byType(Slider), findsNothing,
           reason: "no sliders left in an element's settings");
@@ -1010,7 +1010,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       var number = find.byKey(const ValueKey("elementOpacity-number"));
       await tester.ensureVisible(number);
@@ -1039,7 +1039,7 @@ void main() {
           .addElement(shape == null ? element : shape(element)));
       addTearDown(controller.dispose);
       controller.selectOnly("n");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -1277,7 +1277,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(find.byType(CanvasControlGroup), findsWidgets);
       // A card says where one group ends and the next begins; a rule under
@@ -1296,7 +1296,7 @@ void main() {
       // selected -- so it was the commonest thing on the panel.
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(find.text("BACKGROUND SETTINGS"), findsOneWidget);
       expect(find.text("BACKGROUND"), findsNothing);
@@ -1312,7 +1312,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       // Its group's name is in small capitals in the rebuilt panel.
       expect(find.textContaining(RegExp(r"points \(", caseSensitive: false)),
@@ -1332,7 +1332,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(find.text("BACKGROUND SETTINGS"), findsOneWidget,
           reason: "with nothing selected, that is what these are");
@@ -1351,7 +1351,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(find.text("SHAPE"), findsNothing,
           reason: "the group caption is gone; the header carries the name");
@@ -1370,7 +1370,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       expect(find.text("Text inside"), findsNothing);
       expect(find.text("Type text on the shape"), findsOneWidget);
@@ -1387,7 +1387,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("c");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       // Not at all in the settings themselves: the panel's header says it.
       expect(find.text("CHART"), findsNothing);
@@ -1424,7 +1424,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("i");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       if (assetId.isNotEmpty) {
         await openSection(tester, "image.picture.effects");
       }
@@ -1505,7 +1505,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("i");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await openSection(tester, "image.picture.mask");
       return controller;
     }
@@ -1668,7 +1668,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly("s");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 

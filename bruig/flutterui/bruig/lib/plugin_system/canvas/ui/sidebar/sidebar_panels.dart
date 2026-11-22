@@ -11,13 +11,13 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/cast_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/character_assets.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/files_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/game_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/settings_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
@@ -233,6 +233,10 @@ class SidebarPanelBodies {
       };
 }
 
-/// sidebarListenable is what headings follow: canvas, layout and library.
+/// sidebarListenable is what the panels' headings follow: the canvas (two
+/// are headed for the document, one for the selection), and whether the
+/// settings are sections or a menu, which their heading's icon shows.
+/// Through chrome: no heading changes with a drag's steps or a frame of
+/// play, and each panel's body listens for itself.
 Listenable sidebarListenable(CanvasController controller) =>
-    Listenable.merge([controller, settingsAsMenu, CanvasLibrary.changes]);
+    Listenable.merge([controller.chrome, settingsAsMenu]);

@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -130,7 +130,7 @@ void main() {
     var key = GlobalKey<CanvasStageState>();
     setTestScreen(tester, const Size(1600, 1400));
     await tester.pumpWidget(canvasApp(Row(children: [
-      SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
+      SizedBox(width: 420, child: designSidebar(c)),
       Expanded(child: CanvasStage(key: key, controller: c))
     ])));
     await tester.pumpAndSettle();

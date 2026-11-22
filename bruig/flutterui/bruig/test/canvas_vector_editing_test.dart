@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:math' as math;
 import 'dart:io';
 import 'dart:ui';
@@ -20,7 +21,6 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/tablet_input.dart';
@@ -308,7 +308,7 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly(e.id);
       setTestScreen(tester, const Size(1400, 1600));
-      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
       await tester.pumpAndSettle();
       return c;
     }
@@ -530,7 +530,7 @@ void main() {
         (tester) async {
       var c = await show(tester, drawing(square));
       // A sidebar's width, where the line of tools runs past its end.
-      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester.pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
       await tester.pumpAndSettle();
       var add = find.byKey(const ValueKey("vectorLayersAdd"));
       await tester.ensureVisible(add);

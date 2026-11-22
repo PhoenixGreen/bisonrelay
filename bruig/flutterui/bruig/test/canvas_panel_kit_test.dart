@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -15,7 +16,6 @@ import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -219,8 +219,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("i");
       setTestScreen(tester, const Size(900, 4000));
-      await tester.pumpWidget(
-          _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester
+          .pumpWidget(_host(SizedBox(width: 420, child: designSidebar(c))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -748,8 +748,8 @@ void main() {
       c.editImage("i", layer: "paint");
       c.imageTool = ImageTool.paint;
       setTestScreen(tester, const Size(900, 4000));
-      await tester.pumpWidget(
-          _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester
+          .pumpWidget(_host(SizedBox(width: 420, child: designSidebar(c))));
       await idle(tester);
       return c;
     }

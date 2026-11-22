@@ -21,13 +21,13 @@ import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/storage_manager.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'support/canvas_panel_helpers.dart';
 
 // canvas_editor_band_test.dart is the editor round the canvas: the settings
@@ -212,8 +212,8 @@ void main() {
       // They were a second line here as well as in both sidebar tabs, because
       // the things they belong with were in different tabs and each place kept
       // a copy to shorten the journey. Adding, the layers and the settings are
-      // one column now -- see CanvasDesignPanel -- so the band is back to
-      // being about the canvas rather than about what is on it.
+      // in one sidebar now (Design), so the band is back to being about the
+      // canvas rather than about what is on it.
       var document = const CanvasDocument();
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
@@ -283,13 +283,14 @@ void main() {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
 
-      SidebarLayout? laid;
+      var hidden = 0;
       await pump(
           tester,
           CanvasSidebar(
             controller: controller,
             layout: const SidebarLayout(current: "design"),
-            onLayout: (l) => laid = l,
+            onLayout: (_) {},
+            onHide: () => hidden++,
             bodies: SidebarPanelBodies(
               controller: controller,
               onOpen: (_, __) async {},
@@ -301,7 +302,7 @@ void main() {
           ));
       await tester.tap(byTip("Hide the sidebar"));
       await tester.pumpAndSettle();
-      expect(laid?.mode, SidebarMode.hidden);
+      expect(hidden, 1);
 
       // While it is showing, the band carries no restore control.
       await pump(tester, bar(controller));
@@ -1182,7 +1183,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       var caption = find.text("W").first;
       var field = find.byKey(const ValueKey("elementW-less"));
@@ -1486,7 +1487,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -1527,7 +1528,15 @@ void main() {
       expect(find.text("ADD"), findsOneWidget);
       expect(find.text("LAYERS"), findsOneWidget);
       // One header fewer, which is the room the tabbing bought.
-      expect(find.byType(DragTarget<PanelDrag>).evaluate().length, lessThan(8),
+      // Counted in the stack: the sidebars' icons over it are targets too.
+      expect(
+          find
+              .descendant(
+                  of: find.byType(PanelStack),
+                  matching: find.byType(DragTarget<PanelDrag>))
+              .evaluate()
+              .length,
+          lessThan(8),
           reason: "one place fewer than there are panels, and the tabs are "
               "targets too");
       // And the one dropped is the one showing.
@@ -1664,7 +1673,7 @@ void main() {
       await dropOn(tester, grip("LAYERS"), "ADD", 0.5);
 
       // Saved with those two as one place: "add+layers".
-      var saved = await StorageManager.readString("canvasDesign.order");
+      var saved = await StorageManager.readString("canvasSidebar-design.order");
       expect(saved, contains("+"));
       expect(saved.split(",").length, 5,
           reason: "one place fewer than there are panels: $saved");
@@ -1676,11 +1685,11 @@ void main() {
       // the cues are there for one scene as for many, where they were put.
       SharedPreferences.setMockInitialValues({});
       await StorageManager.saveString(
-          "canvasDesign.order", "vocalCues,add,layers,scenes,settings");
+          "canvasSidebar-design.order", "vocalCues,add,layers,scenes,settings");
 
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
 
       double topOf(String name) => tester
@@ -1700,12 +1709,12 @@ void main() {
       // "a,b,c" is three places of one, which is exactly what it was.
       SharedPreferences.setMockInitialValues({});
       await StorageManager.saveString(
-          "canvasDesign.order", "settings,layers,elements");
+          "canvasSidebar-design.order", "settings,layers,elements");
 
       var document = const CanvasDocument();
       var controller = CanvasController(document);
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
 
       double topOf(String name) => tester

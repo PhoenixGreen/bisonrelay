@@ -18,8 +18,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/audio_settings.dart';
 import 'package:flutter/material.dart';
 
-// element_settings_pane.dart is the selection's settings: the body of one
-// of the Design column's panels (see design_panel.dart).
+// element_settings_pane.dart is what the Settings panel shows for the
+// selection: one element's settings, several elements', a clip's, or the
+// background's. The panel that holds it is settings_panel.dart.
 
 /// elementSettingsBody is the settings for the selection: one element,
 /// several, or none, when it shows the background, so it is never empty. No

@@ -8,12 +8,12 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'support/canvas_audio_fake.dart';
 import 'support/temp_dirs.dart';
 
@@ -53,7 +53,7 @@ void main() {
     setTestScreen(tester, const Size(700, 9000));
     await tester.pumpWidget(canvasApp(Row(children: [
       const SizedBox(width: 340, child: ColoredBox(color: Colors.black)),
-      SizedBox(width: 360, child: CanvasDesignPanel(controller: c)),
+      SizedBox(width: 360, child: designSidebar(c)),
     ])));
     await tester.pump(const Duration(milliseconds: 200));
     return (c, e.id);

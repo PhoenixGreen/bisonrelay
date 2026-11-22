@@ -2,31 +2,30 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'reset.dart';
-import '../test/canvas_audio_document_test.dart' as t0;
+import '../test/canvas_blend_camera_test.dart' as t0;
 import '../test/canvas_character_shape_test.dart' as t1;
-import '../test/canvas_chart_bounds_test.dart' as t2;
-import '../test/canvas_chart_legend_press_test.dart' as t3;
-import '../test/canvas_chart_numbers_test.dart' as t4;
-import '../test/canvas_clip_slices_test.dart' as t5;
-import '../test/canvas_data_source_test.dart' as t6;
-import '../test/canvas_document_keeping_test.dart' as t7;
-import '../test/canvas_game_motion_test.dart' as t8;
-import '../test/canvas_levels_histogram_test.dart' as t9;
-import '../test/canvas_mixer_test.dart' as t10;
-import '../test/canvas_returns_ui_test.dart' as t11;
-import '../test/canvas_stage_spot_test.dart' as t12;
-import '../test/canvas_surround_output_test.dart' as t13;
-import '../test/canvas_text_layer_looks_test.dart' as t14;
-import '../test/canvas_text_soft_test.dart' as t15;
-import '../test/canvas_tile_map_test.dart' as t16;
-import '../test/canvas_tile_terrain_test.dart' as t17;
-import '../test/nav_groups_test.dart' as t18;
-import '../test/page_local_assets_test.dart' as t19;
-import '../test/store_screen_rebuild_test.dart' as t20;
-import '../test/writing_not_prose_test.dart' as t21;
+import '../test/canvas_clip_slices_test.dart' as t2;
+import '../test/canvas_document_test.dart' as t3;
+import '../test/canvas_edge_cleaning_test.dart' as t4;
+import '../test/canvas_instances_test.dart' as t5;
+import '../test/canvas_mix_decode_test.dart' as t6;
+import '../test/canvas_mix_dsp_test.dart' as t7;
+import '../test/canvas_mixer_test.dart' as t8;
+import '../test/canvas_panel_parts_test.dart' as t9;
+import '../test/canvas_pitch_editor_test.dart' as t10;
+import '../test/canvas_publish_test.dart' as t11;
+import '../test/canvas_returns_ui_test.dart' as t12;
+import '../test/canvas_text_soft_test.dart' as t13;
+import '../test/canvas_tile_map_test.dart' as t14;
+import '../test/canvas_vector_export_test.dart' as t15;
+import '../test/canvas_vrm_convert_test.dart' as t16;
+import '../test/plugin_settings_test.dart' as t17;
+import '../test/spellcheck_capability_test.dart' as t18;
+import '../test/writing_not_prose_test.dart' as t19;
+import '../test/writing_rule_examples_test.dart' as t20;
 
 void main() {
-  group('canvas_audio_document_test.dart', () {
+  group('canvas_blend_camera_test.dart', () {
     setUpAll(betweenFiles);
     t0.main();
   });
@@ -34,84 +33,80 @@ void main() {
     setUpAll(betweenFiles);
     t1.main();
   });
-  group('canvas_chart_bounds_test.dart', () {
+  group('canvas_clip_slices_test.dart', () {
     setUpAll(betweenFiles);
     t2.main();
   });
-  group('canvas_chart_legend_press_test.dart', () {
+  group('canvas_document_test.dart', () {
     setUpAll(betweenFiles);
     t3.main();
   });
-  group('canvas_chart_numbers_test.dart', () {
+  group('canvas_edge_cleaning_test.dart', () {
     setUpAll(betweenFiles);
     t4.main();
   });
-  group('canvas_clip_slices_test.dart', () {
+  group('canvas_instances_test.dart', () {
     setUpAll(betweenFiles);
     t5.main();
   });
-  group('canvas_data_source_test.dart', () {
+  group('canvas_mix_decode_test.dart', () {
     setUpAll(betweenFiles);
     t6.main();
   });
-  group('canvas_document_keeping_test.dart', () {
+  group('canvas_mix_dsp_test.dart', () {
     setUpAll(betweenFiles);
     t7.main();
   });
-  group('canvas_game_motion_test.dart', () {
+  group('canvas_mixer_test.dart', () {
     setUpAll(betweenFiles);
     t8.main();
   });
-  group('canvas_levels_histogram_test.dart', () {
+  group('canvas_panel_parts_test.dart', () {
     setUpAll(betweenFiles);
     t9.main();
   });
-  group('canvas_mixer_test.dart', () {
+  group('canvas_pitch_editor_test.dart', () {
     setUpAll(betweenFiles);
     t10.main();
   });
-  group('canvas_returns_ui_test.dart', () {
+  group('canvas_publish_test.dart', () {
     setUpAll(betweenFiles);
     t11.main();
   });
-  group('canvas_stage_spot_test.dart', () {
+  group('canvas_returns_ui_test.dart', () {
     setUpAll(betweenFiles);
     t12.main();
   });
-  group('canvas_surround_output_test.dart', () {
+  group('canvas_text_soft_test.dart', () {
     setUpAll(betweenFiles);
     t13.main();
   });
-  group('canvas_text_layer_looks_test.dart', () {
+  group('canvas_tile_map_test.dart', () {
     setUpAll(betweenFiles);
     t14.main();
   });
-  group('canvas_text_soft_test.dart', () {
+  group('canvas_vector_export_test.dart', () {
     setUpAll(betweenFiles);
     t15.main();
   });
-  group('canvas_tile_map_test.dart', () {
+  group('canvas_vrm_convert_test.dart', () {
     setUpAll(betweenFiles);
     t16.main();
   });
-  group('canvas_tile_terrain_test.dart', () {
+  group('plugin_settings_test.dart', () {
     setUpAll(betweenFiles);
     t17.main();
   });
-  group('nav_groups_test.dart', () {
+  group('spellcheck_capability_test.dart', () {
     setUpAll(betweenFiles);
     t18.main();
   });
-  group('page_local_assets_test.dart', () {
+  group('writing_not_prose_test.dart', () {
     setUpAll(betweenFiles);
     t19.main();
   });
-  group('store_screen_rebuild_test.dart', () {
+  group('writing_rule_examples_test.dart', () {
     setUpAll(betweenFiles);
     t20.main();
-  });
-  group('writing_not_prose_test.dart', () {
-    setUpAll(betweenFiles);
-    t21.main();
   });
 }

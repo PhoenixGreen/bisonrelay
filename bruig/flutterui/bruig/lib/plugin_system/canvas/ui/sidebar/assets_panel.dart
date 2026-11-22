@@ -3,8 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -16,57 +14,15 @@ import 'package:bruig/plugin_system/canvas/ui/picking/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/model_picking.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
-// assets_panel.dart is the Assets sidebar: the library's pictures, videos
-// and sounds, one panel each in a panel stack. An asset is clicked to put it
+// assets_panel.dart is the sidebar's panels of the library's assets:
+// pictures, videos, sounds, drawings and 3D objects, a panel for each kind
+// (AssetSection). An asset is clicked to put it
 // in the middle of the canvas, or dragged to where it is let go (a timeline
 // channel, for a sound); its name is double-clicked to rename it. Assets
 // leave the library only from here: see CanvasLibrary.
-
-class CanvasAssetsPanel extends StatefulWidget {
-  final CanvasController controller;
-  const CanvasAssetsPanel({required this.controller, super.key});
-
-  @override
-  State<CanvasAssetsPanel> createState() => _CanvasAssetsPanelState();
-}
-
-class _CanvasAssetsPanelState extends State<CanvasAssetsPanel> {
-  CanvasController get controller => widget.controller;
-  late final SidebarPanelBodies _bodies = SidebarPanelBodies(
-    controller: controller,
-    onOpen: (_, __) async {},
-    onPublish: (_, __) {},
-    onNew: (_, __) async {},
-    onChoosePreset: (_, __) {},
-  );
-
-  @override
-  Widget build(BuildContext context) => ValueListenableBuilder<int>(
-        valueListenable: CanvasLibrary.changes,
-        builder: (context, _, __) => PanelStack(
-          storageKey: "canvasAssets",
-          panels: [
-            for (var panel in assetPanelIds)
-              canvasSidebarPanel(panel, controller, _bodies.body(panel)),
-          ],
-        ),
-      );
-}
-
-/// assetPanelIds are the Assets column's panels, in order.
-const assetPanelIds = [
-  SidebarPanel.picture,
-  SidebarPanel.video,
-  SidebarPanel.audio,
-  SidebarPanel.vector,
-  SidebarPanel.model,
-  SidebarPanel.characters,
-  SidebarPanel.stock,
-];
 
 /// audioTypeOf is what kind of file stored sound [id] is: ".mid", ".mp3".
 String audioTypeOf(String id) {

@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -16,7 +17,6 @@ import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -364,7 +364,7 @@ void main() {
     testWidgets("the panel is named for what the canvases are", (tester) async {
       var controller = CanvasController(pages(2));
       addTearDown(controller.dispose);
-      await show(tester, CanvasDesignPanel(controller: controller));
+      await show(tester, designSidebar(controller));
 
       expect(find.text("PAGES"), findsWidgets);
       expect(find.text("SCENES"), findsNothing);

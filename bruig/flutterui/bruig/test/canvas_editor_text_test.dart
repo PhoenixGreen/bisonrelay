@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -12,7 +13,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,7 +47,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(text));
       addTearDown(controller.dispose);
       controller.selectOnly(text.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
       return controller;
     }
@@ -152,7 +152,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(shape));
       addTearDown(controller.dispose);
       controller.selectOnly(shape.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
 
       expect(find.text("COLOUR"), findsWidgets,
@@ -867,7 +867,7 @@ void main() {
           CanvasController(const CanvasDocument().addElement(shape));
       addTearDown(controller.dispose);
       controller.selectOnly(shape.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
 
       var kind = find.byKey(const ValueKey("shapeFillKind"));
@@ -928,7 +928,7 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.selectOnly("head");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text("No blank first line"));
       await tester.pumpAndSettle();
@@ -1026,7 +1026,7 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.selectOnly("head");
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       await tester.pumpAndSettle();
       expect(find.text("From document"), findsOneWidget,
           reason: "the box the words belong to still chooses");

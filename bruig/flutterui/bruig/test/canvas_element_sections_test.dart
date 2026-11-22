@@ -1,11 +1,11 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,7 +26,7 @@ void main() {
   Future<void> pump(WidgetTester tester, CanvasController c) async {
     SharedPreferences.setMockInitialValues({});
     setTestScreen(tester, const Size(narrow, 9000));
-    await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+    await tester.pumpWidget(canvasApp(designSidebar(c)));
     await tester.pumpAndSettle();
   }
 

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -14,7 +15,6 @@ import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_shapes.dart';
 import 'package:flutter/material.dart';
@@ -52,7 +52,7 @@ VectorElement drawing(
 }
 
 Widget panel(CanvasController c) =>
-    canvasApp(SizedBox(width: 420, child: CanvasDesignPanel(controller: c)));
+    canvasApp(SizedBox(width: 420, child: designSidebar(c)));
 
 void main() {
   // What the controls do, not where they are folded: every section open.

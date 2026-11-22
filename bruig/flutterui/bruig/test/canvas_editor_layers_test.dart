@@ -11,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
@@ -20,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'support/canvas_panel_helpers.dart';
 
 // canvas_editor_layers_test.dart is the sidebar's layers and design panels:
@@ -132,7 +132,7 @@ void main() {
       }
       var controller = CanvasController(document);
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       var first = controller.document.elements.first;
 
@@ -159,7 +159,7 @@ void main() {
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       // Nothing selected: the list, and no settings under it.
       expect(find.text("Fit to box"), findsNothing);
@@ -179,7 +179,7 @@ void main() {
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       var background = find.byType(CanvasBackgroundLayerRow);
       expect(background, findsOneWidget);
@@ -241,7 +241,7 @@ void main() {
             child: SizedBox(
               width: 280,
               height: 600,
-              child: CanvasDesignPanel(controller: controller),
+              child: designSidebar(controller),
             ),
           ),
         ),
@@ -289,7 +289,7 @@ void main() {
             child: SizedBox(
               width: 260,
               height: 800,
-              child: CanvasDesignPanel(controller: controller),
+              child: designSidebar(controller),
             ),
           ),
         ),
@@ -311,7 +311,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -388,7 +388,7 @@ void main() {
       }
       var controller = CanvasController(document);
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -482,7 +482,7 @@ void main() {
       addTearDown(controller.dispose);
       // Through the design panel, because the hint hangs off the Add panel's
       // own header now rather than off a heading inside the grid.
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       const hint = "Click to add one in the middle of the canvas, or drag it "
           "where you want it.";
@@ -523,7 +523,7 @@ void main() {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
 
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       expect(find.text(elementSettingsHint), findsNothing,
           reason: "not sitting in the column");
       expect(shown(tester), contains(elementSettingsHint));
@@ -536,7 +536,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -608,7 +608,7 @@ void main() {
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
       return controller;
     }
 
@@ -800,7 +800,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       var before =
           tester.widget<CanvasStepper>(find.byType(CanvasStepper).first);
@@ -846,7 +846,7 @@ void main() {
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller));
+      await pump(tester, designSidebar(controller));
 
       controller.replaceElement(element.withBase(x: 321), transient: true);
       await tester.pumpAndSettle();

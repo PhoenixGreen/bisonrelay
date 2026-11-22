@@ -6,7 +6,6 @@ import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:leak_tracker_flutter_testing/leak_tracker_flutter_testing.dart';
@@ -14,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'support/canvas_audio_fake.dart';
 import 'support/element_samples.dart';
 
@@ -82,7 +82,7 @@ Future<void> settings(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({});
   CanvasSection.openAll = true;
   var controller = CanvasController(everything(), audioEngine: FakeEngine({}));
-  await pumpCanvasApp(tester, CanvasDesignPanel(controller: controller),
+  await pumpCanvasApp(tester, designSidebar(controller),
       size: const Size(420, 1000));
   for (var e in controller.document.elements) {
     controller.selectOnly(e.id);

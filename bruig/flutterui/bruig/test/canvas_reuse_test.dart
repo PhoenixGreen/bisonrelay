@@ -1,4 +1,5 @@
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -8,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -47,7 +47,7 @@ TextElement _find(CanvasController c, String id) {
 
 Future<void> _panel(WidgetTester tester, CanvasController c) async {
   setTestScreen(tester, const Size(1400, 1800));
-  await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+  await tester.pumpWidget(canvasApp(designSidebar(c)));
   await tester.pumpAndSettle();
 }
 

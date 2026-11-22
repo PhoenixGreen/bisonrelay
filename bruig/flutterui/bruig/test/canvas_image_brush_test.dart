@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -20,7 +21,6 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -917,8 +917,8 @@ void main() {
     c.selectOnly("i");
     c.editImage("i", layer: "paint");
     setTestScreen(tester, const Size(900, 4000));
-    await tester.pumpWidget(canvasApp(
-        SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+    await tester
+        .pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
     await tester.pumpAndSettle();
     var undo = find.byKey(const ValueKey("strokesUndo-Paint"));
     await tester.ensureVisible(undo);

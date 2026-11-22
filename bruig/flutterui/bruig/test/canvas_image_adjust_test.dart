@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -15,7 +16,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
@@ -582,8 +582,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("i");
       setTestScreen(tester, const Size(900, 4000));
-      await tester.pumpWidget(canvasApp(
-          SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester
+          .pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
       await tester.pumpAndSettle();
       return c;
     }

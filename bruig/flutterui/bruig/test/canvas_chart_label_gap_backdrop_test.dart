@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -8,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -296,8 +296,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("c");
       setTestScreen(tester, const Size(1400, 900));
-      await tester
-          .pumpWidget(canvasApp(CanvasDesignPanel(controller: controller)));
+      await tester.pumpWidget(canvasApp(designSidebar(controller)));
       await tester.pumpAndSettle();
 
       Future<void> press(Finder what) async {

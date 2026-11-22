@@ -19,8 +19,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart' show SizedBox, GlobalKey, ValueKey;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 
 // canvas_layout_test.dart is the Layout element (layout_element.dart): a
 // box divided into cells as Panels (cuts), a Grid (tracks) or Free shapes,
@@ -386,7 +386,7 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("L");
       setTestScreen(tester, const Size(1400, 1600));
-      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
       await tester.pumpAndSettle();
       LayoutElement now() => c.document.elementById("L") as LayoutElement;
       Future<void> tap(String key) async {
@@ -612,7 +612,7 @@ void main() {
       var c = CanvasController(doc);
       addTearDown(c.dispose);
       setTestScreen(tester, const Size(1400, 1400));
-      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
       await tester.pumpAndSettle();
 
       // A cut moved and tilted, as dragging its knobs would.
@@ -649,7 +649,7 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("L");
       setTestScreen(tester, const Size(1400, 1400));
-      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
       await tester.pumpAndSettle();
       var tile = find.byKey(const ValueKey("layoutPreset-sixPanels"));
       expect(tile, findsOneWidget, reason: "shut, a scrolling line of them");
@@ -671,7 +671,7 @@ void main() {
       c.selectOnly("L");
       c.pickLayoutCell("L", "a");
       setTestScreen(tester, const Size(1400, 1400));
-      await tester.pumpWidget(canvasApp(CanvasDesignPanel(controller: c)));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
       await tester.pumpAndSettle();
       var cut = find.byKey(const ValueKey("layoutSplitDown"));
       await tester.ensureVisible(cut);

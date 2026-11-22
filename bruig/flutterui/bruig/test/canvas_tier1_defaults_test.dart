@@ -1,5 +1,6 @@
 import 'package:bruig/models/snackbar.dart';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -13,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -110,10 +110,7 @@ void main() {
             ChangeNotifierProvider<CanvasPreferences>(
                 create: (c) => CanvasPreferences()),
           ],
-          child: SizedBox(
-              width: 300,
-              height: 2400,
-              child: CanvasDesignPanel(controller: c)),
+          child: SizedBox(width: 300, height: 2400, child: designSidebar(c)),
         ),
       ),
     ));

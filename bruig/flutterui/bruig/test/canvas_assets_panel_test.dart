@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -76,7 +77,9 @@ void main() {
   Future<CanvasController> show(
       WidgetTester tester, Widget Function(CanvasController) body,
       {CanvasDocument document = const CanvasDocument(frames: 100)}) async {
-    setTestScreen(tester, const Size(1400, 900));
+    // Tall enough that each of the Assets sidebar's panels shows its first
+    // row whole.
+    setTestScreen(tester, const Size(1400, 1400));
     var c = CanvasController(document, audioEngine: FakeEngine(const {}));
     addTearDown(c.dispose);
     await tester.pumpWidget(canvasApp(body(c)));
@@ -85,7 +88,7 @@ void main() {
   }
 
   Widget sidebar(CanvasController c) =>
-      SizedBox(width: 280, child: CanvasAssetsPanel(controller: c));
+      SizedBox(width: 280, child: assetsSidebar(c));
 
   testWidgets("three sections, each with what is in the library",
       (tester) async {
@@ -126,8 +129,8 @@ void main() {
   // Audio tab showed the pictures, and Pictures showed nothing.
   testWidgets("as tabs in one row, each section shows its own", (tester) async {
     SharedPreferences.setMockInitialValues({
-      "canvasAssets.order": "picture+video+audio",
-      "canvasAssets.tab": "picture",
+      "canvasSidebar-assets.order": "picture+video+audio",
+      "canvasSidebar-assets.tab": "picture",
     });
     await show(tester, sidebar);
     await idle(tester);

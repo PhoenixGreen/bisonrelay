@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,8 +35,8 @@ void main() {
     addTearDown(() => settingsAsMenu.value = false);
     if (select != null) c.selectOnly(select);
     setTestScreen(tester, Size(900, height));
-    await tester.pumpWidget(canvasApp(
-        SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+    await tester
+        .pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
     await tester.pumpAndSettle();
     return c;
   }

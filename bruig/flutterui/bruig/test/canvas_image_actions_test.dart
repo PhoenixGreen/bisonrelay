@@ -17,12 +17,13 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_actions.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'support/canvas_panel_helpers.dart';
 
 // canvas_image_actions_test.dart covers a picture's actions: steps kept from
@@ -297,8 +298,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly(e.id);
       setTestScreen(tester, const Size(900, 4000));
-      await tester.pumpWidget(canvasApp(
-          SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await tester
+          .pumpWidget(canvasApp(SizedBox(width: 420, child: designSidebar(c))));
       await tester.pumpAndSettle();
       return c;
     }
@@ -363,7 +364,7 @@ void main() {
       file.writeAsStringSync(text.toString());
       await pumpPanel(tester, _photo("p", "photo"));
       await idle(tester);
-      var context = tester.element(find.byType(CanvasDesignPanel));
+      var context = tester.element(find.byType(CanvasSidebar));
       unawaited(importImageActionFile(context, file.path));
       await idle(tester);
       expect(find.textContaining("1 step: Teal"), findsOneWidget);
@@ -383,7 +384,7 @@ void main() {
       file.writeAsBytesSync(packImageAction("Glow", lookData(_glow())));
       await pumpPanel(tester, _photo("p", "photo"));
       await idle(tester);
-      var context = tester.element(find.byType(CanvasDesignPanel));
+      var context = tester.element(find.byType(CanvasSidebar));
       unawaited(importImageActionFile(context, file.path));
       await idle(tester);
       expect(find.textContaining("Copy of the picture"), findsOneWidget);
