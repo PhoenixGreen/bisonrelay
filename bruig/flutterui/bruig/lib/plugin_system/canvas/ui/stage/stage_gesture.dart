@@ -204,16 +204,15 @@ class _ElementsMarquee extends StageGesture {
     stage.setState(() => box = Rect.fromPoints(start, doc));
   }
 
+  /// release selects what the box takes in. The box goes with the
+  /// gesture, in the rebuild every gesture's end makes.
   @override
   void release(CanvasStageState stage, Offset at,
-      {required bool travelled, required bool clicked}) {
-    stage._selectWithin(box);
-    // The box goes with the gesture.
-    stage.setState(() {});
-  }
+          {required bool travelled, required bool clicked}) =>
+      stage._selectWithin(box);
 
   @override
-  void cancel(CanvasStageState stage) => stage.setState(() {});
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _GuideDrag is a guide line moved, or a new one pulled from a ruler.
@@ -334,17 +333,15 @@ class _FlowLinkDrag extends StageGesture {
   bool get endsRelease => true;
 
   /// release links the box to the one let go on, or unlinks it: the change
-  /// is an undo step of its own, made there.
+  /// is an undo step of its own, made there. The line goes with the
+  /// gesture.
   @override
   void release(CanvasStageState stage, Offset at,
-      {required bool travelled, required bool clicked}) {
-    stage._dropFlow(fromId, at);
-    // The line goes with the gesture.
-    stage.setState(() {});
-  }
+          {required bool travelled, required bool clicked}) =>
+      stage._dropFlow(fromId, at);
 
   @override
-  void cancel(CanvasStageState stage) => stage.setState(() {});
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _ChartLabelDrag is one of the selected chart's placed labels (its title,

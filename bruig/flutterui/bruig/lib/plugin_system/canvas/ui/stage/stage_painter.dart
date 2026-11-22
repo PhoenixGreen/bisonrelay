@@ -311,6 +311,12 @@ class StagePainter extends CustomPainter {
   final double liveStrokeRadius;
   final bool liveStrokeKeeps;
 
+  /// liveStrokeLength is how many points liveStroke had when this painter
+  /// was made. The stroke is one list, grown in place and handed to each
+  /// painter in turn, so its own length is the same in the old painter and
+  /// the new: this is what tells them apart.
+  final int liveStrokeLength;
+
   /// editingText is the id of a text element being typed into, whose words
   /// are left to the editor over the top.
   final String? editingText;
@@ -419,7 +425,8 @@ class StagePainter extends CustomPainter {
     this.selectionSkew = Offset.zero,
     required this.handleFor,
     required this.marquee,
-  }) : super(
+  }) : liveStrokeLength = liveStroke.length,
+       super(
             repaint: Listenable.merge([
           // Pictures and the background arrive after the frame that asked
           // for them, and nothing else changes then, so without these a
@@ -760,7 +767,8 @@ class StagePainter extends CustomPainter {
       old.editingItem != editingItem ||
       !identical(old.preview, preview) ||
       old.previewOn != previewOn ||
-      old.liveStroke.length != liveStroke.length ||
+      old.liveStrokeLength != liveStrokeLength ||
+      old.liveStrokeRadius != liveStrokeRadius ||
       old.liveStrokeKeeps != liveStrokeKeeps ||
       old.hoveredButton != hoveredButton ||
       old.counterTick != counterTick ||

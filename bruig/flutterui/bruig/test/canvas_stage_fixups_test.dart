@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,28 +13,42 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
+import 'package:bruig/plugin_system/canvas/model/code_timing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/code/code_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/carried_synth_cable.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_gizmo.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/marker_note.dart';
 
@@ -564,6 +581,342 @@ void main() {
       await tester.tapAt(knob);
       await tester.pump(const Duration(milliseconds: 600));
       expect(osc(c).value("level"), 0.8, reason: "two on it reset it");
+    });
+
+    testWidgets("is not made by a click on one knob and then another",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument(frames: 240),
+          audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      c.addSynthRack();
+      c.clearSelection();
+      var stage = await pump(tester, c, settle: false);
+      var dials = synthPanelOf(SynthModuleKind.osc).dials;
+      var level = stage.toStagePoint(on(osc(c), dials[2].center));
+      var mod = stage.toStagePoint(on(osc(c), dials[3].center));
+      var g = await tester.startGesture(level);
+      await tester.pump();
+      for (var i = 0; i < 6; i++) {
+        await g.moveBy(const Offset(0, 5));
+        await tester.pump();
+      }
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      var turned = osc(c).value("level");
+      expect(turned, lessThan(0.8));
+
+      await tester.tapAt(mod);
+      await tester.pump();
+      await tester.tapAt(level);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(osc(c).value("level"), turned,
+          reason: "a click on another knob first is not its double click");
+    });
+  });
+
+  group("copy, cut, paste, undo and Space in the table of keys", () {
+    /// linesFor is every line for [key] with [command] and [shift] that
+    /// always applies, outside a drawing being edited.
+    List<CanvasShortcut> linesFor(LogicalKeyboardKey key,
+            {bool command = true, bool? shift}) =>
+        [
+          for (var line in canvasShortcuts)
+            if (line.keys.contains(key) &&
+                identical(line.when, always) &&
+                line.command == command &&
+                (shift == null || line.shift == shift))
+              line,
+        ];
+
+    test("each is one line, heard on the whole page", () {
+      for (var (key, shift, held) in [
+        (LogicalKeyboardKey.keyC, null, KeyHeld.once),
+        (LogicalKeyboardKey.keyX, null, KeyHeld.once),
+        (LogicalKeyboardKey.keyV, null, KeyHeld.once),
+        (LogicalKeyboardKey.keyZ, false, KeyHeld.again),
+        (LogicalKeyboardKey.keyZ, true, KeyHeld.again),
+      ]) {
+        var lines = linesFor(key, shift: shift);
+        var what = "${key.keyLabel}${shift == true ? " with Shift" : ""}";
+        expect(lines, hasLength(1), reason: what);
+        expect(lines.single.reach, ShortcutReach.page, reason: what);
+        expect(lines.single.held, held, reason: what);
+      }
+    });
+
+    test("a drawing's own copy, cut and paste do it once a press", () {
+      for (var key in [
+        LogicalKeyboardKey.keyC,
+        LogicalKeyboardKey.keyX,
+        LogicalKeyboardKey.keyV,
+      ]) {
+        var drawing = canvasShortcuts.where((line) =>
+            line.keys.contains(key) &&
+            line.command == true &&
+            !identical(line.when, always));
+        expect(drawing.single.held, KeyHeld.once, reason: key.keyLabel);
+        expect(drawing.single.does, contains("drawing"));
+      }
+    });
+
+    test("Space plays with or without Alt wherever the page hears it", () {
+      var lines = linesFor(LogicalKeyboardKey.space, command: false);
+      expect(lines, hasLength(1));
+      expect(lines.single.reach, ShortcutReach.page);
+      expect(lines.single.alt, isNull);
+      expect(lines.single.held, KeyHeld.taken);
+    });
+  });
+
+  group("a carried synth cable's repaint", () {
+    test("follows its colour and its panel's scale", () {
+      const was = CarriedSynthCable(
+          Offset(10, 10), Offset(50, 50), Color(0xFFFF0000), 1, 1, Offset.zero);
+      const same = CarriedSynthCable(
+          Offset(10, 10), Offset(50, 50), Color(0xFFFF0000), 1, 1, Offset.zero);
+      const recoloured = CarriedSynthCable(
+          Offset(10, 10), Offset(50, 50), Color(0xFF00FF00), 1, 1, Offset.zero);
+      const resized = CarriedSynthCable(
+          Offset(10, 10), Offset(50, 50), Color(0xFFFF0000), 2, 1, Offset.zero);
+      expect(same.shouldRepaint(was), isFalse);
+      expect(recoloured.shouldRepaint(was), isTrue, reason: "its colour");
+      expect(resized.shouldRepaint(was), isTrue, reason: "its panel's scale");
+    });
+  });
+
+  group("a retouching stroke being drawn", () {
+    testWidgets("is repainted as it grows", (tester) async {
+      var document = const CanvasDocument();
+      var c = CanvasController(document.addElement(ImageElement(
+        ElementBase(
+            id: "i",
+            width: document.size.width.toDouble(),
+            height: document.size.height.toDouble()),
+        assetId: "abcdefghijklmnop",
+      )));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      c.retouch = RetouchBrush.erase;
+      var stage = await pump(tester, c);
+      var pixels = Uint8List(64 * 64 * 4)..fillRange(0, 64 * 64 * 4, 200);
+      await tester.runAsync(() async {
+        var done = Completer<ui.Image>();
+        ui.decodeImageFromPixels(
+            pixels, 64, 64, ui.PixelFormat.rgba8888, done.complete);
+        c.images.putForTest("abcdefghijklmnop", await done.future);
+      });
+      await tester.pumpAndSettle();
+
+      var g = await tester.startGesture(stage.pageRect.center);
+      await tester.pump();
+      var before = painted(tester);
+      expect(before.liveStroke, hasLength(1));
+      await g.moveBy(const Offset(40, 0));
+      await tester.pump();
+      var after = painted(tester);
+      expect(after.liveStroke.length, greaterThan(1));
+      expect(after.shouldRepaint(before), isTrue,
+          reason: "the stroke has grown, so it is drawn again");
+      await g.up();
+      await tester.pumpAndSettle();
+    });
+  });
+
+  group("a Code panel's playbar", () {
+    testWidgets("pressed, scrubs and leaves the selection as it is",
+        (tester) async {
+      var c = CanvasController(
+          const CanvasDocument(frames: 2400, frameRate: 24),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == "web"));
+      c.clearSelection();
+      var stage = await pump(tester, c);
+      var e = c.document.elements.whereType<CodeElement>().single;
+      var track =
+          codePlaybar(e, codeBoxes(e, e.bounds).bar)[CodePlayPart.track]!;
+      await tester.tapAt(stage.toStagePoint(track.center));
+      await tester.pumpAndSettle();
+      expect(c.frame, greaterThan(0), reason: "it scrubbed");
+      expect(c.selection, isEmpty, reason: "it plays, as its buttons do");
+      settled(stage, c, "let go");
+    });
+  });
+
+  group("controls on an element its motion has moved", () {
+    /// moved is [e] with a move that takes it 300 to the right by frame 20
+    /// and holds it there.
+    T moved<T extends CanvasElement>(T e) => e.withBase(
+            track: ElementTrack(const [
+          Keyframe(frame: 0),
+          Keyframe(frame: 20, dx: 300),
+        ])) as T;
+
+    /// shown is a stage of [e], moved, at frame 20, and where it is drawn.
+    Future<(CanvasController, CanvasStageState, Rect)> shown(
+        WidgetTester tester, CanvasElement e) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 240, elements: [moved(e)]),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.frame = 20;
+      var stage = await pump(tester, c);
+      var drawn = e.bounds.shift(const Offset(300, 0));
+      return (c, stage, drawn);
+    }
+
+    testWidgets("a metronome's button", (tester) async {
+      const e = MetronomeElement(
+          ElementBase(id: "m", x: 100, y: 100, width: 200, height: 320),
+          bpm: 100);
+      var (c, stage, drawn) = await shown(tester, e);
+      var (s, at) = metronomeFit(drawn);
+      var faster = metronomeLayout.buttons[MetronomePart.faster]!.center;
+      await tester.tapAt(stage.toStagePoint(at + faster * s));
+      await tester.pumpAndSettle();
+      expect((c.document.elementById("m")! as MetronomeElement).bpm, 104);
+    });
+
+    testWidgets("a play task's step", (tester) async {
+      const e = PlayTaskElement(
+          ElementBase(id: "p", x: 100, y: 100, width: 600, height: 400),
+          checks: [
+            PlayCheck(PlayCheckKind.self, "Say the finger numbers"),
+          ]);
+      var (c, stage, drawn) = await shown(tester, e);
+      var row = playTaskLayout(e, e.width).rows[0].center;
+      await tester.tapAt(stage.toStagePoint(drawn.topLeft + row));
+      await tester.pumpAndSettle();
+      expect(c.playTaskShowFor(e).done, [true]);
+    });
+
+    testWidgets("a synth task's button: a drag on it does not move the card",
+        (tester) async {
+      const e = SynthTaskElement(
+          ElementBase(id: "s", x: 100, y: 100, width: 210, height: 200));
+      var (c, stage, drawn) = await shown(tester, e);
+      var before = c.document.elementById("s");
+      var hear = synthTaskLayout(e, null).hear.center;
+      await drag(
+          tester,
+          stage.toStagePoint(drawn.topLeft + hear * synthTaskScale(drawn)),
+          const Offset(0, 80));
+      expect(c.document.elementById("s"), before);
+      expect(c.selection, {"s"}, reason: "the button picks its card");
+    });
+
+    testWidgets("a code task's button: a drag on it does not move the card",
+        (tester) async {
+      const e = CodeTaskElement(
+          ElementBase(id: "t", x: 100, y: 100, width: 400, height: 300));
+      var (c, stage, drawn) = await shown(tester, e);
+      var before = c.document.elementById("t");
+      var button = codeTaskLayout(e, e.width).button.shift(drawn.topLeft);
+      await drag(
+          tester, stage.toStagePoint(button.center), const Offset(0, 80));
+      expect(c.document.elementById("t"), before);
+    });
+
+    /// lesson is a Code lesson whose Code panel has been moved, at frame 20:
+    /// its Run panel taken away, as the move takes the Code panel over it.
+    Future<(CanvasController, CanvasStageState, CodeElement Function())> lesson(
+        WidgetTester tester) async {
+      var c = CanvasController(
+          const CanvasDocument(frames: 2400, frameRate: 24),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == "web"));
+      c.deleteElement(
+          c.document.elements.whereType<CodeRunElement>().single.id);
+      c.clearSelection();
+      CodeElement code() => c.document.elements.whereType<CodeElement>().single;
+      c.replaceElement(moved(code()));
+      c.frame = 20;
+      var stage = await pump(tester, c);
+      return (c, stage, code);
+    }
+
+    testWidgets("a Code panel's tab, carried to another pane", (tester) async {
+      var (c, stage, code) = await lesson(tester);
+      var e = code();
+      var b = codeBoxes(e, e.bounds.shift(const Offset(300, 0)));
+      var from = stage.toStagePoint(b.panes[2].tabs.single.rect.center);
+      var row = b.panes[1].tabRow;
+      var to = stage.toStagePoint(Offset(row.right - 10, row.center.dy));
+      await drag(tester, from, to - from);
+      expect(code().panes[2].tabs, isEmpty);
+    });
+
+    testWidgets("a Code panel's divider, dragged", (tester) async {
+      var (c, stage, code) = await lesson(tester);
+      var e = code();
+      // Between columns: a row divider moved sideways is still on its line.
+      var d = codeBoxes(e, e.bounds.shift(const Offset(300, 0)))
+          .dividers
+          .firstWhere((d) => d.columns);
+      var was = e.columns;
+      await drag(tester, stage.toStagePoint(d.hit.center), const Offset(80, 0));
+      var columns = code().columns;
+      expect(columns[0] / (columns[0] + columns[1]),
+          greaterThan(was[0] / (was[0] + was[1]) + 0.02));
+      expect(code().x, e.x, reason: "the panel did not move");
+    });
+
+    testWidgets("a Code panel's code, clicked, opens where it is drawn",
+        (tester) async {
+      var (c, stage, code) = await lesson(tester);
+      var e = code();
+      var drawn = e.bounds.shift(const Offset(300, 0));
+      var pane = codeBoxes(e, drawn).panes[0].code;
+      await tester.tapAt(stage.toStagePoint(pane.center));
+      await tester.pumpAndSettle();
+      expect(c.codeEditing, (e.id, 0));
+      var editor = tester.widget<CodePaneEditor>(find.byType(CodePaneEditor));
+      expect(editor.rect.center.dx,
+          closeTo(stage.toStagePoint(pane.center).dx, 1));
+    });
+
+    testWidgets("a Code panel's playbar, scrubbed", (tester) async {
+      var (c, stage, code) = await lesson(tester);
+      var e = code();
+      var drawn = e.bounds.shift(const Offset(300, 0));
+      var track = codePlaybar(e, codeBoxes(e, drawn).bar)[CodePlayPart.track]!;
+      var end = lessonSpan(e)!.$2;
+      await tester.tapAt(stage
+          .toStagePoint(Offset(track.left + track.width / 2, track.center.dy)));
+      await tester.pumpAndSettle();
+      expect(c.frame / 24, closeTo(end / 2, 0.1));
+    });
+  });
+
+  group("a reused Code panel's copy", () {
+    // The press is tested against the panel's own place, so on a copy away
+    // from it the code is not pressed. Testing it against the copy's place
+    // alone would open the editor over the panel, not the copy: the editor
+    // has to be told which copy it is on first.
+    testWidgets("a still press on the copy's code lands on its pane",
+        skip: true, (tester) async {
+      var c = CanvasController(
+          const CanvasDocument(frames: 2400, frameRate: 24),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == "web"));
+      c.clearSelection();
+      CodeElement code() => c.document.elements.whereType<CodeElement>().single;
+      var e = code();
+      var away = e.width + 40;
+      c.replaceElement(e.withBase(
+          motion: ElementMotion(
+              instances: InstanceSet(items: [
+        const ElementInstance("i0"),
+        ElementInstance("i1", dx: away),
+      ]))));
+      var stage = await pump(tester, c);
+      var pane =
+          codeBoxes(e, e.bounds.shift(Offset(away, 0))).panes[0].code.center;
+      await tester.tapAt(stage.toStagePoint(pane));
+      await tester.pumpAndSettle();
+      expect(c.codeEditing, (e.id, 0));
     });
   });
 }

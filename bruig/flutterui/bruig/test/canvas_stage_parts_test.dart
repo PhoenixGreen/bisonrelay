@@ -89,7 +89,8 @@ void main() {
     test("a chart with no area is not dragged", () {
       var e = ChartElement(const ElementBase(id: "c", width: 0, height: 100),
           title: "Title", floatingLabels: true);
-      var grab = ChartLabelGrab(ChartLabelPart.title, false, Offset.zero);
+      var grab =
+          ChartLabelGrab(ChartLabelPart.title, Offset.zero, resizing: false);
       expect(
           chartLabelDragged(e, e.bounds, grab, const Offset(10, 10)), isNull);
     });
@@ -97,15 +98,16 @@ void main() {
     test("moving a label inside the box writes its place as fractions", () {
       var e = _chart();
       var b = e.bounds;
-      var grab =
-          ChartLabelGrab(ChartLabelPart.title, false, const Offset(5, 5));
+      var grab = ChartLabelGrab(ChartLabelPart.title, const Offset(5, 5),
+          resizing: false);
       var doc = b.topLeft + const Offset(65, 39);
       var next = chartLabelDragged(e, b, grab, doc)!;
       expect(next.titleBox.x, closeTo(60 / b.width, 1e-9));
       expect(next.titleBox.y, closeTo(34 / b.height, 1e-9));
       expect(next.bounds, b);
 
-      var keyGrab = ChartLabelGrab(ChartLabelPart.legend, false, Offset.zero);
+      var keyGrab =
+          ChartLabelGrab(ChartLabelPart.legend, Offset.zero, resizing: false);
       var moved =
           chartLabelDragged(e, b, keyGrab, b.topLeft + const Offset(30, 34))!;
       expect(moved.legend.x, closeTo(30 / b.width, 1e-9));
@@ -116,7 +118,8 @@ void main() {
     test("a label dragged off the side grows the box and leaves the plot", () {
       var e = _chart();
       var b = e.bounds;
-      var grab = ChartLabelGrab(ChartLabelPart.title, false, Offset.zero);
+      var grab =
+          ChartLabelGrab(ChartLabelPart.title, Offset.zero, resizing: false);
       var next =
           chartLabelDragged(e, b, grab, b.topRight + const Offset(-100, 20))!;
       expect(next.x, e.x);
@@ -133,7 +136,8 @@ void main() {
     test("resizing past the label's smallest stops there", () {
       var e = _chart();
       var b = e.bounds;
-      var grab = ChartLabelGrab(ChartLabelPart.title, true, Offset.zero);
+      var grab =
+          ChartLabelGrab(ChartLabelPart.title, Offset.zero, resizing: true);
       var next =
           chartLabelDragged(e, b, grab, b.topLeft - const Offset(50, 50))!;
       expect(next.titleBox.width, closeTo(0.05, 1e-9));
@@ -172,6 +176,20 @@ void main() {
     test("a table with no width is not dragged", () {
       var e = _table(width: 0);
       expect(tableColumnDragged(e, e.bounds, 0, const Offset(10, 10)), isNull);
+    });
+
+    test("the widths measured for the painter are not written into", () {
+      // Sized to its words, so its widths are the painter's kept answer.
+      var e = TableElement(const ElementBase(id: "m", width: 300, height: 120),
+          rows: const [
+            ["a", "a longer cell", "c"],
+            ["d", "e", "f"],
+          ]);
+      var before = [...tableColumnWidths(e, e.bounds)];
+      var next = tableColumnDragged(
+          e, e.bounds, 0, Offset(before[0] + 30, e.bounds.center.dy))!;
+      expect(next.columnWidths[0] * 300, closeTo(before[0] + 30, 1e-9));
+      expect(tableColumnWidths(e, e.bounds), before);
     });
   });
 

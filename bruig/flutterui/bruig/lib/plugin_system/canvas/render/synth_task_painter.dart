@@ -147,10 +147,12 @@ void _button(ui.Canvas canvas, Rect r, String label, bool on) {
 enum SynthTaskButton { hear, check }
 
 /// synthTaskButtonAt is the button of [e] under [point], in document
-/// space.
-SynthTaskButton? synthTaskButtonAt(SynthTaskElement e, Offset point) {
-  var s = synthTaskScale(e.bounds);
-  var q = (point - e.bounds.topLeft) / s;
+/// space, with [e] drawn in [box] when that is not its resting place.
+SynthTaskButton? synthTaskButtonAt(SynthTaskElement e, Offset point,
+    {Rect? box}) {
+  var drawn = box ?? e.bounds;
+  var s = synthTaskScale(drawn);
+  var q = (point - drawn.topLeft) / s;
   var l = synthTaskLayout(e, null);
   if (l.hear.contains(q)) return SynthTaskButton.hear;
   if (l.check.contains(q)) return SynthTaskButton.check;

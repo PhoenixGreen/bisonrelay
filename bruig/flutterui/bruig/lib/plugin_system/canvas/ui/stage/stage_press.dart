@@ -454,8 +454,11 @@ extension StagePress on CanvasStageState {
     // A synth module's controls answer a press picked or not, as a rack's
     // do; its panel picks and moves it.
     if (element is SynthModuleElement && _pressSynth(element, doc)) return true;
+    // Each of these is pressed where it is drawn now (StageHitTest.posed),
+    // which its motion may have taken away from its resting place.
     if (element is MetronomeElement) {
-      if (metronomePartAt(element, doc) case var part?) {
+      if (metronomePartAt(element, doc, box: _hit.posed(element))
+          case var part?) {
         _pressMetronome(element, part);
         _mode = _DragMode.none;
         return true;
@@ -469,14 +472,16 @@ extension StagePress on CanvasStageState {
     if (element is PlayTaskElement && _pressPlayTask(element, doc)) {
       return true;
     }
-    if (element is CodeTaskElement && codeTaskButtonAt(element, doc)) {
+    if (element is CodeTaskElement &&
+        codeTaskButtonAt(element, doc, box: _hit.posed(element))) {
       controller.selectAlone(element.id);
       controller.checkCodeTask(element);
       _mode = _DragMode.none;
       return true;
     }
     if (element is SynthTaskElement) {
-      if (synthTaskButtonAt(element, doc) case var b?) {
+      if (synthTaskButtonAt(element, doc, box: _hit.posed(element))
+          case var b?) {
         _pressSynthTask(element, b);
         _mode = _DragMode.none;
         return true;

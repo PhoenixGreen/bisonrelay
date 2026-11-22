@@ -14,11 +14,17 @@ extension StageCodeControls on CanvasStageState {
   /// to move it; its cross closing it; a listed file opened in the pane last
   /// pressed; a pane divider dragged; a press on the code armed on [press]
   /// to open it for typing. False on the panel itself, to pick and move it.
+  /// Each part is where it is drawn now, which a motion may have moved, as
+  /// in the other steps here.
   bool _pressCode(_Press press, CodeElement e) {
-    var hit = codeHitAt(e, press.doc);
+    var hit = codeHitAt(e, press.doc, box: _hit.posed(e));
     if (hit == null) return false;
     switch (hit) {
-      // Its playbar works picked or not; the track is dragged to scrub.
+      // Its playbar works picked or not, and leaves the selection as it is,
+      // unlike the tabs and dividers, which edit the panel and so pick it:
+      // it plays the lesson, as a player's buttons do, and picking the panel
+      // would rebuild the page round the stage on every press (see "Full
+      // code" in canvas_code_stage_test.dart). The track is dragged to scrub.
       case CodePlayHit(part: CodePlayPart.play):
         controller.playCode(e);
         _mode = _DragMode.none;
@@ -122,7 +128,7 @@ extension StageCodeControls on CanvasStageState {
   /// [doc] is.
   void _scrubCode(String id, Offset doc) {
     if (document.elementById(id) case CodeElement e) {
-      controller.seekCode(codeTrackSeconds(e, doc));
+      controller.seekCode(codeTrackSeconds(e, doc, box: _hit.posed(e)));
     }
   }
 
@@ -130,7 +136,8 @@ extension StageCodeControls on CanvasStageState {
   /// Transient: the drag is one undo step.
   void _dragCodeDivider(String id, CodeDividerBox divider, Offset doc) {
     if (document.elementById(id) case CodeElement e) {
-      controller.replaceElement(codeDividerDragged(e, divider, doc),
+      controller.replaceElement(
+          codeDividerDragged(e, divider, doc, box: _hit.posed(e)),
           transient: true);
     }
   }
@@ -150,14 +157,13 @@ extension StageCodeControls on CanvasStageState {
   /// away, neither.
   void _dropCodeTab(_CodeTabCarry tab, {Offset? at}) {
     var carried = tab.carriedTo != null;
-    setState(() {});
     var e = document.elementById(tab.codeId);
     if (e is! CodeElement || at == null) return;
     if (!carried) {
       controller.showCodeTab(e, tab.pane, tab.file);
       return;
     }
-    if (codeTabDrop(e, at) case (var to, var index)?) {
+    if (codeTabDrop(e, at, box: _hit.posed(e)) case (var to, var index)?) {
       controller.moveCodeTab(e, tab.file, tab.pane, to, index);
     }
   }
@@ -175,8 +181,9 @@ extension StageCodeControls on CanvasStageState {
     if (f == null) return const [];
     var theme = Theme.of(context);
     var out = <Widget>[];
-    if (codeTabDrop(e, at) case (var pane, var index)?) {
-      var b = codeBoxes(e, e.bounds).panes[pane];
+    var box = _hit.posed(e);
+    if (codeTabDrop(e, at, box: box) case (var pane, var index)?) {
+      var b = codeBoxes(e, box).panes[pane];
       var x = b.tabs.isEmpty
           ? b.tabRow.left + e.fontSize * 0.3
           : index < b.tabs.length
@@ -220,7 +227,7 @@ extension StageCodeControls on CanvasStageState {
     var e = document.elementById(id);
     if (e is! CodeElement) return null;
     var file = controller.codeShownFile(e, pane);
-    var rect = codeEditorRect(e, pane);
+    var rect = codeEditorRect(e, pane, box: _hit.posed(e));
     if (file == null || rect == null) return null;
     return CodePaneEditor(
       key: ValueKey("codeEditing-$id-$pane-$file"),
@@ -323,14 +330,13 @@ class _CodeScrub extends StageGesture {
   @override
   bool get endsRelease => true;
 
-  /// release rebuilds the stage, which no longer draws a scrub under way.
+  /// release has nothing left to do: the scrub is made as it goes.
   @override
   void release(CanvasStageState stage, Offset at,
-          {required bool travelled, required bool clicked}) =>
-      stage.setState(() {});
+      {required bool travelled, required bool clicked}) {}
 
   @override
-  void cancel(CanvasStageState stage) => stage.setState(() {});
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _CodeDividerDrag is the line between two of a Code panel's panes
@@ -356,14 +362,13 @@ class _CodeDividerDrag extends StageGesture {
   @override
   bool get endsRelease => true;
 
-  /// release rebuilds the stage, which no longer draws a drag under way.
+  /// release has nothing left to do: the drag is made as it goes.
   @override
   void release(CanvasStageState stage, Offset at,
-          {required bool travelled, required bool clicked}) =>
-      stage.setState(() {});
+      {required bool travelled, required bool clicked}) {}
 
   @override
-  void cancel(CanvasStageState stage) => stage.setState(() {});
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _CodeTabCarry is a Code panel's tab pressed: let go without being

@@ -31,6 +31,8 @@ class CarriedSynthCable extends CustomPainter {
   bool shouldRepaint(CarriedSynthCable old) =>
       old.jack != jack ||
       old.at != at ||
+      old.colour != colour ||
+      old.panelScale != panelScale ||
       old.scale != scale ||
       old.origin != origin;
 }

@@ -61,9 +61,10 @@ final MetronomeLayout metronomeLayout = () {
   );
 }
 
-/// metronomePartAt is the button of [e] under [point], or null.
-MetronomePart? metronomePartAt(MetronomeElement e, Offset point) {
-  var (s, at) = metronomeFit(e.bounds);
+/// metronomePartAt is the button of [e] under [point], or null, with [e]
+/// drawn in [box] when that is not its resting place.
+MetronomePart? metronomePartAt(MetronomeElement e, Offset point, {Rect? box}) {
+  var (s, at) = metronomeFit(box ?? e.bounds);
   var q = (point - at) / s;
   for (var MapEntry(:key, :value) in metronomeLayout.buttons.entries) {
     if (value.inflate(2).contains(q)) return key;

@@ -158,7 +158,9 @@ CanvasShortcut? _lineFor(
 /// keyboard.
 final List<CanvasShortcut> canvasShortcuts = [
   // While a drawing is edited, Command A, C, X and V act on its points, and
-  // with none picked do nothing: never the whole drawing.
+  // with none picked do nothing: never the whole drawing. Copy, cut and
+  // paste are once a press, as the page's are: held, paste would paste
+  // again and again.
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyA],
       command: true,
@@ -168,36 +170,24 @@ final List<CanvasShortcut> canvasShortcuts = [
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyC],
       command: true,
+      held: KeyHeld.once,
       when: _drawing,
       does: "Copy the drawing's picked points",
       act: (c, _) => c.copyVectorPoints()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyX],
       command: true,
+      held: KeyHeld.once,
       when: _drawing,
       does: "Cut the drawing's picked points",
       act: (c, _) => c.cutVectorPoints()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyV],
       command: true,
+      held: KeyHeld.once,
       when: _drawing,
       does: "Paste points into the drawing",
       act: (c, _) => c.pasteVectorPoints()),
-  CanvasShortcut(
-      keys: const [LogicalKeyboardKey.keyC],
-      command: true,
-      does: "Copy",
-      act: (c, _) => c.copySelected()),
-  CanvasShortcut(
-      keys: const [LogicalKeyboardKey.keyX],
-      command: true,
-      does: "Cut",
-      act: (c, _) => c.cutSelected()),
-  CanvasShortcut(
-      keys: const [LogicalKeyboardKey.keyV],
-      command: true,
-      does: "Paste",
-      act: (c, _) => c.paste()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyD],
       command: true,
@@ -208,18 +198,6 @@ final List<CanvasShortcut> canvasShortcuts = [
       command: true,
       does: "Select every element",
       act: (c, _) => c.selectAll()),
-  CanvasShortcut(
-      keys: const [LogicalKeyboardKey.keyZ],
-      command: true,
-      shift: false,
-      does: "Undo",
-      act: (c, _) => c.undo()),
-  CanvasShortcut(
-      keys: const [LogicalKeyboardKey.keyZ],
-      command: true,
-      shift: true,
-      does: "Redo",
-      act: (c, _) => c.redo()),
 
   // The arrows: a warp grid's picked points; else the selection, or the
   // frame with nothing selected, Alt asking for the other one. Shift is ten
@@ -280,12 +258,6 @@ final List<CanvasShortcut> canvasShortcuts = [
       when: _onStage,
       does: "3D stage: reset the camera",
       act: (c, _) => c.resetCamera()),
-
-  CanvasShortcut(
-      keys: const [LogicalKeyboardKey.space],
-      held: KeyHeld.taken,
-      does: "Play or stop",
-      act: (c, _) => c.togglePlay()),
 
   // Delete takes the smallest thing picked: a picture's layer, picked
   // copies, a text's picture piece, a Layout's cell, then the selection.
@@ -456,13 +428,15 @@ final List<CanvasShortcut> canvasShortcuts = [
       does: "Step the frame: left and right one, up and down ten",
       act: (c, e) => c.stepFrame(_frames(e))),
 
-  // Anywhere on the page. Copy, paste, undo and Delete here are for when
-  // the canvas does not have the keyboard: after a click on the timeline, a
-  // picked sound is copied, pasted on its channel at the playhead, or
-  // deleted.
+  // Anywhere on the page, the canvas, play bar and timeline included, each
+  // after their own lines: Space, copy, cut, paste, undo and redo are the
+  // same wherever the keyboard is. What is copied, cut or deleted is the
+  // selection on the canvas and what is picked on the timeline together:
+  // after a click on the timeline, a picked sound is copied, pasted on its
+  // channel at the playhead, or deleted. Copy, cut and paste are once a
+  // press; undo and redo go on while held, stepping back or on.
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.space],
-      alt: false,
       held: KeyHeld.taken,
       reach: ShortcutReach.page,
       does: "Play or stop",
@@ -472,27 +446,26 @@ final List<CanvasShortcut> canvasShortcuts = [
       command: true,
       held: KeyHeld.once,
       reach: ShortcutReach.page,
-      does: "Copy",
+      does: "Copy the selection and the clips picked on the timeline",
       act: (c, _) => c.copySelected()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyX],
       command: true,
       held: KeyHeld.once,
       reach: ShortcutReach.page,
-      does: "Cut",
+      does: "Cut the selection and the clips picked on the timeline",
       act: (c, _) => c.cutSelected()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyV],
       command: true,
       held: KeyHeld.once,
       reach: ShortcutReach.page,
-      does: "Paste",
+      does: "Paste what was copied",
       act: (c, _) => c.paste()),
   CanvasShortcut(
       keys: const [LogicalKeyboardKey.keyZ],
       command: true,
       shift: false,
-      held: KeyHeld.once,
       reach: ShortcutReach.page,
       does: "Undo",
       act: (c, _) => c.undo()),
@@ -500,7 +473,6 @@ final List<CanvasShortcut> canvasShortcuts = [
       keys: const [LogicalKeyboardKey.keyZ],
       command: true,
       shift: true,
-      held: KeyHeld.once,
       reach: ShortcutReach.page,
       does: "Redo",
       act: (c, _) => c.redo()),

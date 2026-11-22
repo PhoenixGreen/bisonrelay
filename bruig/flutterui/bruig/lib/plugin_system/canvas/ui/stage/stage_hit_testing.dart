@@ -288,7 +288,8 @@ extension StageHitTesting on CanvasStageState {
   (String, int)? _codePaneAt(Offset doc) {
     var e = _hitElement(doc);
     if (e is CodeElement && controller.codeEditing == null) {
-      if (codeHitAt(e, doc) case CodePaneHit(:var pane, inTabs: false)) {
+      if (codeHitAt(e, doc, box: _hit.posed(e))
+          case CodePaneHit(:var pane, inTabs: false)) {
         return (e.id, pane);
       }
     }

@@ -17,13 +17,15 @@ import 'package:flutter/painting.dart';
 /// whether by its body or its corner.
 class ChartLabelGrab {
   final ChartLabelPart part;
+
+  /// resizing is whether it was taken by its corner, to size it.
   final bool resizing;
 
   /// grab is where in the label the pointer took hold, in document units, so
   /// the label does not jump under the pointer.
   final Offset grab;
 
-  const ChartLabelGrab(this.part, this.resizing, this.grab);
+  const ChartLabelGrab(this.part, this.grab, {required this.resizing});
 }
 
 /// chartLabelGrabAt is which label a document point lands on, if any, in
@@ -38,10 +40,10 @@ ChartLabelGrab? chartLabelGrabAt(
     if (rect == null || rect.isEmpty) continue;
     if (part != ChartLabelPart.legend &&
         (doc - rect.bottomRight).distance <= slop) {
-      return ChartLabelGrab(part, true, doc - rect.bottomRight);
+      return ChartLabelGrab(part, doc - rect.bottomRight, resizing: true);
     }
     if (rect.contains(doc)) {
-      return ChartLabelGrab(part, false, doc - rect.topLeft);
+      return ChartLabelGrab(part, doc - rect.topLeft, resizing: false);
     }
   }
   return null;
@@ -169,8 +171,9 @@ TableElement? tableColumnDragged(
     TableElement e, Rect bounds, int at, Offset doc) {
   if (bounds.width <= 0) return null;
 
-  // From the measured widths, so a drag starts from the table as it looks.
-  var widths = tableColumnWidths(e, bounds);
+  // From the measured widths, so a drag starts from the table as it looks. A
+  // copy: the painter keeps the list it measured, and draws from it again.
+  var widths = [...tableColumnWidths(e, bounds)];
   if (at + 1 >= widths.length) return null;
 
   var pair = widths[at] + widths[at + 1];

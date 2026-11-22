@@ -975,9 +975,11 @@ class CodePaneHit extends CodeHit {
   const CodePaneHit(this.pane, {this.inTabs = false});
 }
 
-/// codeHitAt is what of [e] is at [point] on the page, or null.
-CodeHit? codeHitAt(CodeElement e, Offset point) {
-  var b = codeBoxes(e, e.bounds);
+/// codeHitAt is what of [e] is at [point] on the page, or null. [box] is
+/// where [e] is drawn, when its motion has moved it from its resting place;
+/// it means the same in the functions below that take one.
+CodeHit? codeHitAt(CodeElement e, Offset point, {Rect? box}) {
+  var b = codeBoxes(e, box ?? e.bounds);
   for (var MapEntry(:key, :value) in codePlaybar(e, b.bar).entries) {
     var reach = value.inflate(e.fontSize * 0.2);
     if (!reach.contains(point)) continue;
@@ -1006,8 +1008,8 @@ CodeHit? codeHitAt(CodeElement e, Offset point) {
 
 /// codeTabDrop is where a tab dropped at [point] goes: the pane, and the
 /// place among its tabs; null off the panes.
-(int, int)? codeTabDrop(CodeElement e, Offset point) {
-  var b = codeBoxes(e, e.bounds);
+(int, int)? codeTabDrop(CodeElement e, Offset point, {Rect? box}) {
+  var b = codeBoxes(e, box ?? e.bounds);
   for (var p in b.panes) {
     if (!p.rect.contains(point)) continue;
     if (!p.tabRow.contains(point)) return (p.index, p.tabs.length);
@@ -1019,8 +1021,9 @@ CodeHit? codeHitAt(CodeElement e, Offset point) {
 
 /// codeDividerDragged is [e] with divider [d] moved to [point]: the two
 /// panes either side of it shared out again, neither under an eighth.
-CodeElement codeDividerDragged(CodeElement e, CodeDividerBox d, Offset point) =>
-    codeDividerDraggedIn(e, d, point, codeBoxes(e, e.bounds).panesArea);
+CodeElement codeDividerDragged(CodeElement e, CodeDividerBox d, Offset point,
+        {Rect? box}) =>
+    codeDividerDraggedIn(e, d, point, codeBoxes(e, box ?? e.bounds).panesArea);
 
 /// codeDividerDraggedIn is the same in [area] (the Code Studio's pixels).
 CodeElement codeDividerDraggedIn(
@@ -1043,16 +1046,16 @@ CodeElement codeDividerDraggedIn(
 
 /// codeEditorRect is where the stage's editor covers pane [pane]'s code
 /// (past its line numbers), and the scroll it opens at.
-Rect? codeEditorRect(CodeElement e, int pane) {
-  var b = codeBoxes(e, e.bounds);
+Rect? codeEditorRect(CodeElement e, int pane, {Rect? box}) {
+  var b = codeBoxes(e, box ?? e.bounds);
   if (pane < 0 || pane >= b.panes.length) return null;
   return b.panes[pane].code;
 }
 
 /// codeTrackSeconds is where on [e]'s playbar track [point] is, in the
 /// scene's seconds, held to the track: for a drag along it.
-double codeTrackSeconds(CodeElement e, Offset point) {
-  var t = codePlaybar(e, codeBoxes(e, e.bounds).bar)[CodePlayPart.track];
+double codeTrackSeconds(CodeElement e, Offset point, {Rect? box}) {
+  var t = codePlaybar(e, codeBoxes(e, box ?? e.bounds).bar)[CodePlayPart.track];
   var end = lessonSpan(e)?.$2 ?? 0;
   if (t == null) return 0;
   return end * ((point.dx - t.left) / t.width).clamp(0.0, 1.0);

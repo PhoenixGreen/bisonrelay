@@ -306,10 +306,12 @@ class CanvasStageState extends State<CanvasStage>
   DateTime _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _doubleClickWindow = Duration(milliseconds: 400);
 
-  /// _lastKnobClickAt is the last press on a synth module's knob, for the
-  /// double click that puts it back to its start. It is the knob's own, so
-  /// a click on an element and then on a knob is not taken for one.
-  DateTime _lastKnobClickAt = DateTime.fromMillisecondsSinceEpoch(0);
+  /// _lastKnobClick is the last press on a synth module's knob, which
+  /// knob (its module's id and its key) and when, for the double click that
+  /// puts it back to its start. It is the knobs' own, so a click on an
+  /// element and then on a knob is not taken for one, and it names the
+  /// knob, so a click on one knob and then another is not either.
+  ({String module, String knob, DateTime at})? _lastKnobClick;
 
   /// _lastVectorClick is the last press on a drawing, for its double-click.
   Offset _lastVectorClick = Offset.infinite;

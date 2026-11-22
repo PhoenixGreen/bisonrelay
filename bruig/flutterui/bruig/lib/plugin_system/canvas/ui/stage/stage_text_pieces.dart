@@ -140,7 +140,8 @@ extension StageTextPieces on CanvasStageState {
   /// again, if the press is on one. Not a text piece, but as small a thing
   /// pressed inside an element. Answers whether it was taken.
   bool _pressPlayTask(PlayTaskElement e, Offset doc) {
-    var at = doc - e.bounds.topLeft;
+    // From where it is drawn now, which its motion may have moved.
+    var at = doc - _hit.posed(e).topLeft;
     var show = controller.playTaskShowFor(e);
     if (playTaskAgainAt(e, at, show)) {
       controller.startPlayTaskAgain(e);

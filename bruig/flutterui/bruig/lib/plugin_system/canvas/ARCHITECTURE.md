@@ -250,7 +250,10 @@ does in words, and the doing of it. Three handlers hand their keys to
 - **`reach`** is how far out a line is heard: `canvas` only while the canvas
   has the keyboard, `transport` only while the play bar or timeline has it,
   `page` anywhere on the page. The canvas's and transport's lines come
-  before the page's, so they have the first say.
+  before the page's, so they have the first say. A key that does the same
+  wherever the keyboard is (Space, copy, cut, paste, undo, redo) is one
+  `page` line, not one per handler, so that it is held and modified the
+  same everywhere.
 - **`when`** is whether the line applies now, read from the controller. The
   first line that fits the key, the modifiers held, the reach and `when` is
   the one done; the rest are not tried. A key with several meanings

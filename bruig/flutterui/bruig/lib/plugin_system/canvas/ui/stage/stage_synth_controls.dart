@@ -25,10 +25,13 @@ extension StageSynthControls on CanvasStageState {
       case SynthPartKind.knob:
         if (e.fixed) break;
         var knob = synthKnobs[e.module]![part.index];
-        var twice = clock.now().difference(_lastKnobClickAt) <
-            CanvasStageState._doubleClickWindow;
-        _lastKnobClickAt =
-            twice ? DateTime.fromMillisecondsSinceEpoch(0) : clock.now();
+        var now = clock.now();
+        var last = _lastKnobClick;
+        var twice = last != null &&
+            last.module == e.id &&
+            last.knob == knob.key &&
+            now.difference(last.at) < CanvasStageState._doubleClickWindow;
+        _lastKnobClick = twice ? null : (module: e.id, knob: knob.key, at: now);
         if (twice) {
           controller.setSynth(e.withValue(knob.key, e.startValue(knob.key)));
           break;
@@ -154,7 +157,6 @@ extension StageSynthControls on CanvasStageState {
       controller.unplugSynth(
           document.elementById(was.id) as SynthModuleElement, input);
     }
-    setState(() {});
   }
 }
 
@@ -227,14 +229,13 @@ class _SynthKnobTurn extends StageGesture {
   @override
   bool get endsRelease => true;
 
-  /// release rebuilds the stage, which no longer draws a turn under way.
+  /// release has nothing left to do: the turn is made as it goes.
   @override
   void release(CanvasStageState stage, Offset at,
-          {required bool travelled, required bool clicked}) =>
-      stage.setState(() {});
+      {required bool travelled, required bool clicked}) {}
 
   @override
-  void cancel(CanvasStageState stage) => stage.setState(() {});
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _SynthScreenDrag is a digital synth module's screen dragged on: an
@@ -261,14 +262,13 @@ class _SynthScreenDrag extends StageGesture {
   @override
   bool get endsRelease => true;
 
-  /// release rebuilds the stage, which no longer draws a drag under way.
+  /// release has nothing left to do: the drag is made as it goes.
   @override
   void release(CanvasStageState stage, Offset at,
-          {required bool travelled, required bool clicked}) =>
-      stage.setState(() {});
+      {required bool travelled, required bool clicked}) {}
 
   @override
-  void cancel(CanvasStageState stage) => stage.setState(() {});
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _SynthCableCarry is a cable carried from a synth module's jack, drawn

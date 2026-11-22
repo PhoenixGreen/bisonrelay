@@ -81,8 +81,13 @@ CodeTaskLayout codeTaskLayout(CodeTaskElement e, double width,
   return CodeTaskLayout(y + pad, button, rows);
 }
 
-bool codeTaskButtonAt(CodeTaskElement e, Offset point) =>
-    codeTaskLayout(e, e.width).button.shift(e.bounds.topLeft).contains(point);
+/// codeTaskButtonAt is whether [point] is on [e]'s Check button, with [e]
+/// drawn in [box] when that is not its resting place.
+bool codeTaskButtonAt(CodeTaskElement e, Offset point, {Rect? box}) =>
+    codeTaskLayout(e, e.width)
+        .button
+        .shift((box ?? e.bounds).topLeft)
+        .contains(point);
 
 /// codeTaskResult is a checked card's words and whether it passed, or null.
 (String, bool)? codeTaskResult(

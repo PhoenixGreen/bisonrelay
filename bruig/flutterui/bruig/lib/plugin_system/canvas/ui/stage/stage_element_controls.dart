@@ -137,8 +137,9 @@ extension StageElementControls on CanvasStageState {
     }
     // The press is the key's now: the move it began, and the switch it
     // armed, give way to a drag of the key, in the move's undo step.
-    _handOver(_ChartLabelDrag(ChartLabelGrab(ChartLabelPart.legend, false,
-        _toDocument(_pressedAt) - block.topLeft)));
+    _handOver(_ChartLabelDrag(ChartLabelGrab(
+        ChartLabelPart.legend, _toDocument(_pressedAt) - block.topLeft,
+        resizing: false)));
   }
 
   void _pressVideo(VideoElement e, VideoPart part, Offset doc) {
