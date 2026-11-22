@@ -366,7 +366,7 @@ class _GizmoDrag extends StageGesture {
     var document = stage.document;
     if (document.elementById(elementId) case var e?) {
       var guides = document.guides;
-      var snap = guides.stageSnap && !HardwareKeyboard.instance.isAltPressed;
+      var snap = guides.stageSnap && stage._snapReach != null;
       var spot = gizmo.dragged(part, from, doc,
           pageScale: stage._scale,
           step: snap ? guides.stageStep : 0,

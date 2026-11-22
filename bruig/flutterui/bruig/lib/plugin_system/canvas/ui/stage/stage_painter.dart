@@ -344,7 +344,7 @@ class StagePainter extends CustomPainter {
 
   /// snapped is the line or lines a drag is caught on, drawn bright so a
   /// snap is never a mysterious jump.
-  final SnapResult? snapped;
+  final SnapLines? snapped;
 
   /// showHelpers draws the selection box, handles and rotation ring. A flag
   /// of its own: _paintSelection reads selectionBounds, so emptying the

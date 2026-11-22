@@ -217,7 +217,7 @@ class _ElementsMarquee extends StageGesture {
 
 /// _GuideDrag is a guide line moved, or a new one pulled from a ruler.
 class _GuideDrag extends StageGesture {
-  _GuideDrag(this.index)
+  _GuideDrag(this.index, Snapper this.snapper)
       : pulled = null,
         unpulled = null;
 
@@ -230,6 +230,11 @@ class _GuideDrag extends StageGesture {
   /// index is the guide's place in the document's list of guides, or -1
   /// for a pulled one not yet put down.
   int index;
+
+  /// snapper is what the guide lands on, leaving out the guide itself:
+  /// made at the press for a guide on the page, and as a pulled one is put
+  /// down, since putting it down shows the guides.
+  Snapper? snapper;
 
   /// pulled is the axis of a guide pulled out of a ruler, or null for one
   /// already on the page.
@@ -251,10 +256,11 @@ class _GuideDrag extends StageGesture {
 
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) {
-    if (index < 0) {
-      if (pulled case var axis?) index = stage._putGuide(axis, doc);
+    if (pulled case var axis? when index < 0) {
+      index = stage._putGuide(axis, doc);
+      snapper = stage._guideSnapper(index);
     }
-    stage._applyGuide(index, doc);
+    if (snapper case var s?) stage._applyGuide(index, doc, s);
   }
 
   @override
@@ -466,7 +472,9 @@ class _BoxStart {
     required this.elements,
     required this.posed,
     required this.visual,
+    required this.seen,
     required this.rotation,
+    required this.snapper,
   });
 
   /// bounds is each element's resting box, by id.
@@ -483,9 +491,28 @@ class _BoxStart {
   /// visual is the box each element's handles are on: see _visualBounds.
   final Map<String, Rect> visual;
 
+  /// seen is the upright box each element is seen in, turned and slanted
+  /// as it is drawn: see _seenBounds.
+  final Map<String, Rect> seen;
+
   /// rotation is each element's turn, in degrees.
   final Map<String, double> rotation;
+
+  /// snapper is what a move or a resize lands on: the page, the grid, the
+  /// guides and everything not selected, as they were at the press.
+  final Snapper snapper;
+
+  /// seenBox is the whole selection's box as it is seen, which a move
+  /// snaps by; visualBox the box its handles are on, which a resize is
+  /// measured against and snaps by. Null for nothing selected.
+  late final Rect? seenBox = _unionOf(seen.values);
+  late final Rect? visualBox = _unionOf(visual.values);
 }
+
+/// _unionOf is the least box that holds every one of [boxes], or null for
+/// none.
+Rect? _unionOf(Iterable<Rect> boxes) =>
+    boxes.isEmpty ? null : boxes.reduce((a, b) => a.expandToInclude(b));
 
 /// _BoxDrag is the selection's box taken hold of: moved from inside, or
 /// resized, slanted or turned by a handle. Each is one undo step, opened as
@@ -502,15 +529,24 @@ sealed class _BoxDrag extends StageGesture {
   @override
   bool get waitsToTravel => true;
 
-  /// release takes away the snap mark a move or resize left: see
-  /// _dropSnap.
-  @override
-  void release(CanvasStageState stage, Offset at,
-          {required bool travelled, required bool clicked}) =>
-      stage._dropSnap();
+  /// snapped is the lines a move or resize is caught on, which the stage
+  /// draws while it runs (see _stagePainter); it goes with the gesture.
+  SnapLines snapped = SnapLines.none;
+
+  /// _caught makes [lines] the snap mark, rebuilding the stage when they
+  /// differ, so the mark never waits on a change to the document, which a
+  /// step need not make: locked elements in the selection stay put.
+  void _caught(CanvasStageState stage, SnapLines lines) {
+    if (lines == snapped) return;
+    stage.setState(() => snapped = lines);
+  }
 
   @override
-  void cancel(CanvasStageState stage) => stage._dropSnap();
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
 }
 
 /// _BoxMove is the selection moved by a press inside its box. A press that
@@ -539,21 +575,6 @@ class _BoxMove extends _BoxDrag with _CarriesClicks {
   @override
   MouseCursor get cursor => SystemMouseCursors.move;
 
-  /// release takes away the snap mark, as every box drag does, and then
-  /// settles the clicks it carries.
-  @override
-  void release(CanvasStageState stage, Offset at,
-      {required bool travelled, required bool clicked}) {
-    stage._dropSnap();
-    super.release(stage, at, travelled: travelled, clicked: clicked);
-  }
-
-  @override
-  void cancel(CanvasStageState stage) {
-    stage._dropSnap();
-    super.cancel(stage);
-  }
-
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) {
     if (click case var c?
@@ -563,7 +584,7 @@ class _BoxMove extends _BoxDrag with _CarriesClicks {
       click = null;
     }
     if (!stage._hasTravelled(at)) return;
-    stage._applyMove(doc - stage._dragStart, start);
+    _caught(stage, stage._applyMove(doc - stage._dragStart, start));
   }
 }
 
@@ -576,7 +597,7 @@ class _BoxResize extends _BoxDrag {
 
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) =>
-      stage._applyResize(doc - stage._dragStart, handle, start);
+      _caught(stage, stage._applyResize(doc - stage._dragStart, handle, start));
 }
 
 /// _BoxSlant is the one element selected slanted by a side handle,

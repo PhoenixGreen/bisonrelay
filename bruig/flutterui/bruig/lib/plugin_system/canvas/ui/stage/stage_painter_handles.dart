@@ -770,11 +770,11 @@ extension _StagePainterHandles on StagePainter {
       var paint = Paint()
         ..strokeWidth = thin * 1.5
         ..color = const Color(0xFFFF4081);
-      if (it.onVertical case var x?) {
+      if (it.vertical case var x?) {
         canvas.drawLine(Offset(sheet.left + x, sheet.top),
             Offset(sheet.left + x, sheet.bottom), paint);
       }
-      if (it.onHorizontal case var y?) {
+      if (it.horizontal case var y?) {
         canvas.drawLine(Offset(sheet.left, sheet.top + y),
             Offset(sheet.right, sheet.top + y), paint);
       }

@@ -515,6 +515,45 @@ void main() {
       expect(c.document.elementById("a")!.base.spot!.x, 0);
     });
 
+    testWidgets("Alt frees an element dragged on the stage from the 3D steps",
+        (tester) async {
+      // As it frees the gizmo's drag, and as the guides panel's hint says.
+      final c = CanvasController(onStage());
+      addTearDown(c.dispose);
+      c.apply(c.document.copyWith(
+          guides: c.document.guides.copyWith(stageSnap: true, stageStep: 0.5)));
+      final s = await pumpStage(tester, c);
+      final box = stagedIn(c.document, c.document.elementById("a")!, 0)!.box;
+      final from = s.toStagePoint(box.center);
+
+      /// dragged is where the element stands after a drag from its middle,
+      /// unselected so no gizmo is in the way, the drag then taken back.
+      Future<StageSpot> dragged({required bool alt}) async {
+        c.clearSelection();
+        await tester.pump();
+        final g = await tester.startGesture(from);
+        await tester.pump();
+        if (alt) await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        await g.moveBy(const Offset(23, 0));
+        await tester.pump();
+        await g.moveBy(const Offset(14, 7));
+        await tester.pump();
+        await g.up();
+        if (alt) await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        await tester.pumpAndSettle();
+        final spot = c.document.elementById("a")!.base.spot!;
+        c.undo();
+        await tester.pump();
+        return spot;
+      }
+
+      final stepped = await dragged(alt: false);
+      expect(stepped.x, isNot(0), reason: "it moved");
+      expect(stepped.x % 0.5, closeTo(0, 1e-9));
+      final free = await dragged(alt: true);
+      expect(free.x % 0.5, isNot(closeTo(0, 1e-6)), reason: "off the steps");
+    });
+
     testWidgets("locked, a drag on the stage orbits its camera",
         (tester) async {
       final c = CanvasController(onStage());

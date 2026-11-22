@@ -300,9 +300,10 @@ travelled and was let go within the click slop of where it began, so a
 press that travels and comes back is not a click) and `cancel` (the
 system took the pointer: nothing it does on finishing is done). A
 case's methods are short: they call the State's methods that do the work,
-with what the gesture holds, and a case tidies away what only it showed
-(the box's snap mark) as it ends. Ending a gesture rebuilds the stage, so
-its cursor goes with it. `endsRelease`, false unless a case says
+with what the gesture holds. What only a gesture shows (the box's snap
+mark, a retouching stroke) is held on the case and read from `_gesture` by
+`_stagePainter`, so nothing is left to tidy away. Ending a gesture rebuilds
+the stage, so its cursor and those marks go with it. `endsRelease`, false unless a case says
 otherwise, skips the rest of `_onPointerUp`, which is all for the kinds
 still on `_DragMode`. `cursor`, null
 unless a case says otherwise, is the pointer's look while it runs, shown
@@ -352,6 +353,48 @@ a text element's picture pieces, and Layouts, in their own parts. So both
 exist for now: a press sets one or the other, never both. A press that
 opens a Run panel's preview live is neither: `_liveTapPending` replays its
 tap into the app on release.
+
+### Snapping
+
+One `Snapper` (`model/canvas_snap.dart`) is what a drag lands on: the
+page's edges and middle, the grid while it is shown (its lines from
+`gridLines`, which the painter draws, so a grid too fine to draw is not
+snapped to), the shown guides, and, with Other elements on, the sides and
+middles of what is not dragged. Which parts of the dragged thing may land
+are `SnapTo`'s switches in `CanvasGuides` (`model/canvas_guides.dart`):
+edges (and so corners), centres, and whether other elements count. A
+gesture that snaps makes its `Snapper` once, at the press: the box drags
+hold it on `_BoxStart` (`_beginTransform`, with the other elements' boxes
+from `_otherBounds`), and `_GuideDrag` holds one that leaves the dragged
+guide out. Each step asks it with the reach from `_snapReach`
+(`stage_drag.dart`), the one place the screen-pixel `snapWithin` is turned
+into document units and Alt is read: null while Alt is held, which frees
+the drag. It answers with the nudge to add and the lines caught
+(`SnapLines`), which `_BoxDrag` holds as the mark `_stagePainter` draws.
+
+What snaps: a move of the selection's box, by the box it is seen in
+(turned and slanted elements by the upright box round them as drawn); a
+resize, by the dragged edge alone, upright boxes only; a guide dragged; a
+single line's end, to level, upright and diagonal (`snapLineAngle`); and on
+a 3D stage, with Snap on a 3D stage, an element moved across the floor
+(`movedTo`, told `free` while Alt is held) and the gizmo's moves and
+turns. Alt frees every one of them. Nothing else snaps: slanting, turning
+(Shift steps it, see `steppedTurn`), copies, path points, chart labels,
+table columns, anchors, Layout cells and cuts, picture layers, text
+pieces, the marker's note and keyboard nudges land where they are put. A
+drawing's handles turn in steps under a switch of their own
+(`vectorHandleSnap`), apart from all this.
+
+To add something to snap to: its lines go in `Snapper._allLines` (or
+`_addTheirs`, for something read from the other elements' boxes), from
+what the constructor is given; anything the stage must hand it is a new
+argument to `Snapper(...)` at its two calls, `_beginTransform` and
+`_guideSnapper`. A switch for it is a field on `SnapTo` with its
+`copyWith`, `toJson` (written only when it differs from the default) and
+`fromJson`, and a value in `SnapTarget`, which the guides panel and the
+settings bar's snap menu both list, so neither needs touching.
+`test/canvas_snapping_test.dart` drags on a real stage; the arithmetic is
+tested in `test/canvas_guides_test.dart` and `test/canvas_align_test.dart`.
 
 ## Preferences
 

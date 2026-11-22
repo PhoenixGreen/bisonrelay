@@ -27,72 +27,63 @@ void main() {
     const guides = CanvasGuides(showGrid: false);
     const canvas = Size(1000, 1000);
 
+    /// landed is a box at [topLeft] of [size] moved among [others] and
+    /// snapped: where its top-left lands, and the lines caught.
+    (Offset, SnapLines) landed(Offset topLeft, Size size, List<Rect> others,
+        {CanvasGuides using = guides}) {
+      var snap =
+          Snapper(using, canvas, others: others).move(topLeft & size, reach: 8);
+      return (topLeft + snap.nudge, snap.lines);
+    }
+
     test("catches an element on another's left edge", () {
       // The line that matters most of the time, and the one that was missing:
       // a grid catches a design at regular intervals, and no spacing puts
       // this heading over that picture unless both were already on it.
-      var landed = snapTopLeft(
-        const Offset(203, 400),
-        const Size(50, 50),
-        guides,
-        canvas,
-        within: 8,
-        others: [const Rect.fromLTWH(200, 100, 80, 80)],
-      );
-      expect(landed.at.dx, 200);
-      expect(landed.onVertical, 200);
+      var (at, lines) = landed(const Offset(203, 400), const Size(50, 50),
+          [const Rect.fromLTWH(200, 100, 80, 80)]);
+      expect(at.dx, 200);
+      expect(lines.vertical, 200);
     });
 
     test("and on another's middle", () {
-      var landed = snapTopLeft(
-        const Offset(400, 236),
-        const Size(40, 40),
-        guides,
-        canvas,
-        within: 8,
-        others: [const Rect.fromLTWH(0, 200, 100, 120)],
-      );
+      var (at, lines) = landed(const Offset(400, 236), const Size(40, 40),
+          [const Rect.fromLTWH(0, 200, 100, 120)]);
       // Its own top on their middle: 200 + 120/2 = 260, which is out of
       // reach; its own middle on theirs is what catches.
-      expect(landed.at.dy + 20, 260);
-      expect(landed.onHorizontal, 260);
+      expect(at.dy + 20, 260);
+      expect(lines.horizontal, 260);
     });
 
     test("nothing at all when the switch is off", () {
-      var landed = snapTopLeft(
-        const Offset(203, 400),
-        const Size(50, 50),
-        const CanvasGuides(showGrid: false, snapTo: SnapTo(objects: false)),
-        canvas,
-        within: 8,
-        others: [const Rect.fromLTWH(200, 100, 80, 80)],
-      );
-      expect(landed.at.dx, 203);
-      expect(landed.caught, isFalse);
+      var (at, lines) = landed(const Offset(203, 400), const Size(50, 50),
+          [const Rect.fromLTWH(200, 100, 80, 80)],
+          using: const CanvasGuides(
+              showGrid: false, snapTo: SnapTo(objects: false)));
+      expect(at.dx, 203);
+      expect(lines.caught, isFalse);
     });
 
     test("and a resized edge lands on one too", () {
-      var line = snapEdgeTo(
-        302,
-        guides,
-        canvas,
-        vertical: true,
-        within: 8,
-        others: [const Rect.fromLTWH(100, 100, 200, 80)],
-      );
-      expect(line, 300, reason: "their right edge");
+      var snap = Snapper(guides, canvas, others: [
+        const Rect.fromLTWH(100, 100, 200, 80)
+      ]).edges(const Rect.fromLTRB(250, 500, 302, 600), right: true, reach: 8);
+      expect(snap.lines.vertical, 300, reason: "their right edge");
     });
 
     test("the lines an element offers follow the same switches", () {
       // Turn centres off and nothing lines up on a middle, theirs or its own.
-      var (xs, ys) = objectLines([const Rect.fromLTWH(10, 20, 100, 40)],
-          const CanvasGuides(snapTo: SnapTo(centres: false)));
-      expect(xs, [10.0, 110.0]);
-      expect(ys, [20.0, 60.0]);
-
-      var (allX, _) = objectLines(
-          [const Rect.fromLTWH(10, 20, 100, 40)], const CanvasGuides());
-      expect(allX, containsAll([10.0, 110.0, 60.0]));
+      const other = Rect.fromLTWH(10, 20, 100, 40);
+      double? caughtOn(double x, CanvasGuides using) =>
+          Snapper(using, canvas, others: [other])
+              .edges(Rect.fromLTRB(x, 500, x + 1, 501), left: true, reach: 2)
+              .lines
+              .vertical;
+      const noCentres = CanvasGuides(snapTo: SnapTo(centres: false));
+      expect(caughtOn(11, noCentres), 10);
+      expect(caughtOn(109, noCentres), 110);
+      expect(caughtOn(61, noCentres), isNull, reason: "their middle is off");
+      expect(caughtOn(61, const CanvasGuides()), 60);
     });
   });
 

@@ -176,12 +176,6 @@ Widget _snappingGroup(CanvasController controller) {
           value: guides.snap,
           onChanged: (v) => set(guides.copyWith(snap: v)),
         ),
-        CanvasToggle(
-          label: "Vertices",
-          value: guides.snapTo.vertices,
-          onChanged: (v) =>
-              set(guides.copyWith(snapTo: guides.snapTo.copyWith(vertices: v))),
-        ),
         // The same targets as the bar's snap menu. Other elements are the
         // lines that matter most: this heading over that picture, not a
         // grid's intervals.
@@ -241,8 +235,10 @@ Widget _snappingGroup(CanvasController controller) {
             "How near, on screen, before it jumps — so it feels the same at "
             "every zoom. With Other elements on, the sides and middles of "
             "everything else on the canvas are lines too. The canvas's own edges and "
-            "middle are always snapped to. Hold Alt while dragging to put "
-            "something exactly where the grid does not want it. With Snap "
+            "middle are always snapped to. Hold Alt once a drag has begun to "
+            "put what is moved, resized or dragged exactly where snapping "
+            "does not want it; held as you press, Alt does other things, "
+            "such as taking a 3D stage's camera. With Snap "
             "on a 3D stage, what is moved there lands on the 3D steps "
             "across the floor and turns by the 3D turns."),
       ]);

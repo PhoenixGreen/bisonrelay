@@ -62,11 +62,14 @@ extension StageDrag on CanvasStageState {
     replaceMarker(controller, next, transient: true);
   }
 
-  /// _dropSnap takes away the snap mark (_snappedTo) a move or resize of
-  /// the selection's box leaves: it is the drag's, and goes as it ends.
-  void _dropSnap() {
-    if (_snappedTo != null) setState(() => _snappedTo = null);
-  }
+  /// _snapReach is how near a line, in document units, what is dragged
+  /// on this step must come to be caught: the guides' snapWithin is in
+  /// screen pixels (the hand's aim does not improve with zoom), so divided
+  /// by the zoom. Null while Alt is held, which frees every drag that
+  /// snaps: to lines, to a line's angles, or to a 3D stage's steps.
+  double? get _snapReach => HardwareKeyboard.instance.isAltPressed
+      ? null
+      : document.guides.snapWithin / _scale;
 
   /// _hasTravelled is whether the press has gone far enough, to [stage], to
   /// be a drag: once it has, it stays one.
@@ -200,6 +203,7 @@ extension StageDrag on CanvasStageState {
   _BoxStart _beginTransform() {
     // Whatever mode an earlier press left: this press is the box's.
     _mode = _DragMode.none;
+    var moving = {for (var e in controller.selectedElements) e.id};
     var start = _BoxStart(
       bounds: {
         for (var e in controller.selectedElements) e.id: e.bounds,
@@ -222,20 +226,24 @@ extension StageDrag on CanvasStageState {
       visual: {
         for (var e in controller.selectedElements) e.id: _visualBounds(e),
       },
+      seen: {
+        for (var e in controller.selectedElements) e.id: _seenBounds(e),
+      },
       rotation: {
         for (var e in controller.selectedElements) e.id: e.rotation,
       },
+      snapper: Snapper(document.guides, document.size.size,
+          others: _otherBounds(moving)),
     );
     controller.beginInteraction();
     return start;
   }
 
   /// _otherBounds is everything not dragged, locked included, to snap to:
-  /// where each is drawn now, which is where it is seen. [start] is the
-  /// selection being dragged.
-  List<Rect> _otherBounds(_BoxStart start) {
+  /// where each is drawn now, which is where it is seen. [moving] is the
+  /// ids of the selection being dragged.
+  List<Rect> _otherBounds(Set<String> moving) {
     if (!document.guides.snapTo.objects) return const [];
-    var moving = start.posed.keys.toSet();
     var hit = _hit;
     return [
       for (var element in document.elements)
@@ -244,40 +252,44 @@ extension StageDrag on CanvasStageState {
     ];
   }
 
-  Rect? _startBoxOfSelection(_BoxStart start) {
-    Rect? box;
-    for (var entry in start.posed.entries) {
-      box = box == null ? entry.value : box.expandToInclude(entry.value);
-    }
-    return box;
+  /// _seenBounds is the upright box [e] is seen in: the box its handles are
+  /// on (see _visualBounds), turned and slanted about its middle as it is
+  /// drawn, so a turned element is snapped by the corners that show.
+  Rect _seenBounds(CanvasElement e) {
+    var box = _visualBounds(e);
+    var frame = BoxFrame(
+        e.movedRotationAt(controller.frame, document,
+            live: controller.liveMotion),
+        e.base.skewX,
+        e.base.skewY);
+    if (frame.upright) return box;
+    var corners = frame.corners(box);
+    var xs = corners.map((p) => p.dx), ys = corners.map((p) => p.dy);
+    return Rect.fromLTRB(xs.reduce(math.min), ys.reduce(math.min),
+        xs.reduce(math.max), ys.reduce(math.max));
   }
 
-  void _applyMove(Offset delta, _BoxStart start) {
+  /// _applyMove moves the selection by [delta] from where [start] found
+  /// it, and says which lines the move is caught on.
+  SnapLines _applyMove(Offset delta, _BoxStart start) {
     if (_shiftHeld) {
       delta = delta.dx.abs() > delta.dy.abs()
           ? Offset(delta.dx, 0)
           : Offset(0, delta.dy);
     }
-    // Snapped once, against the whole selection's box, so things moved
-    // together stay together. Alt turns it off.
-    var box = _startBoxOfSelection(start);
+    // Snapped once, against the whole selection's box as it is seen, so
+    // things moved together stay together. Alt turns it off.
+    var box = start.seenBox;
     // Not on a 3D stage, where page lines mean nothing: staged elements snap
     // to the floor's 3D steps (see CanvasController.movedTo).
     var onStage = start.posed.keys
         .any((id) => document.elementById(id)?.base.spot != null);
-    if (box != null && !onStage && !HardwareKeyboard.instance.isAltPressed) {
-      var snapped = snapTopLeft(
-        box.topLeft + delta,
-        box.size,
-        document.guides,
-        document.size.size,
-        within: document.guides.snapWithin / _scale,
-        others: _otherBounds(start),
-      );
-      delta = snapped.at - box.topLeft;
-      _snappedTo = snapped;
-    } else {
-      _snappedTo = null;
+    var reach = _snapReach;
+    var caught = SnapLines.none;
+    if (reach != null && box != null && !onStage) {
+      var snap = start.snapper.move(box.shift(delta), reach: reach);
+      delta += snap.nudge;
+      caught = snap.lines;
     }
 
     var next = document;
@@ -292,10 +304,11 @@ extension StageDrag on CanvasStageState {
       }
       // Through the controller, so an animated element is posed rather than
       // moved. See CanvasController.posesRatherThanMoves.
-      next = next.withElement(
-          controller.movedTo(element, entry.value.topLeft + delta));
+      next = next.withElement(controller
+          .movedTo(element, entry.value.topLeft + delta, free: reach == null));
     }
     controller.apply(next, transient: true);
+    return caught;
   }
 
   /// _applyLineEnd drags one end of a single straight line, if [handle] is
@@ -326,7 +339,7 @@ extension StageDrag on CanvasStageState {
     var movesStart = (corner - start).distance < (corner - end).distance;
     var fixed = movesStart ? end : start;
     var moving = (movesStart ? start : end) + delta;
-    if (!HardwareKeyboard.instance.isAltPressed) {
+    if (_snapReach != null) {
       moving = snapLineAngle(fixed, moving, always: _shiftHeld);
     }
     var next = movesStart
@@ -411,29 +424,36 @@ extension StageDrag on CanvasStageState {
         transient: true);
   }
 
-  void _applyResize(Offset delta, StageHandle handle, _BoxStart start) {
-    if (_applyLineEnd(handle, delta, start)) return;
-    if (_applyCameraZoom(handle, delta, start)) return;
+  /// _applyResize resizes the selection by [handle] dragged [delta] from
+  /// where [start] found it, and says which lines the dragged edge is
+  /// caught on.
+  SnapLines _applyResize(Offset delta, StageHandle handle, _BoxStart start) {
+    if (_applyLineEnd(handle, delta, start)) return SnapLines.none;
+    if (_applyCameraZoom(handle, delta, start)) return SnapLines.none;
 
-    // The dragged edge lands on the lines a move does: upright boxes only,
-    // and Alt turns it off.
-    if (_frameOfSelection.upright && !HardwareKeyboard.instance.isAltPressed) {
-      delta = _snapResize(handle, delta, start);
-    } else {
-      _snappedTo = null;
+    // One box for the whole drag, so things resized together keep their sizes
+    // and gaps in proportion.
+    var group = start.visualBox;
+    if (group == null) return SnapLines.none;
+
+    // The dragged edge alone lands on the lines a move does, so the held
+    // edge stays put: upright boxes only, and Alt turns it off.
+    var caught = SnapLines.none;
+    if (_snapReach case var reach? when _frameOfSelection.upright) {
+      var snap = start.snapper.edges(group.shift(delta),
+          left: handle.movesLeft,
+          top: handle.movesTop,
+          right: handle.movesRight,
+          bottom: handle.movesBottom,
+          reach: reach);
+      delta += snap.nudge;
+      caught = snap.lines;
     }
 
     // Into the element's own frame, so pulling a tilted element's right edge
     // widens it rather than moving it sideways.
     delta = _frameOfSelection.invert(delta);
 
-    // One box for the whole drag, so things resized together keep their sizes
-    // and gaps in proportion.
-    Rect? group;
-    for (var box in start.visual.values) {
-      group = group == null ? box : group.expandToInclude(box);
-    }
-    if (group == null) return;
     var several = start.visual.length > 1;
 
     var left = group.left + (handle.movesLeft ? delta.dx : 0);
@@ -496,53 +516,7 @@ extension StageDrag on CanvasStageState {
       ));
     }
     controller.apply(next, transient: true);
-  }
-
-  /// _snapResize snaps the dragged edge alone onto a line, against the union
-  /// of what is resized.
-  Offset _snapResize(StageHandle handle, Offset delta, _BoxStart start) {
-    Rect? box;
-    for (var visual in start.visual.values) {
-      box = box == null ? visual : box.expandToInclude(visual);
-    }
-    if (box == null) {
-      _snappedTo = null;
-      return delta;
-    }
-
-    var guides = document.guides;
-    var within = guides.snapWithin / _scale;
-    var canvas = document.size.size;
-    var others = _otherBounds(start);
-    var dx = delta.dx;
-    var dy = delta.dy;
-    double? onVertical;
-    double? onHorizontal;
-
-    if (handle.movesLeft || handle.movesRight) {
-      var at = (handle.movesLeft ? box.left : box.right) + dx;
-      var line = snapEdgeTo(at, guides, canvas,
-          vertical: true, within: within, others: others);
-      if (line != null) {
-        dx += line - at;
-        onVertical = line;
-      }
-    }
-    if (handle.movesTop || handle.movesBottom) {
-      var at = (handle.movesTop ? box.top : box.bottom) + dy;
-      var line = snapEdgeTo(at, guides, canvas,
-          vertical: false, within: within, others: others);
-      if (line != null) {
-        dy += line - at;
-        onHorizontal = line;
-      }
-    }
-
-    _snappedTo = onVertical == null && onHorizontal == null
-        ? null
-        : SnapResult(box.topLeft,
-            onVertical: onVertical, onHorizontal: onHorizontal);
-    return Offset(dx, dy);
+    return caught;
   }
 
   void _applyRotate(Offset doc, _BoxStart start) {

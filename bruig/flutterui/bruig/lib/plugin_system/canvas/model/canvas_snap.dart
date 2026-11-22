@@ -3,107 +3,172 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 
-// canvas_snap.dart decides where a dragged element actually lands. Pure
+// canvas_snap.dart decides where a dragged thing actually lands. Pure
 // arithmetic, so it can be tested without a pointer: of everything on the
-// element allowed to snap, whichever is nearest a line wins, if near enough.
+// dragged thing allowed to snap, whichever is nearest a line wins, if near
+// enough. A drag makes one Snapper as it begins and asks it at every step.
 
-/// SnapResult is where an element should go, and which lines it caught, so
-/// the stage can draw them.
-class SnapResult {
-  final Offset at;
-  final double? onVertical;
-  final double? onHorizontal;
+/// SnapLines is the lines a drag is caught on, so the stage can draw them:
+/// an x for an upright line and a y for a level one, each null when
+/// nothing is caught that way.
+class SnapLines {
+  final double? vertical;
+  final double? horizontal;
 
-  const SnapResult(this.at, {this.onVertical, this.onHorizontal});
+  const SnapLines({this.vertical, this.horizontal});
 
-  bool get caught => onVertical != null || onHorizontal != null;
+  /// none is nothing caught.
+  static const none = SnapLines();
+
+  bool get caught => vertical != null || horizontal != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SnapLines &&
+      other.vertical == vertical &&
+      other.horizontal == horizontal;
+
+  @override
+  int get hashCode => Object.hash(vertical, horizontal);
 }
 
-/// snapTopLeft nudges a moving element's top-left so one of its own
-/// interesting points lands on a line. [within] is in document units: the
-/// caller converts CanvasGuides.snapWithin (screen pixels) through the zoom.
-SnapResult snapTopLeft(
-  Offset topLeft,
-  Size size,
-  CanvasGuides guides,
-  Size canvas, {
-  required double within,
-  List<Rect> others = const [],
-}) {
-  if (!guides.snap || !guides.snapTo.any) return SnapResult(topLeft);
-  var (vertical, horizontal) = guides.linesFor(canvas);
-  var (theirX, theirY) = objectLines(others, guides);
-  vertical = [...vertical, ...theirX];
-  horizontal = [...horizontal, ...theirY];
+/// Snap is one step of a drag snapped: [nudge] is how much further than
+/// the pointer the dragged thing goes to land on [lines], zero when nothing
+/// caught it.
+typedef Snap = ({Offset nudge, SnapLines lines});
 
-  // A corner lies on two edges, so on one axis edges and vertices offer the
-  // same points.
-  var xs = <double>[
-    if (guides.snapTo.edges || guides.snapTo.vertices) topLeft.dx,
-    if (guides.snapTo.edges || guides.snapTo.vertices) topLeft.dx + size.width,
-    if (guides.snapTo.centres) topLeft.dx + size.width / 2,
-  ];
-  var ys = <double>[
-    if (guides.snapTo.edges || guides.snapTo.vertices) topLeft.dy,
-    if (guides.snapTo.edges || guides.snapTo.vertices) topLeft.dy + size.height,
-    if (guides.snapTo.centres) topLeft.dy + size.height / 2,
-  ];
+/// Snapper is what a drag can land on, worked out once as it begins: the
+/// page's edges and middle, the grid while it is shown, the shown guides,
+/// and, with Other elements on, the sides and middles of [others], the
+/// boxes of what is not dragged. A guide dragged is [leaving]: its own last
+/// place is always in reach of a small step and would hold it back.
+///
+/// Each question takes the reach for that step in document units, so a
+/// zoom partway through a drag is felt at once: the stage works it out
+/// from the guides' snapWithin, in screen pixels, and the zoom.
+class Snapper {
+  Snapper(this._guides, this._page,
+      {List<Rect> others = const [], int? leaving})
+      : _others = others,
+        _leaving = leaving;
 
-  var x = _nearest(xs, vertical, within);
-  var y = _nearest(ys, horizontal, within);
+  final CanvasGuides _guides;
+  final Size _page;
+  final List<Rect> _others;
+  final int? _leaving;
 
-  return SnapResult(
-    Offset(topLeft.dx + (x?.shift ?? 0), topLeft.dy + (y?.shift ?? 0)),
-    onVertical: x?.line,
-    onHorizontal: y?.line,
-  );
-}
+  bool get _on => _guides.snap && _guides.snapTo.any;
 
-/// snapEdgeTo is the line one edge -- what a resize drags -- should land on,
-/// or null. Only that edge is considered, so the opposite edge stays put.
-double? snapEdgeTo(
-  double edge,
-  CanvasGuides guides,
-  Size canvas, {
-  required bool vertical,
-  required double within,
-  List<Rect> others = const [],
-}) {
-  if (!guides.snap || !guides.snapTo.any) return null;
-  var (xs, ys) = guides.linesFor(canvas);
-  var (theirX, theirY) = objectLines(others, guides);
-  var lines = vertical ? [...xs, ...theirX] : [...ys, ...theirY];
-  var found = _nearest([edge], lines, within);
-  return found?.line;
-}
+  /// _lines is every line, down and across: worked out at the first step
+  /// that asks, and kept for the rest of the drag.
+  late final (List<double>, List<double>) _lines = _allLines();
 
-/// objectLines is what the other elements on the canvas offer to land on:
-/// their sides and their middles, down and across. What they offer follows
-/// the same switches as what the moving element may land with: with centres
-/// off, nothing lines up on a middle, theirs or its own.
-(List<double>, List<double>) objectLines(
-    List<Rect> others, CanvasGuides guides) {
-  if (!guides.snapTo.objects || others.isEmpty) {
-    return (const [], const []);
+  /// move is a box moved to [box] snapped: one of its sides or its middle,
+  /// as the switches allow, on the nearest line in [reach] on each axis.
+  Snap move(Rect box, {required double reach}) {
+    if (!_on) return (nudge: Offset.zero, lines: SnapLines.none);
+    var to = _guides.snapTo;
+    var xs = <double>[
+      if (to.edges) box.left,
+      if (to.edges) box.right,
+      if (to.centres) box.center.dx,
+    ];
+    var ys = <double>[
+      if (to.edges) box.top,
+      if (to.edges) box.bottom,
+      if (to.centres) box.center.dy,
+    ];
+    var (vertical, horizontal) = _lines;
+    var x = _nearest(xs, vertical, reach);
+    var y = _nearest(ys, horizontal, reach);
+    return (
+      nudge: Offset(x?.shift ?? 0, y?.shift ?? 0),
+      lines: SnapLines(vertical: x?.line, horizontal: y?.line),
+    );
   }
-  var sides = guides.snapTo.edges || guides.snapTo.vertices;
-  var middles = guides.snapTo.centres;
-  var xs = <double>[];
-  var ys = <double>[];
-  for (var other in others) {
-    if (other.isEmpty) continue;
-    if (sides) {
-      xs.add(other.left);
-      xs.add(other.right);
-      ys.add(other.top);
-      ys.add(other.bottom);
+
+  /// edges is a box being resized, now [box], snapped by the sides dragged
+  /// alone, so the sides held stay put: a dragged side on the nearest line
+  /// in [reach], down and across.
+  Snap edges(Rect box,
+      {bool left = false,
+      bool top = false,
+      bool right = false,
+      bool bottom = false,
+      required double reach}) {
+    if (!_on) return (nudge: Offset.zero, lines: SnapLines.none);
+    var (vertical, horizontal) = _lines;
+    var x = left || right
+        ? _nearest([left ? box.left : box.right], vertical, reach)
+        : null;
+    var y = top || bottom
+        ? _nearest([top ? box.top : box.bottom], horizontal, reach)
+        : null;
+    return (
+      nudge: Offset(x?.shift ?? 0, y?.shift ?? 0),
+      lines: SnapLines(vertical: x?.line, horizontal: y?.line),
+    );
+  }
+
+  /// line is where a line running along [axis], dragged to [at], lands: on
+  /// the nearest line in [reach] that way, or at [at].
+  double line(GuideAxis axis, double at, {required double reach}) {
+    if (!_on) return at;
+    var (vertical, horizontal) = _lines;
+    var lines = axis == GuideAxis.vertical ? vertical : horizontal;
+    return _nearest([at], lines, reach)?.line ?? at;
+  }
+
+  (List<double>, List<double>) _allLines() {
+    var vertical = <double>[0, _page.width / 2, _page.width];
+    var horizontal = <double>[0, _page.height / 2, _page.height];
+    var guides = _guides;
+    // The grid's lines as the painter draws them, so a grid too fine to
+    // draw is not snapped to either.
+    if (guides.showGrid) {
+      for (var (lines, extent) in [
+        (vertical, _page.width),
+        (horizontal, _page.height)
+      ]) {
+        var (majors, minors) =
+            gridLines(extent, guides.gridSize, guides.subdivisions);
+        lines
+          ..addAll(majors)
+          ..addAll(minors);
+      }
     }
-    if (middles) {
-      xs.add(other.center.dx);
-      ys.add(other.center.dy);
+    if (guides.showGuides) {
+      for (var (i, guide) in guides.guides.indexed) {
+        if (i == _leaving) continue;
+        (guide.axis == GuideAxis.vertical ? vertical : horizontal)
+            .add(guide.at);
+      }
+    }
+    _addTheirs(vertical, horizontal);
+    return (vertical, horizontal);
+  }
+
+  /// _addTheirs adds what the other elements offer to land on: their sides
+  /// and their middles, down and across. What they offer follows the same
+  /// switches as what the dragged box may land with: with centres off,
+  /// nothing lines up on a middle, theirs or its own.
+  void _addTheirs(List<double> xs, List<double> ys) {
+    var to = _guides.snapTo;
+    if (!to.objects) return;
+    for (var other in _others) {
+      if (other.isEmpty) continue;
+      if (to.edges) {
+        xs.add(other.left);
+        xs.add(other.right);
+        ys.add(other.top);
+        ys.add(other.bottom);
+      }
+      if (to.centres) {
+        xs.add(other.center.dx);
+        ys.add(other.center.dy);
+      }
     }
   }
-  return (xs, ys);
 }
 
 /// _Catch is one snap: the line caught, and how far the element has to move.

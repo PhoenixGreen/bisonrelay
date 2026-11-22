@@ -687,10 +687,6 @@ class CanvasStageState extends State<CanvasStage>
   Offset _warpPivot = Offset.zero;
   Offset _warpGrab = Offset.zero;
 
-  /// _snappedTo is the lines the drag is caught on, drawn so a snap is seen
-  /// rather than felt as a jump.
-  SnapResult? _snappedTo;
-
   /// _anchorsShown is each selected element's shown anchor and whether it
   /// is locked.
   List<({Offset at, bool locked})> _anchorsShown() => [
@@ -986,7 +982,12 @@ class CanvasStageState extends State<CanvasStage>
       guides: _guidesInView
           ? document.guides
           : document.guides.copyWith(showGrid: false, showGuides: false),
-      snapped: _guidesInView ? _snappedTo : null,
+      // What a move or resize of the box is caught on, drawn so a snap is
+      // seen rather than felt as a jump.
+      snapped: switch (_gesture) {
+        _BoxDrag drag when _guidesInView => drag.snapped,
+        _ => null,
+      },
       showHandles: _selectionHasOwnGeometry,
       selectionRotation: _rotationOfSelection,
       touchAreas: _touchAreas(),

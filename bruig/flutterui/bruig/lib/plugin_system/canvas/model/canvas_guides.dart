@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 
@@ -38,9 +36,10 @@ class CanvasGuide {
 }
 
 /// SnapTo is what part of an element is allowed to land on a line: its
-/// corners, its edges or its centre, each switched separately.
+/// edges or its centre, each switched separately.
 class SnapTo {
-  final bool vertices;
+  /// edges is its sides, and so its corners: a corner lies on two sides,
+  /// so on one axis the two offer the same points.
   final bool edges;
   final bool centres;
 
@@ -49,7 +48,6 @@ class SnapTo {
   final bool objects;
 
   const SnapTo({
-    this.vertices = true,
     this.edges = true,
     this.centres = true,
     this.objects = true,
@@ -59,27 +57,28 @@ class SnapTo {
   /// out.
   static const _defaults = SnapTo();
 
-  bool get any => vertices || edges || centres;
+  bool get any => edges || centres;
 
-  SnapTo copyWith(
-          {bool? vertices, bool? edges, bool? centres, bool? objects}) =>
-      SnapTo(
-        vertices: vertices ?? this.vertices,
+  SnapTo copyWith({bool? edges, bool? centres, bool? objects}) => SnapTo(
         edges: edges ?? this.edges,
         centres: centres ?? this.centres,
         objects: objects ?? this.objects,
       );
 
   Map<String, dynamic> toJson() => {
-        if (vertices != _defaults.vertices) "v": vertices,
         if (edges != _defaults.edges) "e": edges,
         if (centres != _defaults.centres) "c": centres,
         if (objects != _defaults.objects) "o": objects,
       };
 
+  /// fromJson reads edges from a canvas saved with a switch for corners
+  /// ("v") beside the one for sides ("e"), so it snaps as it did: on unless
+  /// "e" was written off. A corners switch written on keeps it on, since
+  /// corners snapped by the sides; one left out cannot, or the sides
+  /// switched off and saved, which writes "e" alone, would read back on.
   factory SnapTo.fromJson(Map<String, dynamic> json) => SnapTo(
-        vertices: jsonBool(json["v"], _defaults.vertices),
-        edges: jsonBool(json["e"], _defaults.edges),
+        edges:
+            jsonBool(json["e"], _defaults.edges) || jsonBool(json["v"], false),
         centres: jsonBool(json["c"], _defaults.centres),
         objects: jsonBool(json["o"], _defaults.objects),
       );
@@ -87,8 +86,6 @@ class SnapTo {
 
 /// SnapTarget is a switch for what snaps, as the guides panel and the
 /// settings bar's snap menu both offer it, with the one label both show.
-/// The panel's Vertices switch is not among them: it offers on one axis
-/// what Edges does, and the bar leaves it out.
 enum SnapTarget {
   edges("Edges"),
   centres("Centres"),
@@ -273,30 +270,5 @@ class CanvasGuides {
       stageTurn: jsonDouble(json["stageTurn"], d.stageTurn)
           .clamp(minStageTurn, maxStageTurn),
     );
-  }
-
-  /// linesFor is every line an element could land on, in document units: the
-  /// canvas's edges and middle, the grid, and the shown guides, as vertical
-  /// and horizontal lists.
-  (List<double>, List<double>) linesFor(Size canvas) {
-    var vertical = <double>[0, canvas.width / 2, canvas.width];
-    var horizontal = <double>[0, canvas.height / 2, canvas.height];
-
-    if (showGrid && gridSize > 0) {
-      var step = gridSize / subdivisions;
-      for (var x = 0.0; x <= canvas.width; x += step) {
-        vertical.add(x);
-      }
-      for (var y = 0.0; y <= canvas.height; y += step) {
-        horizontal.add(y);
-      }
-    }
-    if (showGuides) {
-      for (var guide in guides) {
-        (guide.axis == GuideAxis.vertical ? vertical : horizontal)
-            .add(guide.at);
-      }
-    }
-    return (vertical, horizontal);
   }
 }

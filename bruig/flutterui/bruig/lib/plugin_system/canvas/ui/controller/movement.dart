@@ -8,7 +8,10 @@ part of '../canvas_controller.dart';
 extension CanvasMovement on CanvasController {
   /// movedTo is the stage's drag: where [element]'s top-left should now be.
   /// Absolute rather than a delta, since deltas drift and compound on a pose.
-  CanvasElement movedTo(CanvasElement element, Offset topLeft) {
+  /// [free] is a drag Alt frees from snapping, which the stage tells it: it
+  /// is put off a 3D stage's steps however its snap is set.
+  CanvasElement movedTo(CanvasElement element, Offset topLeft,
+      {bool free = false}) {
     // An element on a stage moves across its floor, or along its back wall.
     if (element.base.spot != null) {
       var at = stagedIn(_document, element, _frame);
@@ -18,8 +21,9 @@ extension CanvasMovement on CanvasController {
         var by = topLeft - at.box.topLeft;
         var view = at.view;
         // Snapping lands on the 3D steps: a stage has no lines to snap to.
-        var step =
-            _document.guides.stageSnap ? _document.guides.stageStep : 0.0;
+        var step = _document.guides.stageSnap && !free
+            ? _document.guides.stageStep
+            : 0.0;
         double snap(double v) =>
             step > 0 ? (v / step).roundToDouble() * step : v;
         switch (spot.stand) {

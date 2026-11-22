@@ -77,7 +77,7 @@ extension StageGuides on CanvasStageState {
       nearest = i;
     }
     if (nearest == null) return false;
-    _gesture = _GuideDrag(nearest);
+    _gesture = _GuideDrag(nearest, _guideSnapper(nearest));
     controller.beginInteraction();
     return true;
   }
@@ -94,24 +94,21 @@ extension StageGuides on CanvasStageState {
         .axisAt(stage - _scrolled);
   }
 
-  /// _applyGuide moves the guide at [index] to [doc], snapped so it can sit
-  /// on a gridline. Not snapped to itself: its own last place is always in
-  /// reach of a small step, which would hold it back.
-  void _applyGuide(int index, Offset doc) {
+  /// _guideSnapper is what the guide at [index] lands on as it is dragged:
+  /// not itself (see Snapper), and no element.
+  Snapper _guideSnapper(int index) =>
+      Snapper(document.guides, document.size.size, leaving: index);
+
+  /// _applyGuide moves the guide at [index] to [doc], landing on what
+  /// [snapper] offers so it can sit on a gridline.
+  void _applyGuide(int index, Offset doc, Snapper snapper) {
     var guides = document.guides;
     if (index < 0 || index >= guides.guides.length) return;
     var guide = guides.guides[index];
 
     var at = guide.axis == GuideAxis.vertical ? doc.dx : doc.dy;
-    if (!HardwareKeyboard.instance.isAltPressed) {
-      var line = snapEdgeTo(
-        at,
-        guides.withoutGuide(index),
-        document.size.size,
-        vertical: guide.axis == GuideAxis.vertical,
-        within: guides.snapWithin / _scale,
-      );
-      if (line != null) at = line;
+    if (_snapReach case var reach?) {
+      at = snapper.line(guide.axis, at, reach: reach);
     }
 
     controller.apply(document.copyWith(guides: guides.movedGuide(index, at)),

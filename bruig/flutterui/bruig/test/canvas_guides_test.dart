@@ -18,46 +18,44 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const canvas = Size(1000, 600);
 
+  /// moved is a box of [size] moved to [topLeft] and snapped against
+  /// [guides] on the canvas: where its top-left lands, and the lines caught.
+  (Offset, SnapLines) moved(CanvasGuides guides, Offset topLeft, Size size,
+      {double reach = 8}) {
+    var snap = Snapper(guides, canvas).move(topLeft & size, reach: reach);
+    return (topLeft + snap.nudge, snap.lines);
+  }
+
   group("snapping a move", () {
     // A grid every 100, and nothing else.
     const grid = CanvasGuides(showGrid: true, gridSize: 100);
 
     test("a corner lands on the nearest line", () {
-      var result = snapTopLeft(
-          const Offset(97, 203), const Size(50, 50), grid, canvas,
-          within: 8);
-      expect(result.at, const Offset(100, 200));
-      expect(result.onVertical, 100);
-      expect(result.onHorizontal, 200);
+      var (at, lines) = moved(grid, const Offset(97, 203), const Size(50, 50));
+      expect(at, const Offset(100, 200));
+      expect(lines.vertical, 100);
+      expect(lines.horizontal, 200);
     });
 
     test("nothing moves when nothing is near enough", () {
-      var result = snapTopLeft(
-          const Offset(140, 260), const Size(50, 50), grid, canvas,
-          within: 8);
-      expect(result.at, const Offset(140, 260));
-      expect(result.caught, isFalse);
+      var (at, lines) = moved(grid, const Offset(140, 260), const Size(50, 50));
+      expect(at, const Offset(140, 260));
+      expect(lines.caught, isFalse);
     });
 
     test("the far edge can be what catches", () {
       // The element's right-hand side is on 300; its left is nowhere near a
       // line. Snapping only the top-left corner would miss this.
-      var result = snapTopLeft(
-          const Offset(147, 10), const Size(150, 50), grid, canvas,
-          within: 8);
-      expect(result.at.dx, 150, reason: "moved so the right edge is on 300");
-      expect(result.onVertical, 300);
+      var (at, lines) = moved(grid, const Offset(147, 10), const Size(150, 50));
+      expect(at.dx, 150, reason: "moved so the right edge is on 300");
+      expect(lines.vertical, 300);
     });
 
     test("the centre can be what catches", () {
-      var result = snapTopLeft(
-          const Offset(72, 10),
-          const Size(50, 50),
-          grid.copyWith(snapTo: const SnapTo(vertices: false, edges: false)),
-          canvas,
-          within: 8);
-      expect(result.at.dx, 75, reason: "its middle is now on 100");
-      expect(result.onVertical, 100);
+      var (at, lines) = moved(grid.copyWith(snapTo: const SnapTo(edges: false)),
+          const Offset(72, 10), const Size(50, 50));
+      expect(at.dx, 75, reason: "its middle is now on 100");
+      expect(lines.vertical, 100);
     });
 
     test("nearest wins, not first", () {
@@ -65,30 +63,26 @@ void main() {
       // Taking the first would jump it backwards past the one it was nearly
       // touching.
       var fine = grid.copyWith(gridSize: 10);
-      var result = snapTopLeft(
-          const Offset(28, 5), const Size(10, 10), fine, canvas,
-          within: 6);
-      expect(result.at.dx, 30);
+      var (at, _) =
+          moved(fine, const Offset(28, 5), const Size(10, 10), reach: 6);
+      expect(at.dx, 30);
     });
 
     test("the canvas's own edges and middle are always there", () {
       // Nobody should have to draw a guide down the middle of the page.
       const plain = CanvasGuides();
       expect(plain.showGrid, isFalse);
-      var result = snapTopLeft(
-          const Offset(497, 3), const Size(20, 20), plain, canvas,
-          within: 8);
-      expect(result.onVertical, 500);
-      expect(result.onHorizontal, 0);
+      var (_, lines) = moved(plain, const Offset(497, 3), const Size(20, 20));
+      expect(lines.vertical, 500);
+      expect(lines.horizontal, 0);
     });
 
     test("a guide is snapped to like anything else", () {
       var withGuide = const CanvasGuides()
           .withGuide(const CanvasGuide(axis: GuideAxis.vertical, at: 321));
-      var result = snapTopLeft(
-          const Offset(318, 400), const Size(20, 20), withGuide, canvas,
-          within: 8);
-      expect(result.at.dx, 321);
+      var (at, _) =
+          moved(withGuide, const Offset(318, 400), const Size(20, 20));
+      expect(at.dx, 321);
     });
 
     test("a hidden guide catches nothing", () {
@@ -96,31 +90,64 @@ void main() {
       // distance either.
       var hidden = const CanvasGuides(showGuides: false)
           .withGuide(const CanvasGuide(axis: GuideAxis.vertical, at: 321));
-      expect(
-          snapTopLeft(
-                  const Offset(318, 400), const Size(20, 20), hidden, canvas,
-                  within: 8)
-              .onVertical,
-          isNot(321));
+      var (_, lines) =
+          moved(hidden, const Offset(318, 400), const Size(20, 20));
+      expect(lines.vertical, isNot(321));
     });
 
     test("snapping off leaves everything exactly where it was put", () {
       var off = grid.copyWith(snap: false);
-      var result = snapTopLeft(
-          const Offset(97, 203), const Size(50, 50), off, canvas,
-          within: 8);
-      expect(result.at, const Offset(97, 203));
-      expect(result.caught, isFalse);
+      var (at, lines) = moved(off, const Offset(97, 203), const Size(50, 50));
+      expect(at, const Offset(97, 203));
+      expect(lines.caught, isFalse);
     });
 
     test("so does turning every target off", () {
-      var none = grid.copyWith(
-          snapTo: const SnapTo(vertices: false, edges: false, centres: false));
+      var none =
+          grid.copyWith(snapTo: const SnapTo(edges: false, centres: false));
+      var (_, lines) = moved(none, const Offset(97, 203), const Size(50, 50));
+      expect(lines.caught, isFalse);
+    });
+
+    test("Edges off, a side lands on nothing", () {
+      // The bar's snap menu offers Edges, Centres and Other elements. With
+      // Edges and Centres off, nothing on the box is left to snap.
+      var noSides =
+          grid.copyWith(snapTo: const SnapTo(edges: false, centres: false));
+      var (at, lines) =
+          moved(noSides, const Offset(97, 203), const Size(50, 50));
+      expect(lines.caught, isFalse);
+      expect(at, const Offset(97, 203));
+    });
+  });
+
+  group("snapping a dragged edge or a guide", () {
+    const grid = CanvasGuides(showGrid: true, gridSize: 100);
+
+    test("only the sides dragged are snapped", () {
+      // The left side at 97 is in reach of 100, but only the right is
+      // dragged, and it is nowhere near a line.
+      const box = Rect.fromLTRB(97, 140, 240, 260);
+      var right = Snapper(grid, canvas).edges(box, right: true, reach: 8);
+      expect(right.nudge, Offset.zero);
+      expect(right.lines.caught, isFalse);
+
+      var left =
+          Snapper(grid, canvas).edges(box, left: true, bottom: true, reach: 8);
+      expect(left.nudge, const Offset(3, 0));
+      expect(left.lines, const SnapLines(vertical: 100));
+    });
+
+    test("a guide lands on the grid, and not on its own last place", () {
+      var guides =
+          grid.withGuide(const CanvasGuide(axis: GuideAxis.vertical, at: 333));
+      var snapper = Snapper(guides, canvas, leaving: 0);
+      expect(snapper.line(GuideAxis.vertical, 397, reach: 8), 400);
+      expect(snapper.line(GuideAxis.vertical, 335, reach: 8), 335,
+          reason: "its own place is left out");
       expect(
-          snapTopLeft(const Offset(97, 203), const Size(50, 50), none, canvas,
-                  within: 8)
-              .caught,
-          isFalse);
+          Snapper(guides, canvas).line(GuideAxis.vertical, 335, reach: 8), 333,
+          reason: "which another drag would land on");
     });
   });
 
@@ -137,6 +164,17 @@ void main() {
       var (majors, minors) = gridLines(300, 100, 1);
       expect(majors, [0, 100, 200, 300]);
       expect(minors, isEmpty);
+    });
+
+    test("a grid too fine to draw is not snapped to either", () {
+      // What a drag lands on is what is drawn: a grid the painter leaves
+      // out must not be felt.
+      const page = Size(1280, 720);
+      const fine = CanvasGuides(showGrid: true, gridSize: 2, subdivisions: 10);
+      expect(gridLines(page.width, 2, 10).$1, isEmpty);
+      var snap = Snapper(fine, page)
+          .move(const Rect.fromLTWH(100.13, 50.05, 20, 20), reach: 0.1);
+      expect(snap.lines.caught, isFalse);
     });
 
     test("a grid too fine to draw is not drawn", () {
@@ -163,7 +201,7 @@ void main() {
           showGuides: false,
           lockGuides: true,
           snap: false,
-          snapTo: SnapTo(vertices: false, edges: true, centres: false),
+          snapTo: SnapTo(edges: false, centres: false),
           snapWithin: 12,
           guides: [
             CanvasGuide(axis: GuideAxis.vertical, at: 120),
@@ -179,8 +217,8 @@ void main() {
       expect(back.showGuides, isFalse);
       expect(back.lockGuides, isTrue);
       expect(back.snap, isFalse);
-      expect(back.snapTo.vertices, isFalse);
-      expect(back.snapTo.edges, isTrue);
+      expect(back.snapTo.edges, isFalse);
+      expect(back.snapTo.centres, isFalse);
       expect(back.snapWithin, 12);
       expect(back.guides.length, 2);
       expect(back.guides.first.axis, GuideAxis.vertical);
@@ -203,7 +241,6 @@ void main() {
         "showGuides": d.copyWith(showGuides: false),
         "lockGuides": d.copyWith(lockGuides: true),
         "snap": d.copyWith(snap: false),
-        "snapTo.vertices": d.copyWith(snapTo: const SnapTo(vertices: false)),
         "snapTo.edges": d.copyWith(snapTo: const SnapTo(edges: false)),
         "snapTo.centres": d.copyWith(snapTo: const SnapTo(centres: false)),
         "snapTo.objects": d.copyWith(snapTo: const SnapTo(objects: false)),
@@ -231,8 +268,7 @@ void main() {
         showGuides: false,
         lockGuides: true,
         snap: false,
-        snapTo: SnapTo(
-            vertices: false, edges: false, centres: false, objects: false),
+        snapTo: SnapTo(edges: false, centres: false, objects: false),
         snapWithin: 12,
         stageSnap: true,
         stageStep: 0.5,
@@ -243,8 +279,33 @@ void main() {
           '{"grid":true,"gridSize":24.0,"sub":3,'
           '"guides":[{"axis":"vertical","at":120.0}],"hideGuides":true,'
           '"lockGuides":true,"noSnap":true,'
-          '"snapTo":{"v":false,"e":false,"c":false,"o":false},'
+          '"snapTo":{"e":false,"c":false,"o":false},'
           '"within":12.0,"stageSnap":true,"stageStep":0.5,"stageTurn":45.0}');
+    });
+
+    test("a canvas saved with a corners switch snaps as it did", () {
+      // Corners ("v") and sides ("e") were two switches for one thing: the
+      // sides are on unless "e" was written off, and stay on when "v" was
+      // written on. "e" off alone is what the sides switched off now
+      // saves, so it must read back off.
+      for (var (v, e, edges) in [
+        (null, null, true),
+        (true, true, true),
+        (false, true, true),
+        (true, false, true),
+        (false, false, false),
+        (false, null, true),
+        (true, null, true),
+        (null, false, false),
+      ]) {
+        var read = CanvasGuides.fromJson({
+          "snapTo": {if (v != null) "v": v, if (e != null) "e": e},
+        });
+        expect(read.snapTo.edges, edges, reason: "v: $v, e: $e");
+        var saved = jsonEncode(read.toJson());
+        expect(saved, isNot(contains('"v"')), reason: "v: $v, e: $e");
+        expect(saved.contains('"e":false'), !edges, reason: "v: $v, e: $e");
+      }
     });
 
     test("rulers a canvas was saved with are passed over", () {
