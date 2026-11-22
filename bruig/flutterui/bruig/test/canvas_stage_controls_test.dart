@@ -596,5 +596,21 @@ void main() {
       await tester.pump();
       expect(cameraOf(c).tx, 0);
     });
+
+    testWidgets("each 3D tool is taken up by its letter", (tester) async {
+      final c = CanvasController(
+          onStage(spot: const StageSpot("st", x: 2, height: 2)));
+      addTearDown(c.dispose);
+      final s = await pumpStage(tester, c);
+      await tester.tapAt(s.toStagePoint(const Offset(40, 690)));
+      await tester.pump();
+      // From the end, so that the first letter is not the tool already up.
+      for (final tool in StageTool.values.reversed) {
+        final id = tool.key.toLowerCase().codeUnitAt(0);
+        await tester.sendKeyEvent(LogicalKeyboardKey.findKeyByKeyId(id)!);
+        await tester.pump();
+        expect(c.stageTool, tool, reason: "${tool.key} is ${tool.label}");
+      }
+    });
   });
 }

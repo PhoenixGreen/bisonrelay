@@ -17,27 +17,31 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 /// VectorTool is what a press on a drawing being edited does.
 enum VectorTool {
-  select("Select points"),
-  selectShapes("Select shapes"),
-  pen("Pen"),
-  scale("Line thickness"),
-  tint("Tint"),
+  select("Select points", "V"),
+  selectShapes("Select shapes", "G"),
+  pen("Pen", "P"),
+  scale("Line thickness", "S"),
+  tint("Tint", "I"),
 
   /// shadow and highlight paint the tint brush's strokes in each shape's
-  /// own colour, darker or lighter: cel shading drawn on by hand.
+  /// own colour, darker or lighter: cel shading drawn on by hand. They
+  /// have no key of their own.
   shadow("Shadow"),
   highlight("Highlight"),
-  boolean("Combine shapes"),
-  align("Align"),
-  corner("Round corners"),
-  pencil("Pencil"),
-  eraser("Eraser"),
-  shapes("Shapes"),
-  knife("Knife"),
-  text("Text");
+  boolean("Combine shapes", "B"),
+  align("Align", "A"),
+  corner("Round corners", "C"),
+  pencil("Pencil", "N"),
+  eraser("Eraser", "E"),
+  shapes("Shapes", "R"),
+  knife("Knife", "K"),
+  text("Text", "T");
 
   final String label;
-  const VectorTool(this.label);
+
+  /// key is the letter that takes it up while a drawing is edited, or null.
+  final String? key;
+  const VectorTool(this.label, [this.key]);
 }
 
 /// VectorPick is one point of a drawing: which shape, which run of it, and

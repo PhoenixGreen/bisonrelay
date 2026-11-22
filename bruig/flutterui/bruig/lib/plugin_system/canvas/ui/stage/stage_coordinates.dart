@@ -266,12 +266,7 @@ extension StageCoordinates on CanvasStageState {
     return bounds == null ? Offset.zero : _handlePosition(handle, bounds);
   }
 
-  /// _chosen is the selection on the canvas: a timeline sound is selected
-  /// from its channel and has no box.
-  List<CanvasElement> get _chosen => [
-        for (var e in controller.selectedElements)
-          if (!isTimelineSound(e)) e,
-      ];
+  List<CanvasElement> get _chosen => _chosenOf(controller);
 
   /// _selectionBounds is the axis-aligned box round the selection, in
   /// document space; rotation is ignored for several.
@@ -380,3 +375,11 @@ extension StageCoordinates on CanvasStageState {
       _skewOfSelection.dx,
       _skewOfSelection.dy);
 }
+
+/// _chosenOf is the selection on the canvas: a timeline sound is selected
+/// from its channel and has no box. A function of the controller alone, for
+/// the keys (stage_keys.dart) as well as the stage.
+List<CanvasElement> _chosenOf(CanvasController c) => [
+      for (var e in c.selectedElements)
+        if (!isTimelineSound(e)) e,
+    ];

@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
@@ -182,6 +183,56 @@ void main() {
       await tester.pumpAndSettle();
       expect(c.imageEditing, isNull);
       expect(c.selection, {"i"}, reason: "still selected");
+    });
+
+    testWidgets("Escape steps out of a picture one thing at a time",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      var stage = await pump(tester, c);
+      await open(tester, c, stage, const Offset(150, 150));
+      Future<void> escape() async {
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+      }
+
+      c.editWarp("i", _layer.id);
+      c.warpPicks = {0};
+      await tester.pump();
+      await escape();
+      expect(c.warpPicks, isEmpty, reason: "first the warp points picked");
+      expect(c.warpLayer, _layer.id);
+      await escape();
+      expect(c.warpLayer, isNull, reason: "then the warp grid");
+      expect(c.imageEditing, "i");
+
+      c.imageTool = ImageTool.clone;
+      c.cloneFrom = const Offset(10, 10);
+      await escape();
+      expect(c.cloneFrom, isNull, reason: "then where Clone copies from");
+      expect(c.imageTool, ImageTool.clone);
+      await escape();
+      expect(c.imageTool, ImageTool.move, reason: "then the tool");
+      await escape();
+      expect(c.imageEditing, isNull, reason: "then the picture");
+    });
+
+    testWidgets("each picture tool's letter takes it up", (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      var stage = await pump(tester, c);
+      await open(tester, c, stage, const Offset(150, 150));
+
+      // From the end, so that the first letter is not the tool already up.
+      for (var tool in ImageTool.values.reversed) {
+        var key = tool.key.toLowerCase().codeUnitAt(0);
+        await tester.sendKeyEvent(LogicalKeyboardKey.findKeyByKeyId(key)!);
+        await tester.pump();
+        expect(c.imageTool, tool, reason: "${tool.key} is ${tool.label}");
+      }
+      expect(c.imageEditing, "i", reason: "and the picture is still open");
     });
 
     testWidgets("picking something else closes the layers", (tester) async {

@@ -9,21 +9,7 @@ part of 'canvas_stage.dart';
 // build are in canvas_stage.dart.
 
 extension StageTextPieces on CanvasStageState {
-  /// _onePiece is (element, index) when the one selected text element has a
-  /// picture piece picked in its Layers that the canvas can handle.
-  (TextElement, int)? get _onePiece {
-    var chosen = _chosen;
-    if (chosen.length != 1) return null;
-    var e = chosen.first;
-    if (e is! TextElement || e.locked || e.curve != null) return null;
-    var item = controller.textLayer(e);
-    if (item == null || !item.isIcon || item.hidden || item.locked) {
-      return null;
-    }
-    if (!item.icon!.on) return null;
-    var i = e.items.indexOf(item);
-    return i < 0 ? null : (e, i);
-  }
+  (TextElement, int)? get _onePiece => pickedPiece(controller);
 
   /// _pieceBounds is the picture's square on the page, upright: its middle
   /// turned with the element, its own turn left to _rotationOfSelection.
@@ -167,20 +153,35 @@ extension StageTextPieces on CanvasStageState {
     _mode = _DragMode.none;
     return true;
   }
+}
 
-  /// _removePiece takes the picked picture piece out, as Delete does to a
-  /// picked element. Answers whether there was one.
-  bool _removePiece() {
-    var piece = _onePiece;
-    if (piece == null) return false;
-    var (e, i) = piece;
-    controller.beginInteraction();
-    controller.replaceElement(e.copyWith(items: [
-      for (var (n, it) in e.items.indexed)
-        if (n != i) it,
-    ]));
-    controller.endInteraction();
-    controller.pickTextLayer(e.id, null);
-    return true;
+/// pickedPiece is (element, index) when the one selected text element has a
+/// picture piece picked in its Layers that the canvas can handle.
+(TextElement, int)? pickedPiece(CanvasController c) {
+  var chosen = _chosenOf(c);
+  if (chosen.length != 1) return null;
+  var e = chosen.first;
+  if (e is! TextElement || e.locked || e.curve != null) return null;
+  var item = c.textLayer(e);
+  if (item == null || !item.isIcon || item.hidden || item.locked) {
+    return null;
   }
+  if (!item.icon!.on) return null;
+  var i = e.items.indexOf(item);
+  return i < 0 ? null : (e, i);
+}
+
+/// removePickedPiece takes the picked picture piece out, as Delete does to a
+/// picked element; nothing if none is picked (see pickedPiece).
+void removePickedPiece(CanvasController c) {
+  var piece = pickedPiece(c);
+  if (piece == null) return;
+  var (e, i) = piece;
+  c.beginInteraction();
+  c.replaceElement(e.copyWith(items: [
+    for (var (n, it) in e.items.indexed)
+      if (n != i) it,
+  ]));
+  c.endInteraction();
+  c.pickTextLayer(e.id, null);
 }

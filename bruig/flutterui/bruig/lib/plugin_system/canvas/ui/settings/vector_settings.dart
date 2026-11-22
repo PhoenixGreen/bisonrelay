@@ -255,7 +255,7 @@ List<Widget> vectorSettings(
       },
       keyOf: (tool) => "vectorTool-${tool.name}",
       tooltipOf: (tool) =>
-          _toolKey(tool).isEmpty ? tool.label : "${tool.label} (${_toolKey(tool)})",
+          tool.key == null ? tool.label : "${tool.label} (${tool.key})",
       settings: editing
           ? [
               ..._toolSettings(e, controller),
@@ -1198,24 +1198,6 @@ String _joinName(StrokeJoin j) => switch (j) {
       StrokeJoin.miter => "Sharp",
       StrokeJoin.round => "Round",
       StrokeJoin.bevel => "Cut",
-    };
-
-/// _toolKey is the key that picks [tool] while a drawing is edited.
-String _toolKey(VectorTool tool) => switch (tool) {
-      VectorTool.select => "V",
-      VectorTool.selectShapes => "G",
-      VectorTool.pen => "P",
-      VectorTool.scale => "S",
-      VectorTool.tint => "I",
-      VectorTool.shadow || VectorTool.highlight => "",
-      VectorTool.boolean => "B",
-      VectorTool.align => "A",
-      VectorTool.corner => "C",
-      VectorTool.pencil => "N",
-      VectorTool.eraser => "E",
-      VectorTool.shapes => "R",
-      VectorTool.knife => "K",
-      VectorTool.text => "T",
     };
 
 /// _toolHint is how [tool] is used, shown where the reader is looking.

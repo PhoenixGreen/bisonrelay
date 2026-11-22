@@ -23,12 +23,15 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/play_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
@@ -1472,6 +1475,166 @@ void main() {
 
       expect(stage.contentRect.left, before,
           reason: "holding space is not a pan modifier any more");
+    });
+
+    /// command presses [key] with Command held.
+    Future<void> command(WidgetTester tester, LogicalKeyboardKey key) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(key);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+    }
+
+    testWidgets("Command D duplicates the selection", (tester) async {
+      var document = const CanvasDocument(frames: 20);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await keyed(tester, controller);
+      controller.selectOnly(element.id);
+
+      await command(tester, LogicalKeyboardKey.keyD);
+      expect(controller.document.elements, hasLength(2));
+      expect(controller.selection, isNot(contains(element.id)),
+          reason: "the copy is the one selected");
+    });
+
+    testWidgets("Command A selects every element", (tester) async {
+      var document = const CanvasDocument(frames: 20);
+      var a = newElement(ElementKind.shape, document);
+      document = document.addElement(a);
+      var b = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(b));
+      addTearDown(controller.dispose);
+      await keyed(tester, controller);
+      controller.clearSelection();
+
+      await command(tester, LogicalKeyboardKey.keyA);
+      expect(controller.selection, {a.id, b.id});
+    });
+
+    testWidgets("a held key other than space does it on every repeat",
+        (tester) async {
+      // Space plays once however long it is held; the others go on, as
+      // Command Z goes on undoing.
+      var document = const CanvasDocument(frames: 20);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      await keyed(tester, controller);
+      controller.selectOnly(element.id);
+      controller.duplicateSelected();
+      controller.duplicateSelected();
+      expect(controller.document.elements, hasLength(3));
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      expect(controller.document.elements, hasLength(1),
+          reason: "the press undid one, the repeat the other");
+    });
+
+    /// withCopies is a shape with two copies, selected.
+    CanvasController withCopies() {
+      var controller = CanvasController(CanvasDocument(frames: 20, elements: [
+        ShapeElement(
+            const ElementBase(
+                id: "a",
+                x: 100,
+                y: 100,
+                width: 100,
+                height: 100,
+                motion: ElementMotion(
+                    instances: InstanceSet(items: [
+                  ElementInstance("i0"),
+                  ElementInstance("i1", dx: 250),
+                ]))),
+            fill: const Color(0xFF000000)),
+      ]));
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    testWidgets("Escape lets go of one thing at a time", (tester) async {
+      var controller = withCopies();
+      await keyed(tester, controller);
+      controller.selectOnly("a");
+      controller.pickCopy("a", "i1");
+      controller.placingCopies = "a";
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.placingCopies, isNull, reason: "first the placing");
+      expect(controller.pickedCopiesOf("a"), {"i1"});
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.pickedCopiesOf("a"), isEmpty,
+          reason: "then the copy picked");
+      expect(controller.selection, {"a"});
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.selection, isEmpty, reason: "then the element");
+    });
+
+    testWidgets("Delete takes the copies picked, then the element",
+        (tester) async {
+      var controller = withCopies();
+      await keyed(tester, controller);
+      controller.selectOnly("a");
+      controller.pickCopy("a", "i1");
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pump();
+      expect(controller.document.elementById("a"), isNotNull,
+          reason: "the element stays while copies are picked");
+      expect(controller.document.elementById("a")!.base.motion.instances,
+          isNull,
+          reason: "one copy left is the element placed once");
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+      await tester.pump();
+      expect(controller.document.elementById("a"), isNull);
+    });
+
+    testWidgets("an Escape the canvas has no use for is the page's",
+        (tester) async {
+      // The page's Escape puts the timeline's tool back to Select. The canvas
+      // took every Escape, with nothing selected too, so it never got there
+      // while the canvas had the keyboard.
+      var document = const CanvasDocument(frames: 20);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasSpaceBar(
+              controller: controller,
+              child: CanvasStage(controller: controller)))));
+      await tester.pumpAndSettle();
+      await tester.tapAt(Offset(viewport.width / 2, viewport.height / 2));
+      await tester.pumpAndSettle();
+      controller.selectOnly(element.id);
+      controller.timelineTool = TimelineTool.knife;
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.selection, isEmpty, reason: "the canvas's first");
+      expect(controller.timelineTool, TimelineTool.knife);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.timelineTool, TimelineTool.select,
+          reason: "with nothing left on the canvas, the page's");
     });
   });
 

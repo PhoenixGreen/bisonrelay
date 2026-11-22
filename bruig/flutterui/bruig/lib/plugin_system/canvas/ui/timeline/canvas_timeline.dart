@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart'
     show MotionEditing;
@@ -1090,19 +1089,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// here as soon as one of these controls is pressed, and the space bar has
   /// to keep working. The arrows are claimed too, or Flutter spends them on
   /// directional focus traversal between the buttons.
-  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    // A game playing has the keys: Space jumps and the arrows run, rather
-    // than playing the timeline or walking its frames. See gameKey.
-    if (controller.gaming) return KeyEventResult.handled;
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    // Never while somebody is typing (see isTypingInAField): this runs
-    // before the app's text-editing shortcuts, so the arrows and space
-    // would otherwise scrub and play.
-    if (isTypingInAField()) return KeyEventResult.ignored;
-    return transportKey(controller, event) ?? KeyEventResult.ignored;
-  }
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) =>
+      transportKey(controller, event);
 
   /// _braceAt is which part of the loop brace is under [local]: an end, which
   /// moves that end, or the middle, which moves the whole; null off it. The

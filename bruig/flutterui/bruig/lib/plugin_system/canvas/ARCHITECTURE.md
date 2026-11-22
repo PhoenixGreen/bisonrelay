@@ -39,7 +39,7 @@ reason, as debts to pay off; nothing may be added to the list without one.
 |---|---|
 | (top) | `canvas_controller.dart` and what every part uses: `controls.dart`, `canvas_dialogs.dart`, `element_factory.dart`, `element_settings.dart`, presets, studio colours. |
 | `controller/` | The controller's own parts, as `extension` files (see below). |
-| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle, keys and build; what it does is in parts by concern: `stage_coordinates`, `stage_hit_testing`, `stage_press`, `stage_drag`, `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing`, `stage_3d_view`. Drawing is `stage_painter.dart` and its parts. |
+| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates`, `stage_hit_testing`, `stage_press`, `stage_drag`, `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing`, `stage_3d_view`. Drawing is `stage_painter.dart` and its parts. |
 | `screen/` | The editor around the stage: settings bar, dock, play bar, publishing, the file player. |
 | `timeline/` | Rows, channels, scenes, markers, keys, automation. |
 | `mixer/` | The mixer, its strips and devices, the clip slots. |
@@ -236,6 +236,44 @@ how a panel is laid out.
 Drawing is cached where it is expensive: procedural backgrounds
 (`ProceduralCache`), rasterised elements during a gesture (`RasterCache`) and
 pictures (`CanvasImageStore`).
+
+### Keys
+
+Every key the Canvas page answers is a line of `canvasShortcuts` in
+`ui/stage/stage_keys.dart`: its keys and modifiers, when it applies, what it
+does in words, and the doing of it. Three handlers hand their keys to
+`canvasKey`, each saying where the keyboard is: the canvas
+(`canvas_stage.dart`), the play bar and timeline (`transportKey`,
+`screen/play_bar.dart`), and a scope round the whole page
+(`screen/space_bar.dart`), which hears what the others leave.
+
+- **`reach`** is how far out a line is heard: `canvas` only while the canvas
+  has the keyboard, `transport` only while the play bar or timeline has it,
+  `page` anywhere on the page. The canvas's and transport's lines come
+  before the page's, so they have the first say.
+- **`when`** is whether the line applies now, read from the controller. The
+  first line that fits the key, the modifiers held, the reach and `when` is
+  the one done; the rest are not tried. A key with several meanings
+  (Escape, Delete, the arrows) is several lines, the most particular first,
+  and a line whose `when` is `always` ends its key's run.
+- **`held`** is what holding the key down does: `again` on each repeat (the
+  arrows), `taken` once with the repeats swallowed (Space, so no focused
+  button gets them), or `once` with the repeats left to whatever is further
+  out.
+
+To add a key, add a line where it belongs in that order;
+`test/canvas_stage_keys_test.dart` fails if it can never be reached behind
+an earlier line, or if a tool's letter is missing. A tool's letter is not
+written in the table: it is the tool's own `key` (`ImageTool`, `StageTool`,
+`VectorTool`), and the table makes a line for each.
+
+Two things take the keyboard for themselves before the table: a field being
+typed in, the text editor on the canvas among them
+(`ui/stage/canvas_text_editor.dart`; see `isTypingInAField` in
+`ui/controls.dart`), and a running game, which has every key
+(`CanvasController.gameKey` in `ui/controller/game.dart`). Panels with
+focus of their own (the piano roll, the curves, the Data Studio, the keys
+strip and others) answer their own keys before the page's.
 
 ## Preferences
 

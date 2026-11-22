@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -13,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/dock_switcher.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/play_bar_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/transport_controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/marker_panel.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -28,35 +28,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 /// the captions are their hover text. See CanvasControlScope.
 const double playBarHeight = controlHeight + 6;
 
-/// transportKey is the play bar's and timeline's keyboard: space plays and
-/// stops, the arrows walk the frames. Null for any other key, so a caller
-/// can go on with its own.
-KeyEventResult? transportKey(CanvasController controller, KeyEvent event) {
-  // A game playing has the keys: Space jumps and the arrows run. See gameKey.
-  if (controller.gaming) return KeyEventResult.handled;
-  if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-    return KeyEventResult.ignored;
-  }
-  // Never while typing: this runs before the app's text-editing shortcuts,
-  // so the arrows and space would otherwise scrub and play.
-  if (isTypingInAField()) return KeyEventResult.ignored;
-  switch (event.logicalKey) {
-    case LogicalKeyboardKey.space:
-      // Once for a press however long it is held; the arrows step on repeat.
-      if (event is KeyDownEvent) controller.togglePlay();
-    case LogicalKeyboardKey.arrowLeft:
-      controller.stepFrame(-1);
-    case LogicalKeyboardKey.arrowRight:
-      controller.stepFrame(1);
-    case LogicalKeyboardKey.arrowUp:
-      controller.stepFrame(-10);
-    case LogicalKeyboardKey.arrowDown:
-      controller.stepFrame(10);
-    default:
-      return null;
-  }
-  return KeyEventResult.handled;
-}
+/// transportKey is the play bar's and timeline's keyboard: the lines of
+/// canvasShortcuts heard there, space and the arrows, then the page's
+/// (stage_keys.dart).
+KeyEventResult transportKey(CanvasController controller, KeyEvent event) =>
+    canvasKey(controller, event, reach: ShortcutReach.transport);
 
 class CanvasPlayBar extends StatefulWidget {
   final CanvasController controller;
@@ -174,8 +150,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     var document = controller.document;
     return Focus(
       focusNode: _focus,
-      onKeyEvent: (node, event) =>
-          transportKey(controller, event) ?? KeyEventResult.ignored,
+      onKeyEvent: (node, event) => transportKey(controller, event),
       child: SizedBox(
         height: playBarHeight,
         child: _bar(theme, document),

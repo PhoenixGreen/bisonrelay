@@ -952,13 +952,17 @@ extension CanvasScenes on CanvasController {
     notifyListeners();
   }
 
+  /// somethingSelected is whether clearSelection has anything to let go
+  /// of: elements, the background, what is picked on another scene's
+  /// canvas, or clips picked on the timeline.
+  bool get somethingSelected =>
+      _selection.isNotEmpty ||
+      _backgroundSelected ||
+      _offCanvas.isNotEmpty ||
+      _motionPicks.isNotEmpty;
+
   void clearSelection() {
-    if (_selection.isEmpty &&
-        !_backgroundSelected &&
-        _offCanvas.isEmpty &&
-        _motionPicks.isEmpty) {
-      return;
-    }
+    if (!somethingSelected) return;
     _motionPicks = const {};
     _backgroundSelected = false;
     _focusedPlayer = null;

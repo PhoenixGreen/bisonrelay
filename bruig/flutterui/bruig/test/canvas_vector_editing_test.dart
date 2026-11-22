@@ -1454,6 +1454,49 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("a tool's letter takes it up, again puts it down; Escape",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      Future<void> press(LogicalKeyboardKey key) async {
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+      }
+
+      await press(LogicalKeyboardKey.keyK);
+      expect(c.vectorTool, VectorTool.knife);
+      await press(LogicalKeyboardKey.keyK);
+      expect(c.vectorTool, VectorTool.select, reason: "again: back to picking");
+      await press(LogicalKeyboardKey.keyN);
+      expect(c.vectorTool, VectorTool.pencil);
+      c.pickVectorPoints({const VectorPick(0, 0, 0)});
+      await tester.pump();
+
+      await press(LogicalKeyboardKey.escape);
+      expect(c.vectorTool, VectorTool.select, reason: "first the tool");
+      expect(c.vectorPicks, isNotEmpty);
+      await press(LogicalKeyboardKey.escape);
+      expect(c.vectorPicks, isEmpty, reason: "then the points");
+      expect(c.vectorEditing, "v");
+      await press(LogicalKeyboardKey.escape);
+      expect(c.vectorEditing, isNull, reason: "then the editing");
+    });
+
+    testWidgets("each drawing tool with a letter is taken up by it",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      for (var tool in VectorTool.values) {
+        var key = tool.key;
+        if (key == null) continue;
+        var id = key.toLowerCase().codeUnitAt(0);
+        await tester.sendKeyEvent(LogicalKeyboardKey.findKeyByKeyId(id)!);
+        await tester.pump();
+        expect(c.vectorTool, tool, reason: "$key is ${tool.label}");
+        expect(c.vectorEditing, "v", reason: "and the drawing stays open");
+      }
+    });
+
     testWidgets("a double-click with the pen finishes the line",
         (tester) async {
       var empty = VectorElement(
