@@ -7,14 +7,25 @@ part of 'canvas_stage.dart';
 // in canvas_stage.dart.
 
 extension StageDrag on CanvasStageState {
-  /// _selectedChartLabels are the lone selected chart's placed labels.
-  List<Rect> _selectedChartLabels() {
+  /// _labelledChart is the lone selected chart whose placed labels are
+  /// drawn and can be taken: not a locked one, and not with helpers hidden.
+  /// Drawing and pressing both ask this, so they agree.
+  ChartElement? get _labelledChart {
     var element = controller.selected;
-    if (element is! ChartElement || !controller.showHelpers) return const [];
-    return chartLabelPlaces(element, _hit.posed(element))
-        .values
-        .where((r) => !r.isEmpty)
-        .toList();
+    if (element is! ChartElement || element.locked) return null;
+    return controller.showHelpers ? element : null;
+  }
+
+  /// _selectedChartLabels are the placed labels of the chart whose labels
+  /// are shown (see _labelledChart), each with whether it has a resize grip.
+  List<({Rect rect, bool grip})> _selectedChartLabels() {
+    var element = _labelledChart;
+    if (element == null) return const [];
+    return [
+      for (var MapEntry(key: part, value: rect)
+          in chartLabelPlaces(element, _hit.posed(element)).entries)
+        if (!rect.isEmpty) (rect: rect, grip: chartLabelResizes(part)),
+    ];
   }
 
   /// _docSlop is the pointer's reach in document units: the slop is in

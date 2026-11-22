@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 
 // canvas_guides.dart is the scaffolding a canvas is laid out against: a grid,
 // the lines the reader puts down themselves, and what an element snaps to.
@@ -287,11 +288,8 @@ class CanvasGuides {
         gridSize:
             jsonDouble(json["gridSize"], _defaults.gridSize).clamp(2.0, 1000.0),
         subdivisions: jsonInt(json["sub"], _defaults.subdivisions).clamp(1, 10),
-        guides: [
-          if (json["guides"] case List raw)
-            for (var g in raw)
-              if (g is Map<String, dynamic>) CanvasGuide.fromJson(g),
-        ],
+        guides:
+            jsonObjects(json["guides"], CanvasGuide.fromJson, most: maxGuides),
         showGuides: !jsonBool(json["hideGuides"], false),
         lockGuides: jsonBool(json["lockGuides"], false),
         snap: !jsonBool(json["noSnap"], false),

@@ -133,7 +133,8 @@ extension StagePainterMarks on StagePainter {
   }
 
   /// _paintChartLabels outlines a chart's placed labels, dashed so it does
-  /// not read as design, with a resize grip on the corner.
+  /// not read as design, with a resize grip on the corner of each that
+  /// resizes.
   void _paintChartLabels(Canvas canvas) {
     if (chartLabels.isEmpty) return;
     var line = Paint()
@@ -141,7 +142,7 @@ extension StagePainterMarks on StagePainter {
       ..strokeWidth = 1
       ..color = const Color(0x883D7EFF);
 
-    for (var rect in chartLabels) {
+    for (var (:rect, :grip) in chartLabels) {
       var box = Rect.fromPoints(
           rect.topLeft * scale + origin, rect.bottomRight * scale + origin);
       const dash = 5.0, gap = 4.0;
@@ -159,6 +160,7 @@ extension StagePainterMarks on StagePainter {
               from + step * at, from + step * math.min(at + dash, span), line);
         }
       }
+      if (!grip) continue;
       canvas.drawRect(
           Rect.fromCenter(center: box.bottomRight, width: 7, height: 7),
           Paint()..color = const Color(0xFF3D7EFF));

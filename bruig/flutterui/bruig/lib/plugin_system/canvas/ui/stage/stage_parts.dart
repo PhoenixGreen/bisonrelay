@@ -28,18 +28,21 @@ class ChartLabelGrab {
   const ChartLabelGrab(this.part, this.grab, {required this.resizing});
 }
 
+/// chartLabelResizes is whether [part] has a corner to size it by, for
+/// the stage to draw a grip on and to take. The key is moved but never
+/// resized: its size comes from its setting and words.
+bool chartLabelResizes(ChartLabelPart part) => part != ChartLabelPart.legend;
+
 /// chartLabelGrabAt is which label a document point lands on, if any, in
-/// reverse drawing order so the one on top wins. The key is moved but never
-/// resized: its size comes from its setting and words. [slop] is the
-/// corner's reach in document units.
+/// reverse drawing order so the one on top wins. [slop] is the corner's
+/// reach in document units.
 ChartLabelGrab? chartLabelGrabAt(
     ChartElement e, Rect bounds, Offset doc, double slop) {
   var rects = chartLabelPlaces(e, bounds);
   for (var part in ChartLabelPart.values.reversed) {
     var rect = rects[part];
     if (rect == null || rect.isEmpty) continue;
-    if (part != ChartLabelPart.legend &&
-        (doc - rect.bottomRight).distance <= slop) {
+    if (chartLabelResizes(part) && (doc - rect.bottomRight).distance <= slop) {
       return ChartLabelGrab(part, doc - rect.bottomRight, resizing: true);
     }
     if (rect.contains(doc)) {

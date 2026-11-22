@@ -117,8 +117,9 @@ extension StagePress on CanvasStageState {
   /// _pressTools takes a press for a tool or session that comes before
   /// anything on the page: the marker's label, sampling a colour, the
   /// stylus, the 3D gizmo, a locked stage, panning, a picture's open layers,
-  /// a guide, an anchor point, a sprite or tile map being painted, and a
-  /// drawing being edited. True if one took the press.
+  /// a ruler's new guide, an anchor point, a sprite or tile map being
+  /// painted, a drawing being edited, and a guide. True if one took the
+  /// press.
   bool _pressTools(_Press press) {
     var _Press(:event, :stage, :doc) = press;
     // A held marker's canvas label: dragged to move, or sized by its grip.
@@ -157,9 +158,8 @@ extension StagePress on CanvasStageState {
       controller.editImage(null);
     }
 
-    // A guide before anything on the canvas: it is a hairline, so its reach
-    // is tight (see guideGrabSlop), but within it the guide wins.
-    if (_startGuideDrag(stage, doc)) return true;
+    // A press in a ruler pulls out a new guide, before anything on the page.
+    if (_pullGuide(stage)) return true;
 
     // An anchor point shown and unlocked, before the element it sits on.
     if (_anchorUnder(stage) case var id?) {
@@ -190,6 +190,13 @@ extension StagePress on CanvasStageState {
         when _pressVector(vector, doc)) {
       return true;
     }
+
+    // A guide, after what is drawn over it or is a tool in hand. It is a
+    // hairline, so its reach is tight (see guideGrabSlop), but within it the
+    // guide wins over what lies under it. Not where the selection's grips
+    // lie on it, as they are drawn over it. Before Option's camera, since
+    // Option frees a guide's drag from snapping.
+    if (!_onSelectionGrip(stage, doc) && _grabGuide(doc)) return true;
     return false;
   }
 
@@ -375,8 +382,7 @@ extension StagePress on CanvasStageState {
     }
 
     // A selected chart's placed label, before the chart whose box holds it.
-    var chart = controller.selected;
-    if (chart is ChartElement && !chart.locked) {
+    if (_labelledChart case var chart?) {
       var grab = chartLabelGrabAt(chart, _hit.posed(chart), doc, _docSlop);
       if (grab != null) {
         // A placed key both moves and holds switches: decided on release by

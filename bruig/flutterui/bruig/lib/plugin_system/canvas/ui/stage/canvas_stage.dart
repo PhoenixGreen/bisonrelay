@@ -996,8 +996,12 @@ class CanvasStageState extends State<CanvasStage>
       liveStrokeKeeps: controller.retouch.keeps,
       selectionBounds: _selectionBounds,
       framing: _framingView(),
-      guides: document.guides,
-      snapped: _snappedTo,
+      // The grid and guides put away while the page plays (the rulers
+      // stay): see _guidesInView.
+      guides: _guidesInView
+          ? document.guides
+          : document.guides.copyWith(showGrid: false, showGuides: false),
+      snapped: _guidesInView ? _snappedTo : null,
       showHandles: _selectionHasOwnGeometry,
       selectionRotation: _rotationOfSelection,
       touchAreas: _touchAreas(),

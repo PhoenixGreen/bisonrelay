@@ -217,10 +217,19 @@ class _ElementsMarquee extends StageGesture {
 
 /// _GuideDrag is a guide line moved, or a new one pulled from a ruler.
 class _GuideDrag extends StageGesture {
-  _GuideDrag(this.index);
+  _GuideDrag(this.index) : pulled = null;
 
-  /// index is the guide's place in the document's list of guides.
-  final int index;
+  /// _GuideDrag.pulled is a new guide along [pulled] pulled out of a ruler.
+  /// It is put down by the first move, so a click makes none.
+  _GuideDrag.pulled(GuideAxis this.pulled) : index = -1;
+
+  /// index is the guide's place in the document's list of guides, or -1
+  /// for a pulled one not yet put down.
+  int index;
+
+  /// pulled is the axis of a guide pulled out of a ruler, or null for one
+  /// already on the page.
+  final GuideAxis? pulled;
 
   @override
   bool get opensUndoStep => true;
@@ -232,8 +241,12 @@ class _GuideDrag extends StageGesture {
   MouseCursor get cursor => SystemMouseCursors.grabbing;
 
   @override
-  void move(CanvasStageState stage, Offset at, Offset doc) =>
-      stage._applyGuide(index, doc);
+  void move(CanvasStageState stage, Offset at, Offset doc) {
+    if (index < 0) {
+      if (pulled case var axis?) index = stage._putGuide(axis, doc);
+    }
+    stage._applyGuide(index, doc);
+  }
 
   @override
   void release(CanvasStageState stage, Offset at,

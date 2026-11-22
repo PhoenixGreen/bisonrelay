@@ -52,15 +52,22 @@ class StageHitTest {
     // if it were not there.
     if (e is CameraElement) {
       var frame = posed(e);
+      // Its name tab is drawn upright, so it is hit upright.
+      if (cameraTab(e, frame, scale).contains(at)) return true;
+      // The frame and its corners are drawn turned by its roll, so the
+      // point is turned back before they are tried.
+      var roll = cameraLookAt(e, this.frame, document, live: live).roll;
+      var local = roll == 0
+          ? at
+          : frame.center + BoxFrame(roll, 0, 0).invert(at - frame.center);
       var reach = _strokeReach(2) + 4 / scale;
-      if (frame.inflate(reach).contains(at) &&
-          !frame.deflate(reach).contains(at)) {
+      if (frame.inflate(reach).contains(local) &&
+          !frame.deflate(reach).contains(local)) {
         return true;
       }
-      // Its name tab and corner brackets too: an edge on the page's edge is
-      // hard to pick.
-      if (cameraTab(e, frame, scale).contains(at)) return true;
-      var corner = math.min(22 / scale, frame.shortestSide / 4);
+      // Its corner brackets too, the size they are drawn: an edge on the
+      // page's edge is hard to pick.
+      var corner = math.min(18 / scale, frame.shortestSide / 4);
       for (var c in [
         frame.topLeft,
         frame.topRight,
@@ -72,7 +79,7 @@ class StageHitTest {
                 c.dy + (c.dy == frame.top ? 1 : -1) * corner / 2),
             width: corner,
             height: corner);
-        if (inside.contains(at)) return true;
+        if (inside.contains(local)) return true;
       }
       return false;
     }

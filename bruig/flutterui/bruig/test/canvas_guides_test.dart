@@ -197,6 +197,19 @@ void main() {
           .copyWith(guides: const CanvasGuides(showGrid: true, gridSize: 12));
       expect(document.encode(), contains("gridSize"));
     });
+
+    test("a received canvas brings a bounded number of guides", () {
+      // Every guide is drawn on each repaint and snapped to on each step of
+      // a drag, so a sent file cannot ask for any number of them.
+      var json = const CanvasDocument().toJson();
+      json["guides"] = {
+        "guides": [
+          for (var i = 0; i < 400000; i++) {"axis": "vertical", "at": i % 1000},
+        ],
+      };
+      var back = CanvasDocument.fromJson(json).guides;
+      expect(back.guides.length, maxGuides);
+    });
   });
 
   group("adding and moving guides", () {

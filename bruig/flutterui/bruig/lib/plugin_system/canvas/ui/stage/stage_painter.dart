@@ -285,8 +285,9 @@ class StagePainter extends CustomPainter {
   final StageLayers? editingLayers;
 
   /// chartLabels is the boxes of the selected chart's placed labels, in
-  /// document units, outlined to show they can be taken hold of.
-  final List<Rect> chartLabels;
+  /// document units, outlined to show they can be taken hold of, each with
+  /// whether it has a resize grip (see chartLabelResizes).
+  final List<({Rect rect, bool grip})> chartLabels;
 
   /// layoutMarks is the selected Layout's picked cell and the lines that
   /// can be dragged, in document units (stage_layouts.dart).
