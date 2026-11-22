@@ -5,10 +5,17 @@ part of 'canvas_stage.dart';
 // build are in canvas_stage.dart.
 
 extension StageRelease on CanvasStageState {
-  void _onPointerUp(PointerEvent event) {
+  /// _onPointerUp ends what the press began. [cancelled] is a press the
+  /// system took away: it is ended the same, its undo step closed and what a
+  /// drag changed kept, but no click, drop or box is acted on.
+  void _onPointerUp(PointerEvent event, {bool cancelled = false}) {
+    // A press let go where it began, never one the system took away.
+    var clicked = !cancelled &&
+        (event.localPosition - _pressedAt).distance <=
+            CanvasStageState._buttonClickSlop;
     if (_liveTapPending) {
       _liveTapPending = false;
-      _replayTap(event.position);
+      if (!cancelled) _replayTap(event.position);
       return;
     }
     if (_inLive) {
@@ -20,13 +27,18 @@ extension StageRelease on CanvasStageState {
       controller.endInteraction();
       return;
     }
-    if (_releaseSynth(_toDocument(event.localPosition))) return;
-    if (_releaseCode(_toDocument(event.localPosition))) return;
+    if (_releaseSynth(_toDocument(event.localPosition),
+        cancelled: cancelled)) {
+      return;
+    }
+    if (_releaseCode(_toDocument(event.localPosition),
+        cancelled: cancelled)) {
+      return;
+    }
     var codeEdit = _pendingCodeEdit;
     _pendingCodeEdit = null;
     if (document.elementById(codeEdit?.$1 ?? "") case CodeElement e
-        when codeEdit != null &&
-            (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+        when codeEdit != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -54,8 +66,7 @@ extension StageRelease on CanvasStageState {
       controller.endInteraction();
       _mode = _DragMode.none;
     }
-    if (counter != null &&
-        (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+    if (counter != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -67,8 +78,7 @@ extension StageRelease on CanvasStageState {
     var legendAt = _pendingLegendAt;
     _pendingLegend = null;
     _pendingLegendAt = -1;
-    if (legend != null &&
-        (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+    if (legend != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -78,8 +88,7 @@ extension StageRelease on CanvasStageState {
 
     var sheet = _pendingSheet;
     _pendingSheet = null;
-    if (sheet != null &&
-        (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+    if (sheet != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -93,8 +102,7 @@ extension StageRelease on CanvasStageState {
 
     var film = _pendingVideo;
     _pendingVideo = null;
-    if (film != null &&
-        (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+    if (film != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -113,8 +121,7 @@ extension StageRelease on CanvasStageState {
 
     var sound = _pendingAudio;
     _pendingAudio = null;
-    if (sound != null &&
-        (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+    if (sound != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -124,8 +131,7 @@ extension StageRelease on CanvasStageState {
 
     var button = _pendingButton;
     _pendingButton = null;
-    if (button != null &&
-        (event.localPosition - _pressedAt).distance <= CanvasStageState._buttonClickSlop) {
+    if (button != null && clicked) {
       controller.endInteraction();
       _mode = _DragMode.none;
       _handle = null;
@@ -135,7 +141,7 @@ extension StageRelease on CanvasStageState {
     }
 
     if (_mode == _DragMode.flow) {
-      _dropFlow(event.localPosition);
+      if (!cancelled) _dropFlow(event.localPosition);
       setState(() {
         _flowFrom = null;
         _flowAt = null;
@@ -146,7 +152,9 @@ extension StageRelease on CanvasStageState {
 
     if (_mode == _DragMode.vectorMarquee) {
       var box = _marquee, e = controller.editingVector;
-      if (box != null && e != null && box.width > 2 && box.height > 2) {
+      if (cancelled) {
+        // Taken away: nothing is picked and the editing goes on.
+      } else if (box != null && e != null && box.width > 2 && box.height > 2) {
         var inside = picksIn(e, box);
         controller.pickVectorPoints(
             _shiftHeld ? {...controller.vectorPicks, ...inside} : inside);
@@ -181,7 +189,7 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.vectorShapeDraw ||
         _mode == _DragMode.vectorShapeFit ||
         _mode == _DragMode.vectorItems) {
-      if (_mode == _DragMode.vectorShapeDraw) {
+      if (_mode == _DragMode.vectorShapeDraw && !cancelled) {
         if (!_travelled) _drawShape(_shapeFrom, clicked: true);
         if (_vectorBefore?.shapes case var was?) {
           controller.vectorShapeMade = was.length;
@@ -192,7 +200,10 @@ extension StageRelease on CanvasStageState {
       _penInto = const {};
       _stroke = null;
       _strokeOn = {};
-      if (_mode == _DragMode.vectorScale && _scaleLetsGo && !_travelled) {
+      if (_mode == _DragMode.vectorScale &&
+          _scaleLetsGo &&
+          !_travelled &&
+          !cancelled) {
         controller.pickVectorPoints(const {});
       }
       _scaleLetsGo = false;
@@ -203,13 +214,13 @@ extension StageRelease on CanvasStageState {
       controller.endInteraction();
       if (_tintWaiting != null) {
         _tintWaiting = null;
-        controller.editVector(null);
+        if (!cancelled) controller.editVector(null);
       }
     }
-    if (_mode == _DragMode.warpMarquee) _finishWarpMarquee();
+    if (_mode == _DragMode.warpMarquee) _finishWarpMarquee(pick: !cancelled);
     if (_mode == _DragMode.marquee) {
       var box = _marquee;
-      if (box != null && box.width > 3 && box.height > 3) {
+      if (!cancelled && box != null && box.width > 3 && box.height > 3) {
         for (var e in document.elements) {
           if (!e.locked && e.visible && box.overlaps(e.bounds)) {
             controller.toggleSelected(e.id);
@@ -236,16 +247,16 @@ extension StageRelease on CanvasStageState {
       }
     }
     if (_mode == _DragMode.tilePaint) controller.tilePaint?.strokeEnd();
-    if (_mode == _DragMode.vectorKnife) _finishKnife();
+    if (_mode == _DragMode.vectorKnife) _finishKnife(apply: !cancelled);
     if (_mode == _DragMode.vectorItemsBox) {
       var box = _marquee;
       var e = controller.editingVector;
-      if (box != null && e != null && _travelled) {
+      if (!cancelled && box != null && e != null && _travelled) {
         controller.pickVectorItems(itemsIn(e, box), add: _shiftHeld);
       }
       setState(() => _marquee = null);
     }
-    if (_mode == _DragMode.move && !_travelled) {
+    if (_mode == _DragMode.move && !_travelled && !cancelled) {
       if ((_pressedCopy, _pressedCopyOf) case (var id?, var of?)) {
         controller.pickCopy(of, id);
       }
@@ -289,7 +300,9 @@ extension StageRelease on CanvasStageState {
         _mode == _DragMode.guide) {
       controller.endInteraction();
     }
-    if (_mode == _DragMode.imageQuick && _quickTrail.isNotEmpty) {
+    if (_mode == _DragMode.imageQuick &&
+        _quickTrail.isNotEmpty &&
+        !cancelled) {
       unawaited(controller.imageTool == ImageTool.refine
           ? controller.refineEdge(_quickTrail)
           : controller.quickSelect(_quickTrail, subtract: _quickSubtract));
@@ -298,7 +311,9 @@ extension StageRelease on CanvasStageState {
     }
     // A still press on the stage with the page locked is a click on nothing:
     // it clears the selection.
-    if (_lockedPress && !_travelled) controller.clearSelection();
+    if (_lockedPress && !_travelled && !cancelled) {
+      controller.clearSelection();
+    }
     _lockedPress = false;
     if (_gizmoDrag != null) setState(() => _gizmoDrag = null);
     _mode = _DragMode.none;
@@ -311,6 +326,9 @@ extension StageRelease on CanvasStageState {
   /// _updateHover keeps the renderer told what is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
+    // The cursor is worked out at build: onto a ruler or off it rebuilds.
+    var ruler = _rulerUnder(stage);
+    if (ruler != _hoverRuler) setState(() => _hoverRuler = ruler);
     _hoverCode(stage);
     // For a Look at that faces the pointer.
     controller.stagePointer = _toDocument(stage);

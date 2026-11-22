@@ -378,11 +378,13 @@ extension StagePictureTools on CanvasStageState {
         transient: true);
   }
 
-  void _finishWarpMarquee() {
+  /// _finishWarpMarquee lets go of the box, picking the points in it unless
+  /// [pick] is false (a press the system took away).
+  void _finishWarpMarquee({bool pick = true}) {
     var box = _marquee;
     var e = controller.editingImage, id = controller.warpLayer;
     setState(() => _marquee = null);
-    if (box == null || e == null || id == null) return;
+    if (!pick || box == null || e == null || id == null) return;
     var picks = {...controller.warpPicks};
     for (var (k, p) in _warpPoints(e, id).indexed) {
       if (box.contains(p)) picks.add(k);

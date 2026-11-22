@@ -15,13 +15,14 @@ extension StageHitTesting on CanvasStageState {
   }
 
   /// _selectedAt is the topmost selected element under [point], which a
-  /// press takes before anything drawn over it.
+  /// press takes before anything drawn over it. Not a hidden one: picked in
+  /// Layers, it would be moved unseen by a press on what is drawn there.
   CanvasElement? _selectedAt(Offset point) {
     var picked = controller.selection;
     if (picked.isEmpty) return null;
     for (var i = document.elements.length - 1; i >= 0; i--) {
       var e = document.elements[i];
-      if (!picked.contains(e.id) || e.locked) continue;
+      if (!picked.contains(e.id) || e.locked || !e.visible) continue;
       if (_containsPoint(e, point)) return e;
     }
     return null;
@@ -564,8 +565,8 @@ extension StageHitTesting on CanvasStageState {
   }
 
   /// _releaseCode ends a press on a Code panel: a divider let go, or a tab
-  /// shown, or moved where it was carried.
-  bool _releaseCode(Offset doc) {
+  /// shown, or moved where it was carried; neither when [cancelled].
+  bool _releaseCode(Offset doc, {bool cancelled = false}) {
     if (_codeScrub != null) {
       _codeScrub = null;
       setState(() => _mode = _DragMode.none);
@@ -586,7 +587,7 @@ extension StageHitTesting on CanvasStageState {
       _mode = _DragMode.none;
     });
     var e = document.elementById(tab.id);
-    if (e is! CodeElement) return true;
+    if (e is! CodeElement || cancelled) return true;
     if (!carried) {
       controller.showCodeTab(e, tab.pane, tab.file);
       return true;
@@ -801,7 +802,8 @@ extension StageHitTesting on CanvasStageState {
   /// _releaseSynth ends a press on a synth module: the key released, the
   /// knob's turn one undo step, the cable plugged into the jack it is dropped
   /// on, or, lifted and dropped on nothing, removed. True if there was one.
-  bool _releaseSynth(Offset doc) {
+  /// When [cancelled] a cable is neither plugged nor removed.
+  bool _releaseSynth(Offset doc, {bool cancelled = false}) {
     if (_synthKey case (var e, var key)?) {
       _synthKey = null;
       controller.synthKeyUp(e, key);
@@ -817,7 +819,7 @@ extension StageHitTesting on CanvasStageState {
     var cable = _synthCable;
     if (cable == null) return false;
     _synthCable = null;
-    var onto = synthJackUnder(document.elements, doc);
+    var onto = cancelled ? null : synthJackUnder(document.elements, doc);
     var plugged = false;
     if (onto case (var into, var port, var out)? when out != cable.out) {
       var (src, srcPort) = cable.out ? (cable.from, cable.port) : (into, port);
@@ -839,7 +841,7 @@ extension StageHitTesting on CanvasStageState {
             : "That doesn't fit: a ${a.signal.name} jack goes to a "
                 "${a.signal.name} jack.");
       }
-    } else if (cable.lifted case (var was, var input)?) {
+    } else if (cable.lifted case (var was, var input)? when !cancelled) {
       controller.unplugSynth(
           document.elementById(was.id) as SynthModuleElement, input);
     }

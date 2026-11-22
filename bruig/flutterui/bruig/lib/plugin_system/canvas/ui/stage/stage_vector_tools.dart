@@ -611,12 +611,13 @@ extension StageVectorTools on CanvasStageState {
         bytes.getUint8(0), bytes.getUint8(1), bytes.getUint8(2)));
   }
 
-  /// _finishKnife cuts the picked shape, or every shape the knife crossed.
-  void _finishKnife() {
+  /// _finishKnife cuts the picked shape, or every shape the knife crossed;
+  /// with [apply] false (a press the system took away) it only lets go.
+  void _finishKnife({bool apply = true}) {
     var line = _knife;
     setState(() => _knife = const []);
     var e = controller.editingVector;
-    if (e == null || line.length < 2) return;
+    if (!apply || e == null || line.length < 2) return;
     var space = VectorSpace(e);
     var drawn = simplifiedKnife([for (var p in line) space.toDrawing(p)],
         0.5 / _scale * space.unitsPer);

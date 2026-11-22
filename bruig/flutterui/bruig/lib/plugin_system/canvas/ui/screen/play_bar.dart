@@ -42,7 +42,8 @@ KeyEventResult? transportKey(CanvasController controller, KeyEvent event) {
   if (isTypingInAField()) return KeyEventResult.ignored;
   switch (event.logicalKey) {
     case LogicalKeyboardKey.space:
-      controller.togglePlay();
+      // Once for a press however long it is held; the arrows step on repeat.
+      if (event is KeyDownEvent) controller.togglePlay();
     case LogicalKeyboardKey.arrowLeft:
       controller.stepFrame(-1);
     case LogicalKeyboardKey.arrowRight:

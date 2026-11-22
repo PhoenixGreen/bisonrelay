@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -24,6 +26,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/screen/play_bar.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
@@ -57,11 +60,12 @@ void main() {
   const viewport = Size(800, 600);
 
   Future<CanvasStageState> pump(
-      WidgetTester tester, CanvasController controller) async {
+      WidgetTester tester, CanvasController controller,
+      {void Function(String url)? onButtonLink}) async {
     var key = GlobalKey<CanvasStageState>();
     setTestScreen(tester, viewport);
 
-    await tester.pumpWidget(canvasApp(SizedBox(width: viewport.width, height: viewport.height, child: CanvasStage(key: key, controller: controller))));
+    await tester.pumpWidget(canvasApp(SizedBox(width: viewport.width, height: viewport.height, child: CanvasStage(key: key, controller: controller, onButtonLink: onButtonLink))));
     await tester.pumpAndSettle();
     return key.currentState!;
   }
@@ -1241,6 +1245,67 @@ void main() {
       expect(controller.selection, {table.id});
       expect(find.byType(CanvasCellEditor), findsNothing);
     });
+
+    testWidgets("another canvas opened while a cell is typed in ends it",
+        (tester) async {
+      // The stage went on believing the cell was open, so it ignored every
+      // press on the canvas opened after it.
+      var (controller, table) = build();
+      addTearDown(controller.dispose);
+      controller.selectOnly(table.id);
+      var stage = await pump(tester, controller);
+      var at = await cellCentre(stage, table, 1, 1);
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), "9");
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasCellEditor), findsOneWidget);
+
+      var shape = const ShapeElement(
+          ElementBase(id: "s", x: 400, y: 200, width: 300, height: 200));
+      controller.load(const CanvasDocument().addElement(shape));
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasCellEditor), findsNothing);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.tapAt(stage.pageRect.topLeft + shape.center * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"s"}, reason: "presses work again");
+      expect(controller.interacting, isFalse);
+    });
+
+    testWidgets("a cell typed in whose table is removed ends it",
+        (tester) async {
+      var (controller, table) = build();
+      addTearDown(controller.dispose);
+      var shape = const ShapeElement(
+          ElementBase(id: "s", x: 20, y: 20, width: 100, height: 80));
+      controller.load(controller.document.addElement(shape));
+      controller.selectOnly(table.id);
+      var stage = await pump(tester, controller);
+      var at = await cellCentre(stage, table, 1, 1);
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), "9");
+      await tester.pumpAndSettle();
+      expect(controller.interacting, isTrue);
+
+      controller.selectOnly(table.id);
+      controller.deleteSelected();
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasCellEditor), findsNothing);
+      expect(controller.interacting, isFalse,
+          reason: "the typing's undo step is closed");
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.tapAt(stage.pageRect.topLeft + shape.center * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"s"}, reason: "and presses work again");
+    });
   });
 
   group("the keyboard", () {
@@ -1267,6 +1332,60 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump();
       expect(controller.playing, isFalse);
+    });
+
+    testWidgets("holding space down plays once, however long it is held",
+        (tester) async {
+      // Each key repeat toggled play again, so a held space bar flickered
+      // between playing and stopped and ended wherever the repeats left it.
+      var controller = CanvasController(const CanvasDocument(frames: 20));
+      addTearDown(controller.dispose);
+      addTearDown(controller.pause);
+      await keyed(tester, controller);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(controller.playing, isTrue);
+      controller.pause();
+    });
+
+    testWidgets("the play bar's keys play once for a held space bar too",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument(frames: 20));
+      addTearDown(controller.dispose);
+      addTearDown(controller.pause);
+      const space = (PhysicalKeyboardKey.space, LogicalKeyboardKey.space);
+
+      transportKey(
+          controller,
+          KeyDownEvent(
+              physicalKey: space.$1,
+              logicalKey: space.$2,
+              timeStamp: Duration.zero));
+      var repeat = transportKey(
+          controller,
+          KeyRepeatEvent(
+              physicalKey: space.$1,
+              logicalKey: space.$2,
+              timeStamp: const Duration(milliseconds: 500)));
+      expect(controller.playing, isTrue);
+      expect(repeat, KeyEventResult.handled,
+          reason: "the repeat is still the transport's, so no button gets it");
+      controller.pause();
+    });
+
+    testWidgets("a held arrow still steps on every repeat", (tester) async {
+      var controller = CanvasController(const CanvasDocument(frames: 40));
+      addTearDown(controller.dispose);
+      await keyed(tester, controller);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(controller.frame, 2);
     });
 
     testWidgets("the arrows scrub the playhead", (tester) async {
@@ -1915,6 +2034,35 @@ void main() {
 
       expect(find.byType(CanvasTextEditor), findsNothing);
       expect((controller.document.elements.single as TextElement).text, "Kept");
+    });
+
+    testWidgets("removing the element being typed into ends the typing",
+        (tester) async {
+      // The stage went on believing it was typing into it: every press
+      // after was ignored, and the open undo step took in the next change.
+      var (controller, element) = withText();
+      addTearDown(controller.dispose);
+      var other = const ShapeElement(
+          ElementBase(id: "s", x: 20, y: 20, width: 100, height: 80));
+      controller.load(controller.document.addElement(other));
+      var stage = await pump(tester, controller);
+      await clickText(tester, stage, element, controller: controller);
+      await clickText(tester, stage, element, controller: controller);
+      await tester.enterText(find.byType(TextField), "Gone");
+      await tester.pumpAndSettle();
+      expect(controller.interacting, isTrue);
+
+      controller.selectOnly("t");
+      controller.deleteSelected();
+      await tester.pumpAndSettle();
+      expect(find.byType(CanvasTextEditor), findsNothing);
+      expect(controller.interacting, isFalse,
+          reason: "the typing's undo step is closed");
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.tapAt(stage.pageRect.topLeft + other.center * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"s"}, reason: "and presses work again");
     });
   });
 
@@ -3296,6 +3444,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides.single.at, 400);
     });
+
+    testWidgets("the pointer turns to a resize arrow over a ruler",
+        (tester) async {
+      // The cursor is worked out as the stage builds, and moving onto a ruler
+      // did not rebuild it, so the arrow waited for something else to.
+      var (_, stage) = await withRulers(tester);
+      var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: stage.pageRect.center);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      var tracker = RendererBinding.instance.mouseTracker;
+      expect(tracker.debugDeviceActiveCursor(1),
+          isNot(SystemMouseCursors.resizeLeftRight));
+
+      await mouse.moveTo(leftStrip(stage));
+      await tester.pump();
+      expect(tracker.debugDeviceActiveCursor(1),
+          SystemMouseCursors.resizeLeftRight);
+
+      await mouse.moveTo(stage.pageRect.center);
+      await tester.pump();
+      expect(tracker.debugDeviceActiveCursor(1),
+          isNot(SystemMouseCursors.resizeLeftRight),
+          reason: "and back to the page, back again");
+    });
   });
 
   group("where the scaffolding is drawn", () {
@@ -3623,6 +3796,162 @@ void main() {
       controller.setViewScale(double.nan);
       await tester.pumpAndSettle();
       expect(controller.viewScale, was);
+    });
+  });
+
+  group("a press the system cancels", () {
+    // A cancel used to be taken for a release, so a press the system took
+    // away ran its click and committed its box.
+
+    testWidgets("does not run the button it began on", (tester) async {
+      var document = const CanvasDocument();
+      var element = (newElement(ElementKind.button, document) as ButtonElement)
+          .copyWith(
+              action: const ButtonAction(
+                  kind: ButtonActionKind.openLink, url: "https://example.com"));
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      var links = <String>[];
+      var stage = await pump(tester, controller, onButtonLink: links.add);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var at = stage.pageRect.topLeft + element.center * scale;
+
+      var press = await tester.startGesture(at);
+      await press.cancel();
+      await tester.pumpAndSettle();
+      expect(links, isEmpty);
+      expect(controller.interacting, isFalse,
+          reason: "the move it began is closed all the same");
+
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(links, ["https://example.com"], reason: "a click still runs it");
+    });
+
+    testWidgets("does not select what its box was drawn round",
+        (tester) async {
+      var shape = const ShapeElement(
+          ElementBase(id: "s", x: 400, y: 200, width: 300, height: 200));
+      var controller =
+          CanvasController(const CanvasDocument().addElement(shape));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var from = stage.pageRect.topLeft +
+          shape.bounds.topLeft * scale -
+          const Offset(20, 20);
+      var to = stage.pageRect.topLeft +
+          shape.bounds.bottomRight * scale +
+          const Offset(20, 20);
+
+      var box = await tester.startGesture(from);
+      await box.moveTo(to);
+      await tester.pump();
+      expect(stage.marqueeForTest, isNotNull);
+      await box.cancel();
+      await tester.pumpAndSettle();
+      expect(controller.selection, isEmpty);
+      expect(stage.marqueeForTest, isNull, reason: "and the box is gone");
+
+      box = await tester.startGesture(from);
+      await box.moveTo(to);
+      await box.up();
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"s"}, reason: "let go, it selects");
+    });
+  });
+
+  group("a second pointer during a drag", () {
+    testWidgets("is ignored, and the drag stays one undo step",
+        (tester) async {
+      // The second press took over the first one's gesture, whose undo step
+      // was never closed and so merged into the next change.
+      var shape = const ShapeElement(
+          ElementBase(id: "s", x: 400, y: 200, width: 300, height: 200));
+      var controller =
+          CanvasController(const CanvasDocument().addElement(shape));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var on = stage.pageRect.topLeft + shape.center * scale;
+      var empty = stage.pageRect.topLeft + const Offset(10, 10);
+
+      var first = await tester.startGesture(on, pointer: 1);
+      await first.moveBy(const Offset(30, 0));
+      await tester.pump();
+      var second = await tester.startGesture(empty, pointer: 2);
+      await second.moveBy(const Offset(40, 40));
+      await second.up();
+      await first.moveBy(const Offset(30, 0));
+      await first.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.interacting, isFalse);
+      expect(controller.selection, {"s"},
+          reason: "the second press did not clear it");
+      var moved = controller.document.elementById("s")!;
+      expect(moved.x, greaterThan(shape.x));
+
+      controller.undo();
+      expect(controller.document.elementById("s")!.x, shape.x,
+          reason: "one undo takes back the whole drag");
+    });
+  });
+
+  group("a hidden element", () {
+    testWidgets("does not take a press, even while selected", (tester) async {
+      // Picked in Layers and then hidden, it took presses meant for what is
+      // drawn there, and a drag moved it unseen.
+      var under = const ShapeElement(
+          ElementBase(id: "a", x: 400, y: 200, width: 300, height: 200));
+      var hidden = const ShapeElement(ElementBase(
+          id: "b", x: 400, y: 200, width: 300, height: 200, visible: false));
+      var controller = CanvasController(
+          const CanvasDocument().addElement(under).addElement(hidden));
+      addTearDown(controller.dispose);
+      controller.selectOnly("b");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + under.center * scale, const Offset(40, 0));
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"a"});
+      expect(controller.document.elementById("b")!.x, hidden.x,
+          reason: "the hidden one did not move");
+      expect(controller.document.elementById("a")!.x, greaterThan(under.x));
+    });
+  });
+
+  group("a counter's Set field", () {
+    testWidgets("is forgotten with its counter", (tester) async {
+      // The stage kept the field's counter after the counter went, so taking
+      // the removal back opened the field again unasked.
+      var counter = const CounterElement(
+          ElementBase(id: "c", x: 400, y: 200, width: 300, height: 120),
+          keyed: false,
+          buttons: [CounterButton.input]);
+      var controller =
+          CanvasController(const CanvasDocument().addElement(counter));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var button = counterButtonRects(counter, counter.bounds).single;
+
+      await tester.tapAt(stage.pageRect.topLeft + button.center * scale);
+      await tester.pumpAndSettle();
+      expect(find.byType(CounterInput), findsOneWidget);
+
+      controller.deleteSelected();
+      await tester.pumpAndSettle();
+      expect(find.byType(CounterInput), findsNothing);
+
+      controller.undo();
+      await tester.pumpAndSettle();
+      expect(controller.document.elementById("c"), isNotNull);
+      expect(find.byType(CounterInput), findsNothing);
     });
   });
 }

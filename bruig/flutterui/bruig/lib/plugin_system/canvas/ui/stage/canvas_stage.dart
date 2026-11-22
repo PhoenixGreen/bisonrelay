@@ -496,6 +496,12 @@ class CanvasStageState extends State<CanvasStage>
   /// _pressedAt is where the pointer went down, in stage coordinates.
   Offset _pressedAt = Offset.zero;
 
+  /// _gesturePointer is the pointer whose press began the gesture under way,
+  /// or null. Another pointer's press, drag and release are ignored until it
+  /// is up or cancelled: a second finger would otherwise take the gesture
+  /// over and leave the first one's undo step open.
+  int? _gesturePointer;
+
   /// _painting is the picture being retouched during a brush stroke, by id,
   /// since the element is replaced when the stroke lands.
   String? _painting;
@@ -703,7 +709,31 @@ class CanvasStageState extends State<CanvasStage>
     // The controller closes a picture's layers when the selection moves off it.
     if (!mounted) return;
     _followPlayback();
+    _forgetGoneEdits();
     setState(() {});
+  }
+
+  /// _forgetGoneEdits ends an edit in place whose element has gone, deleted
+  /// or with another canvas loaded. Its editor is not built without the
+  /// element, so never says it is done: the stage would go on ignoring
+  /// presses, and the undo step the typing opened would take in the next
+  /// change.
+  void _forgetGoneEdits() {
+    if (_editingText case var id?
+        when document.elementById(id) is! TextElement) {
+      _forgetTextEdit();
+      controller.endInteraction();
+    }
+    if (_editingCell case (var id, _, _)?
+        when document.elementById(id) is! TableElement) {
+      _editingCell = null;
+      controller.endInteraction();
+    }
+    if (_settingCounter case var id?
+        when document.elementById(id) is! CounterElement) {
+      _settingCounter = null;
+      _settingAt = -1;
+    }
   }
 
   // ---- stage_coordinates.dart ---------------------------------------------
@@ -904,6 +934,10 @@ class CanvasStageState extends State<CanvasStage>
   /// _hoverAt is the pointer's last stage position, for the cursor.
   Offset _hoverAt = Offset.zero;
 
+  /// _hoverRuler is the ruler the hover was last over, kept so the stage
+  /// rebuilds for the cursor only when that changes, not on every move.
+  GuideAxis? _hoverRuler;
+
   /// _hoverPressable is whether a click here would press a selected button,
   /// speaker or video control, or a live counter's button.
   bool _hoverPressable = false;
@@ -1020,7 +1054,9 @@ class CanvasStageState extends State<CanvasStage>
       case LogicalKeyboardKey.home when three:
         controller.resetCamera();
       case LogicalKeyboardKey.space:
-        controller.togglePlay();
+        // Once for a press however long it is held; the repeats are still
+        // taken, so none of them reach the space bar or a button.
+        if (event is KeyDownEvent) controller.togglePlay();
       case LogicalKeyboardKey.arrowLeft:
         nudging ? controller.nudgeSelected(-step, 0) : controller.stepFrame(-1);
       case LogicalKeyboardKey.arrowRight:
@@ -1225,11 +1261,26 @@ class CanvasStageState extends State<CanvasStage>
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned.fill(
                   child: Listener(
-                onPointerDown: _onPointerDown,
-                onPointerMove: _onPointerMove,
-                onPointerUp: _onPointerUp,
-                // A cancelled pointer ends its gesture as a release would.
-                onPointerCancel: _onPointerUp,
+                // One pointer at a time: see _gesturePointer.
+                onPointerDown: (e) {
+                  if (_gesturePointer != null) return;
+                  _gesturePointer = e.pointer;
+                  _onPointerDown(e);
+                },
+                onPointerMove: (e) {
+                  if (e.pointer == _gesturePointer) _onPointerMove(e);
+                },
+                onPointerUp: (e) {
+                  if (e.pointer != _gesturePointer) return;
+                  _gesturePointer = null;
+                  _onPointerUp(e);
+                },
+                // A cancelled pointer ends its gesture without its click.
+                onPointerCancel: (e) {
+                  if (e.pointer != _gesturePointer) return;
+                  _gesturePointer = null;
+                  _onPointerUp(e, cancelled: true);
+                },
                 onPointerHover: (e) {
                   _updateHover(e.localPosition);
                   _moveBrush(e.localPosition);
@@ -1657,16 +1708,17 @@ class CanvasStageState extends State<CanvasStage>
       },
       onDone: () {
         controller.endInteraction();
-        if (mounted) {
-          setState(() {
-            _editingText = null;
-            _editingItem = null;
-            _editingClick = null;
-            _editorRect = null;
-          });
-        }
+        if (mounted) setState(_forgetTextEdit);
       },
     );
+  }
+
+  /// _forgetTextEdit lets go of the text being typed into.
+  void _forgetTextEdit() {
+    _editingText = null;
+    _editingItem = null;
+    _editingClick = null;
+    _editorRect = null;
   }
 
   /// _wordsBlockFor is where a block of words is laid out -- piece [item]
