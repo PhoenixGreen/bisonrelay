@@ -32,8 +32,9 @@ sealed class StageGesture {
 
   /// release is the pointer let go at [at] on the stage: what the gesture
   /// does on finishing. [travelled] is whether the press went the drag
-  /// threshold on the way, and [clicked] whether it was let go within the
-  /// click slop of where it began: a press can travel and come back.
+  /// threshold on the way, and [clicked] whether it ended as a click: it
+  /// never travelled and was let go within the click slop of where it
+  /// began. A press that travels and comes back is not a click.
   void release(CanvasStageState stage, Offset at,
       {required bool travelled, required bool clicked});
 
@@ -45,11 +46,9 @@ sealed class StageGesture {
   void cancel(CanvasStageState stage);
 
   /// endsRelease is whether, once it has ended, the rest of _onPointerUp is
-  /// skipped. Of what is there, only one reset touches a gesture: the snap
-  /// mark a move or resize of the selection's box leaves (_snappedTo),
-  /// cleared there, so a release that skips it leaves any mark set until
-  /// the next release that reaches it. The rest is for the kinds still told
-  /// by _DragMode. Read after [release] or [cancel], which may decide it.
+  /// skipped. All of that is for the kinds still told by _DragMode, so a
+  /// gesture loses nothing by skipping it. Read after [release] or
+  /// [cancel], which may decide it.
   bool get endsRelease => false;
 
   /// takesAll is whether every move and the release are handed to it at the
@@ -76,11 +75,13 @@ extension StageGestureSteps on CanvasStageState {
   /// _endGesture ends [gesture], let go at [at] or, [cancelled], taken away:
   /// it is no longer under way, it finishes (or, cancelled, does not), and
   /// then the undo step it opened is closed, so what it does on finishing
-  /// is part of that step. [clicked] is whether it was let go within the
-  /// click slop of where it began.
+  /// is part of that step. [clicked] is whether the press ended as a click
+  /// (see StageGesture.release).
   void _endGesture(StageGesture gesture, Offset at,
       {required bool cancelled, required bool clicked}) {
-    _gesture = null;
+    // Rebuilt, so what showed it was under way (its cursor, what is drawn
+    // for it) goes with it, whether or not its end changes anything else.
+    setState(() => _gesture = null);
     if (cancelled) {
       gesture.cancel(this);
     } else {
@@ -116,23 +117,20 @@ mixin _CarriesClicks on StageGesture {
   @override
   void release(CanvasStageState stage, Offset at,
           {required bool travelled, required bool clicked}) =>
-      _settle(stage, clicked: clicked, travelled: travelled, cancelled: false);
+      _settle(stage, clicked: clicked, cancelled: false);
 
   /// cancel makes no click, except one made however the press ends: an
   /// instrument's key, let go.
   @override
-  void cancel(CanvasStageState stage) => _settle(stage,
-      clicked: false, travelled: stage._travelled, cancelled: true);
+  void cancel(CanvasStageState stage) =>
+      _settle(stage, clicked: false, cancelled: true);
 
   /// _settle makes or drops each click [carried] as the press ends. A click
   /// that is made and ends the release stops there.
   void _settle(CanvasStageState stage,
-      {required bool clicked,
-      required bool travelled,
-      required bool cancelled}) {
+      {required bool clicked, required bool cancelled}) {
     for (var c in carried) {
-      if (!c.madeBy(stage,
-          clicked: clicked, travelled: travelled, cancelled: cancelled)) {
+      if (!c.madeBy(stage, clicked: clicked, cancelled: cancelled)) {
         c.dropped(stage);
         continue;
       }
@@ -484,12 +482,15 @@ sealed class _BoxDrag extends StageGesture {
   @override
   bool get waitsToTravel => true;
 
+  /// release takes away the snap mark a move or resize left: see
+  /// _dropSnap.
   @override
   void release(CanvasStageState stage, Offset at,
-      {required bool travelled, required bool clicked}) {}
+          {required bool travelled, required bool clicked}) =>
+      stage._dropSnap();
 
   @override
-  void cancel(CanvasStageState stage) {}
+  void cancel(CanvasStageState stage) => stage._dropSnap();
 }
 
 /// _BoxMove is the selection moved by a press inside its box. A press that
@@ -517,6 +518,21 @@ class _BoxMove extends _BoxDrag with _CarriesClicks {
 
   @override
   MouseCursor get cursor => SystemMouseCursors.move;
+
+  /// release takes away the snap mark, as every box drag does, and then
+  /// settles the clicks it carries.
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {
+    stage._dropSnap();
+    super.release(stage, at, travelled: travelled, clicked: clicked);
+  }
+
+  @override
+  void cancel(CanvasStageState stage) {
+    stage._dropSnap();
+    super.cancel(stage);
+  }
 
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) {
@@ -569,17 +585,22 @@ class _BoxTurn extends _BoxDrag {
 }
 
 /// _CopiesDrag is copies of a reused element moved on their own: those
-/// picked, or the new ones an Alt-drag made of them. One undo step, opened
+/// picked, or the new ones an Alt-drag makes of them. One undo step, opened
 /// as it begins (_pressCopy).
 class _CopiesDrag extends StageGesture with _CarriesClicks {
-  _CopiesDrag(this.start, this.dragged, {this.click});
+  _CopiesDrag(this.start, this.dragged, {this.click, this.copying});
 
   /// start is the element's copies as they were when the drag began, which
   /// every step works from.
-  final InstanceSet? start;
+  InstanceSet? start;
 
   /// dragged is which of them move, by id.
-  final Set<String> dragged;
+  Set<String> dragged;
+
+  /// copying is the copies an Alt-press copies, by id, until it has: they
+  /// are copied as the press travels and the new ones dragged (see
+  /// _moveCopies), so a press that never travels makes no copy.
+  Set<String>? copying;
 
   /// click is the click an earlier step of the press armed on the
   /// element's own controls, if any: a Code panel's code, opened for

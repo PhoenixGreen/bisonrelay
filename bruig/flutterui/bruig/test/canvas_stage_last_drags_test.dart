@@ -200,20 +200,20 @@ void main() {
       expect(c.canUndo, isFalse);
     });
 
-    testWidgets("Alt and a still press: a copy made in place, one step",
-        (tester) async {
+    testWidgets("Alt and a still press: no copy made, no step", (tester) async {
+      // The copy is made as the press travels, so a press that never does
+      // leaves the copies as they were.
       var c = copies();
       addTearDown(c.dispose);
       c.pickCopy("a", "i1");
       var stage = await pump(tester, c);
       await withKey(tester, LogicalKeyboardKey.altLeft, () async {
         await press(tester, stage.toStagePoint(copy(1)));
+        await press(tester, stage.toStagePoint(copy(1)), cancel: true);
       });
-      expect(set(c).count, 4);
-      expect((set(c).items.last.dx, set(c).items.last.dy), (250, 0));
-      settled(stage, c, "clicked");
-      c.undo();
       expect(set(c).count, 3);
+      expect(c.pickedCopiesOf("a"), {"i1"});
+      settled(stage, c, "clicked");
       expect(c.canUndo, isFalse);
     });
 
@@ -414,9 +414,10 @@ void main() {
       });
     }
 
-    // A still press on the stage with the page locked is a click on
-    // nothing, which clears the selection, however the camera was taken:
-    // orbit, Shift for a pan, or the middle button anywhere.
+    // A still press of the primary button on the stage with the page
+    // locked is a click on nothing, which clears the selection, whether the
+    // camera was taken to orbit or, with Shift, to pan. The middle button
+    // anywhere only pans: still, it leaves the selection.
     final stills = <(String, LogicalKeyboardKey?, int, bool)>[
       ("on the stage", null, kPrimaryButton, false),
       ("shifted", LogicalKeyboardKey.shiftLeft, kPrimaryButton, false),
@@ -428,8 +429,10 @@ void main() {
       ),
     ];
     for (var (what, key, buttons, onElement) in stills) {
-      testWidgets("locked, a still press $what clears the selection",
-          (tester) async {
+      var clears = buttons == kPrimaryButton;
+      testWidgets(
+          "locked, a still press $what "
+          "${clears ? "clears" : "keeps"} the selection", (tester) async {
         var c = onStage();
         addTearDown(c.dispose);
         c.selectOnly("a");
@@ -445,7 +448,8 @@ void main() {
           expect(c.selection, {"a"}, reason: "cancelled, not a click");
           settled(stage, c, "cancelled");
           await press(tester, at, buttons: buttons);
-          expect(c.selection, isEmpty, reason: "a click on nothing");
+          expect(c.selection, clears ? isEmpty : {"a"},
+              reason: clears ? "a click on nothing" : "a pan, not a click");
           settled(stage, c, "clicked");
         }
 
@@ -542,7 +546,7 @@ void main() {
         await withKey(tester, LogicalKeyboardKey.altLeft, () async {
           await drag(tester, at, by, cancel: cancel, during: () {
             underWay(stage, c, true);
-            expect(cursor(tester), SystemMouseCursors.basic);
+            expect(cursor(tester), SystemMouseCursors.grabbing);
           });
         });
         expect(camX(c), closeTo(100, 1),

@@ -306,6 +306,11 @@ class CanvasStageState extends State<CanvasStage>
   DateTime _lastClickAt = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _doubleClickWindow = Duration(milliseconds: 400);
 
+  /// _lastKnobClickAt is the last press on a synth module's knob, for the
+  /// double click that puts it back to its start. It is the knob's own, so
+  /// a click on an element and then on a knob is not taken for one.
+  DateTime _lastKnobClickAt = DateTime.fromMillisecondsSinceEpoch(0);
+
   /// _lastVectorClick is the last press on a drawing, for its double-click.
   Offset _lastVectorClick = Offset.infinite;
 
@@ -1367,15 +1372,12 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _leavesClickCursor is whether the gesture under way, if any, still
   /// lets the cursor say that a click where it is would press something.
-  /// Most gestures do not; these do: a synth's key held, the held marker's
-  /// note dragged, the retouching stroke, a press left to a live preview.
+  /// Only a synth's key held does: the pointer moving while it sounds is
+  /// hover, which lights a button under it, and the cursor agrees. A drag
+  /// or a stroke is not about to click anything, and a press left to a
+  /// live preview is the app's, not the page's under it.
   bool get _leavesClickCursor => switch (_gesture) {
-        null ||
-        _SynthKeyHeld() ||
-        _MarkerNoteDrag() ||
-        _RetouchStroke() ||
-        _LivePress() =>
-          true,
+        null || _SynthKeyHeld() => true,
         _ => false,
       };
 

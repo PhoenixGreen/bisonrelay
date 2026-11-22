@@ -12,14 +12,12 @@ part of 'canvas_stage.dart';
 /// put clicks a control and one that travels drags what it is on. Each case
 /// holds what its click needs.
 sealed class PendingClick {
-  /// madeBy is whether a press ending this way makes the click: let go
-  /// within the click slop and not taken away ([clicked]), for most.
-  /// [travelled] is whether it went the drag threshold on the way, and
-  /// [cancelled] whether the system took it away.
+  /// madeBy is whether a press ending this way makes the click: for most,
+  /// a press that ended as a click ([clicked]: it never went the drag
+  /// threshold, was let go within the click slop and was not taken away).
+  /// [cancelled] is whether the system took it away.
   bool madeBy(CanvasStageState stage,
-          {required bool clicked,
-          required bool travelled,
-          required bool cancelled}) =>
+          {required bool clicked, required bool cancelled}) =>
       clicked;
 
   /// inStep is whether the click is made inside the undo step of the drag
@@ -173,9 +171,7 @@ class _KeyHeld extends PendingClick {
 
   @override
   bool madeBy(CanvasStageState stage,
-          {required bool clicked,
-          required bool travelled,
-          required bool cancelled}) =>
+          {required bool clicked, required bool cancelled}) =>
       true;
 
   @override
@@ -206,9 +202,7 @@ class _CodePaneClick extends PendingClick {
   /// madeBy is a click on a panel still there.
   @override
   bool madeBy(CanvasStageState stage,
-          {required bool clicked,
-          required bool travelled,
-          required bool cancelled}) =>
+          {required bool clicked, required bool cancelled}) =>
       clicked && stage.document.elementById(id) is CodeElement;
 
   @override
@@ -220,24 +214,15 @@ class _CodePaneClick extends PendingClick {
   }
 }
 
-/// _CopyPick is a copy of a reused element pressed: a press that never
-/// travels picks it (see CanvasController.pickCopy). Picking is not a change
-/// to the document, so it is made inside the move's step, and the release
-/// goes on after it.
+/// _CopyPick is a copy of a reused element pressed: a click on it picks it
+/// (see CanvasController.pickCopy). Picking is not a change to the
+/// document, so it is made inside the move's step, and the release goes on
+/// after it.
 class _CopyPick extends PendingClick {
   _CopyPick(this.of, this.id);
 
   /// of is the reused element, and id the copy's.
   final String of, id;
-
-  /// madeBy is a press that never went the drag threshold and was not
-  /// taken away, wherever it was let go.
-  @override
-  bool madeBy(CanvasStageState stage,
-          {required bool clicked,
-          required bool travelled,
-          required bool cancelled}) =>
-      !travelled && !cancelled;
 
   @override
   bool get inStep => true;

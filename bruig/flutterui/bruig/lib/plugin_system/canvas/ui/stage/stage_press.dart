@@ -136,7 +136,7 @@ extension StagePress on CanvasStageState {
     if (_stylusPress(event, doc)) return true;
 
     // The stage gizmo, drawn on top, before anything under it.
-    if (_pressGizmo(doc)) return true;
+    if (_pressGizmo(event, doc)) return true;
 
     // With the page locked, a press on a stage takes its camera.
     if (_pressLockedStage(event, doc)) return true;
@@ -220,7 +220,7 @@ extension StagePress on CanvasStageState {
       }
       if (held case var s? when !s.locked) {
         _gesture = _StageOrbit(s.id, s.cameraAt(controller.frame), stage,
-            locked: false);
+            clickClears: false);
         controller.beginInteraction();
         return true;
       }
@@ -714,7 +714,8 @@ extension StagePress on CanvasStageState {
   }
 
   /// _pressCopy takes a press on [copy] of reused [element]. Alt drags out
-  /// new copies of it (or of those picked); Shift picks it in or out; with
+  /// new copies of it (or of those picked), made once the press travels;
+  /// Shift picks it in or out; with
   /// copies picked, it is picked and dragged alone. Otherwise the press goes
   /// on to the element: a drag moves them all, a click picks this one (see
   /// _CopyPick). The copies dragged carry [click], armed by an earlier step
@@ -728,10 +729,8 @@ extension StagePress on CanvasStageState {
         controller.selectOnly(element.id);
       }
       controller.beginInteraction();
-      var made = controller.duplicateCopies(
-          element.id, picked.contains(id) ? picked : {id}, Offset.zero);
-      _gesture = _CopiesDrag(controller.motionOf(element.id).instances, made,
-          click: click);
+      _gesture = _CopiesDrag(null, const {},
+          click: click, copying: picked.contains(id) ? picked : {id});
       return true;
     }
     if (_shiftHeld && controller.selection.contains(element.id)) {
@@ -790,9 +789,16 @@ extension StagePress on CanvasStageState {
   }
 
   /// _moveCopies puts the copies [drag] moves [delta] from their start,
-  /// along one axis with Shift.
+  /// along one axis with Shift. An Alt-drag's copies are made on its first
+  /// step, beside those it copies, and are what it moves.
   void _moveCopies(_CopiesDrag drag, Offset delta) {
-    var from = drag.start, of = controller.selected?.id;
+    var of = controller.selected?.id;
+    if (drag.copying case var ids? when of != null) {
+      drag.copying = null;
+      drag.dragged = controller.duplicateCopies(of, ids, Offset.zero);
+      drag.start = controller.motionOf(of).instances;
+    }
+    var from = drag.start;
     if (from == null || of == null) return;
     if (_shiftHeld) {
       delta = delta.dx.abs() >= delta.dy.abs()

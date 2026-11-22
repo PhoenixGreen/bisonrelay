@@ -85,6 +85,12 @@ extension StageDrag on CanvasStageState {
     replaceMarker(controller, next, transient: true);
   }
 
+  /// _dropSnap takes away the snap mark (_snappedTo) a move or resize of
+  /// the selection's box leaves: it is the drag's, and goes as it ends.
+  void _dropSnap() {
+    if (_snappedTo != null) setState(() => _snappedTo = null);
+  }
+
   /// _hasTravelled is whether the press has gone far enough, to [stage], to
   /// be a drag: once it has, it stays one.
   bool _hasTravelled(Offset stage) {

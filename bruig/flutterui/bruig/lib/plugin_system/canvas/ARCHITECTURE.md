@@ -292,13 +292,16 @@ state, and set `_gesture` to it in the press step that begins it (in
 it is a change. The compiler then asks for the rest: `opensUndoStep`,
 `waitsToTravel` (whether it waits for the press to go the drag threshold,
 so a click does not move what it lands on), `move`, `release` (told
-whether the press travelled, and whether it was let go within the click
-slop of where it began: a press can travel and come back) and `cancel`
-(the system took the pointer: nothing it does on finishing is done). A
+whether the press travelled, and whether it ended as a click: it never
+travelled and was let go within the click slop of where it began, so a
+press that travels and comes back is not a click) and `cancel` (the
+system took the pointer: nothing it does on finishing is done). A
 case's methods are short: they call the State's methods that do the work,
-with what the gesture holds. `endsRelease`, false unless a case says
-otherwise, skips the resets at the end of `_onPointerUp`; the only one
-that touches a gesture is the box's snap mark cleared. `cursor`, null
+with what the gesture holds, and a case tidies away what only it showed
+(the box's snap mark) as it ends. Ending a gesture rebuilds the stage, so
+its cursor goes with it. `endsRelease`, false unless a case says
+otherwise, skips the rest of `_onPointerUp`, which is all for the kinds
+still on `_DragMode`. `cursor`, null
 unless a case says otherwise, is the pointer's look while it runs, shown
 over the tools' own. `takesAll`, false unless a
 case says otherwise, hands it every move and the release at the very top

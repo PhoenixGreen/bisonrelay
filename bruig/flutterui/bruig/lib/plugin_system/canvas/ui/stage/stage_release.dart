@@ -9,8 +9,11 @@ extension StageRelease on CanvasStageState {
   /// system took away: it is ended the same, its undo step closed and what a
   /// drag changed kept, but no click, drop or box is acted on.
   void _onPointerUp(PointerEvent event, {bool cancelled = false}) {
-    // A press let go where it began, never one the system took away.
+    // A press that never went the drag threshold and was let go where it
+    // began, never one the system took away: a press that travelled moved
+    // something, so coming back does not also make it a click.
     var clicked = !cancelled &&
+        !_travelled &&
         (event.localPosition - _pressedAt).distance <=
             CanvasStageState._buttonClickSlop;
     // A gesture that takes the release before the stage's own steps ends
@@ -25,10 +28,9 @@ extension StageRelease on CanvasStageState {
       if (!cancelled) _replayTap(event.position);
       return;
     }
-    // A gesture ends itself, and with it any click riding on it. Most go on
-    // to the resets at the end (see StageGesture.endsRelease): a snap mark
-    // can be left set by a release that ended early, which the next one
-    // that reaches them clears.
+    // A gesture ends itself, and with it any click riding on it. What
+    // follows is for the kinds still on _DragMode (see
+    // StageGesture.endsRelease).
     if (_gesture case var gesture?) {
       _endGesture(gesture, event.localPosition,
           cancelled: cancelled, clicked: clicked);
@@ -147,7 +149,6 @@ extension StageRelease on CanvasStageState {
     _mode = _DragMode.none;
     _maskOn = null;
     _strokeAt = null;
-    if (_snappedTo != null) setState(() => _snappedTo = null);
   }
 
   /// _selectWithin toggles each unlocked, shown element that [box], an

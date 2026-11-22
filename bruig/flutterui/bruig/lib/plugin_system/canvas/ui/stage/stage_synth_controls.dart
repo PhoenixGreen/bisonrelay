@@ -25,9 +25,9 @@ extension StageSynthControls on CanvasStageState {
       case SynthPartKind.knob:
         if (e.fixed) break;
         var knob = synthKnobs[e.module]![part.index];
-        var twice = clock.now().difference(_lastClickAt) <
+        var twice = clock.now().difference(_lastKnobClickAt) <
             CanvasStageState._doubleClickWindow;
-        _lastClickAt =
+        _lastKnobClickAt =
             twice ? DateTime.fromMillisecondsSinceEpoch(0) : clock.now();
         if (twice) {
           controller.setSynth(e.withValue(knob.key, e.startValue(knob.key)));
