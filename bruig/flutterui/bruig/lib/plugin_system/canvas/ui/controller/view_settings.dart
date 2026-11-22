@@ -18,6 +18,22 @@ extension CanvasViewSettings on CanvasController {
     _notifyView();
   }
 
+  /// rulers is which edges of the stage carry a ruler and whether they show:
+  /// the person's own (CanvasPreferences.rulers), not the canvas's, so
+  /// another canvas opens with them as they are. Setting them redraws the
+  /// stage without changing the canvas: no undo step, nothing to save.
+  CanvasRulers get rulers => _rulers;
+
+  set rulers(CanvasRulers value) {
+    if (_rulers == value) return;
+    _rulers = value;
+    _notifyView();
+  }
+
+  /// restoreRulers puts back the rulers as the preferences hold them,
+  /// without notifying: it runs while the page is being built.
+  void restoreRulers(CanvasRulers value) => _rulers = value;
+
   /// autoKeyframe makes dragging anything on frame N write a keyframe at N
   /// instead of moving it. Off by default, so tidying is not recorded.
   bool get autoKeyframe => _autoKeyframe;

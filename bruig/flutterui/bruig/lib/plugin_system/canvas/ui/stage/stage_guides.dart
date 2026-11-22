@@ -87,10 +87,10 @@ extension StageGuides on CanvasStageState {
   /// dragged from is what is seen. None while guides are put away, as no
   /// guide could be drawn coming out of one.
   GuideAxis? _rulerUnder(Offset stage) {
-    var guides = document.guides;
-    if (!guides.rulersShown || !_guidesInView) return null;
+    var rulers = controller.rulers;
+    if (!rulers.drawn || !_guidesInView) return null;
     // The strips are at the window's edges, the page scrolled under them.
-    return rulerBandsFor(_pageRect.shift(-_scrolled), _visible, guides.rulers)
+    return rulerBandsFor(_pageRect.shift(-_scrolled), _visible, rulers)
         .axisAt(stage - _scrolled);
   }
 

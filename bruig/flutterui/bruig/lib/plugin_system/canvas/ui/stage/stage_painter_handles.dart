@@ -785,6 +785,7 @@ extension _StagePainterHandles on StagePainter {
   /// _paintRulers draws the rulers along the page unless [rulersApart].
   void _paintRulers(Canvas canvas, Size size) {
     if (rulersApart) return;
-    paintStageRulers(canvas, size, guides, document.size.size, scale, origin, page);
+    paintStageRulers(canvas, size, rulers, guides.gridSize, document.size.size,
+        scale, origin, page);
   }
 }

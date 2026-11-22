@@ -23,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
@@ -3553,13 +3554,16 @@ void main() {
     Offset topStrip(CanvasStageState stage) => Offset(stage.pageRect.center.dx,
         math.max(rulerThickness / 2, stage.pageRect.top - rulerThickness / 2));
 
+    // The rulers are the person's, not the canvas's: set on the controller,
+    // as the page sets them from the preferences.
     Future<(CanvasController, CanvasStageState)> withRulers(
       WidgetTester tester, {
-      CanvasGuides guides =
-          const CanvasGuides(rulers: CanvasRulers(top: true, left: true)),
+      CanvasGuides guides = const CanvasGuides(),
+      CanvasRulers rulers = const CanvasRulers(top: true, left: true),
     }) async {
       var controller =
-          CanvasController(const CanvasDocument().copyWith(guides: guides));
+          CanvasController(const CanvasDocument().copyWith(guides: guides))
+            ..rulers = rulers;
       addTearDown(controller.dispose);
       var stage = await pump(tester, controller);
       return (controller, stage);
@@ -3593,10 +3597,39 @@ void main() {
       // The strip is only a place to pull from when there is a ruler drawn
       // there; otherwise it is canvas like any other.
       var (controller, stage) =
-          await withRulers(tester, guides: const CanvasGuides());
+          await withRulers(tester, rulers: const CanvasRulers());
       await tester.dragFrom(leftStrip(stage), const Offset(180, 0));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides, isEmpty);
+    });
+
+    testWidgets("a ruler switched on is there at once, to see and pull from",
+        (tester) async {
+      // Set from the guides panel while the stage is up: it is no change to
+      // the canvas, so only the controller's telling redraws the stage.
+      var (controller, stage) =
+          await withRulers(tester, rulers: const CanvasRulers());
+      StagePainter painter() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((c) => c.painter)
+          .whereType<StagePainter>()
+          .single;
+      var before = painter();
+      controller.arrived();
+      await tester.pump();
+      expect(painter().shouldRepaint(before), isFalse,
+          reason: "the stage rebuilt with nothing changed is not repainted");
+
+      before = painter();
+      controller.rulers = const CanvasRulers(left: true);
+      await tester.pump();
+      expect(painter().rulers, const CanvasRulers(left: true));
+      expect(painter().shouldRepaint(before), isTrue);
+      expect(controller.dirty, isFalse);
+
+      await tester.dragFrom(leftStrip(stage), const Offset(180, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.guides.single.axis, GuideAxis.vertical);
     });
 
     testWidgets("an existing guide can be picked up and moved", (tester) async {
@@ -3764,9 +3797,11 @@ void main() {
 
     // The pixels, and the page they were drawn against.
     Future<(ByteData, Rect)> shotOf(
-        WidgetTester tester, CanvasGuides guides) async {
+        WidgetTester tester, CanvasGuides guides,
+        {CanvasRulers rulers = const CanvasRulers()}) async {
       var controller = CanvasController(
-          const CanvasDocument(size: tall).copyWith(guides: guides));
+          const CanvasDocument(size: tall).copyWith(guides: guides))
+        ..rulers = rulers;
       addTearDown(controller.dispose);
       var stage = await pump(tester, controller);
 
@@ -3838,11 +3873,9 @@ void main() {
 
     testWidgets("every ruler that is switched on is drawn", (tester) async {
       var (plain, _) = await shotOf(tester, const CanvasGuides());
-      var (ruled, page) = await shotOf(
-          tester,
-          const CanvasGuides(
-              rulers: CanvasRulers(
-                  top: true, left: true, right: true, bottom: true)));
+      var (ruled, page) = await shotOf(tester, const CanvasGuides(),
+          rulers: const CanvasRulers(
+              top: true, left: true, right: true, bottom: true));
 
       var mid = (x: page.center.dx.round(), y: page.center.dy.round());
       var into = rulerThickness ~/ 2;
@@ -3867,8 +3900,8 @@ void main() {
       // ruler measures the canvas, so it belongs beside the canvas -- in the
       // same place at every window size and every export width.
       var (plain, _) = await shotOf(tester, const CanvasGuides());
-      var (ruled, page) = await shotOf(tester,
-          const CanvasGuides(rulers: CanvasRulers(left: true, right: true)));
+      var (ruled, page) = await shotOf(tester, const CanvasGuides(),
+          rulers: const CanvasRulers(left: true, right: true));
 
       var row = page.center.dy.round();
       expect(page.left, greaterThan(rulerThickness),

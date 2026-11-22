@@ -152,8 +152,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   late final CanvasPreferences _prefs;
 
   /// _kept puts back how the page was left and writes it down as it
-  /// changes: the frame, the cues, the mixer, the panels, and how each
-  /// canvas was looked at. What is remembered is listed there.
+  /// changes: the frame, the rulers, the cues, the mixer, the panels, and
+  /// how each canvas was looked at. What is remembered is listed there.
   late final KeptView _kept;
 
   /// _pushScale lays a Push's pads out in the played channel's scale.

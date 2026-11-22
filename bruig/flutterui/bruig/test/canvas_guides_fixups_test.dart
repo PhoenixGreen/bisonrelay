@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -105,7 +106,9 @@ void main() {
       math.max(rulerThickness / 2, stage.pageRect.left - rulerThickness / 2),
       stage.pageRect.center.dy);
 
-  const ruled = CanvasGuides(rulers: CanvasRulers(top: true, left: true));
+  // The rulers are the person's, set on the controller as the page sets
+  // them from the preferences.
+  const ruled = CanvasRulers(top: true, left: true);
 
   CanvasController guided(CanvasGuides guides,
       [List<CanvasElement> elements = const []]) {
@@ -197,8 +200,7 @@ void main() {
   group("a ruler", () {
     testWidgets("dragged from with guides hidden, shows them and makes one",
         (tester) async {
-      var c = guided(const CanvasGuides(
-          showGuides: false, rulers: CanvasRulers(top: true, left: true)));
+      var c = guided(const CanvasGuides(showGuides: false))..rulers = ruled;
       var stage = await pump(tester, c);
       await tester.dragFrom(leftStrip(stage), const Offset(180, 0));
       await tester.pumpAndSettle();
@@ -216,7 +218,7 @@ void main() {
       testWidgets(
           "pulled out and dropped back on it, with guides $how, changes "
           "nothing", (tester) async {
-        var c = guided(ruled.copyWith(showGuides: shown));
+        var c = guided(CanvasGuides(showGuides: shown))..rulers = ruled;
         var stage = await pump(tester, c);
         expect(stage.pageRect.left, greaterThan(rulerThickness),
             reason: "the test needs the ruler off the page");
@@ -236,7 +238,7 @@ void main() {
       });
 
       testWidgets("clicked, with guides $how, changes nothing", (tester) async {
-        var c = guided(ruled.copyWith(showGuides: shown));
+        var c = guided(CanvasGuides(showGuides: shown))..rulers = ruled;
         var stage = await pump(tester, c);
         expect(c.canUndo, isFalse);
         expect(c.dirty, isFalse);
@@ -487,14 +489,13 @@ void main() {
     const scaffolding = CanvasGuides(
         showGrid: true,
         gridSize: 100,
-        rulers: CanvasRulers(top: true, left: true),
         guides: [CanvasGuide(axis: GuideAxis.vertical, at: 330)]);
 
     CanvasController playable() {
       var doc = const CanvasDocument()
           .copyWith(guides: scaffolding, frames: 96, frameRate: 24, game: true)
           .addElement(shape);
-      var c = CanvasController(doc);
+      var c = CanvasController(doc)..rulers = ruled;
       addTearDown(c.dispose);
       return c;
     }
@@ -546,7 +547,7 @@ void main() {
       var doc = const CanvasDocument().copyWith(guides: scaffolding).addElement(
           const CameraElement(
               ElementBase(id: "cam", x: 320, y: 180, width: 640, height: 360)));
-      var c = CanvasController(doc);
+      var c = CanvasController(doc)..rulers = ruled;
       addTearDown(c.dispose);
       var stage = await pump(tester, c);
       Offset onPage(double x) =>

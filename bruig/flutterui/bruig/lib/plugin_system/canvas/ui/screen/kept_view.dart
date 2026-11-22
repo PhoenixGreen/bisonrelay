@@ -8,10 +8,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 // written down.
 //
 // Two things are remembered. How the page was left, whatever canvas is open
-// (the frame, the cues, the mixer, where the panels open and which are
-// open): the list in KeptView._kept. And how one canvas was looked at (its
-// channel heights, narrow strips, timeline zoom and effects channel), kept
-// under that canvas's folder and name.
+// (the frame, the rulers, the cues, the mixer, where the panels open and
+// which are open): the list in KeptView._kept. And how one canvas was looked
+// at (its channel heights, narrow strips, timeline zoom and effects channel),
+// kept under that canvas's folder and name.
 //
 // To remember something more about the page, add a line to _kept: how the
 // controller takes it back, and how it is written down. Nothing else needs
@@ -40,6 +40,10 @@ class KeptView {
     (
       put: () => _controller.restoreFit(_prefs.fit),
       keep: () => _prefs.fit = _controller.fit,
+    ),
+    (
+      put: () => _controller.restoreRulers(_prefs.rulers),
+      keep: () => _prefs.rulers = _controller.rulers,
     ),
     (
       put: () => _controller.restoreShown(cues: _prefs.cuesShown),

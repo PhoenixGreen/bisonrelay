@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 
 // stage_rulers.dart is the rulers along the page's edges: how deep a strip
@@ -88,16 +89,17 @@ RulerBands rulerBandsFor(Rect page, Size viewport, CanvasRulers rulers) {
   );
 }
 
-/// paintStageRulers draws the rulers [guides] asks for along the edges of
-/// [page], inside a view [size] across, numbered from the page's top-left
-/// (so they agree with the X and Y fields) at [scale] pixels a unit of a
-/// [sheet] whose top-left is at [origin]. Over a page that scrolls, the
-/// stage calls it in a layer of its own, so rulers stay at the window edges.
-void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
-    double scale, Offset origin, Rect page) {
-  if (!guides.rulersShown) return;
-  var bands = rulerBandsFor(page, size, guides.rulers);
-  var step = rulerStep(scale, guides.gridSize);
+/// paintStageRulers draws [rulers] along the edges of [page], inside a view
+/// [size] across, numbered from the page's top-left (so they agree with the
+/// X and Y fields) at [scale] pixels a unit of a [sheet] whose top-left is
+/// at [origin], with a tick at every [gridSize] (the canvas's grid). Over a
+/// page that scrolls, the stage calls it in a layer of its own, so rulers
+/// stay at the window edges.
+void paintStageRulers(Canvas canvas, Size size, CanvasRulers rulers,
+    double gridSize, Size sheet, double scale, Offset origin, Rect page) {
+  if (!rulers.drawn) return;
+  var bands = rulerBandsFor(page, size, rulers);
+  var step = rulerStep(scale, gridSize);
 
   var strip = Paint()..color = const Color(0xF01A1A1E);
   var edge = Paint()
@@ -110,7 +112,7 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
   var fine = Paint()
     ..strokeWidth = 1
     ..color = const Color(0x33FFFFFF);
-  var minor = guides.gridSize;
+  var minor = gridSize;
   var showFine = minor > 0 && minor < step && minor * scale >= 6;
 
   // The page starts at (0, 0) in document units, so its screen origin is
@@ -192,25 +194,28 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
 /// StageRulerLayer draws the rulers over a scrolling page, at the window's
 /// edges: see paintStageRulers.
 class StageRulerLayer extends CustomPainter {
-  final CanvasGuides guides;
+  final CanvasRulers rulers;
+  final double gridSize;
   final Size sheet;
   final double scale;
   final Offset origin;
   final Rect page;
   const StageRulerLayer(
-      {required this.guides,
+      {required this.rulers,
+      required this.gridSize,
       required this.sheet,
       required this.scale,
       required this.origin,
       required this.page});
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      paintStageRulers(canvas, size, guides, sheet, scale, origin, page);
+  void paint(Canvas canvas, Size size) => paintStageRulers(
+      canvas, size, rulers, gridSize, sheet, scale, origin, page);
 
   @override
   bool shouldRepaint(StageRulerLayer old) =>
-      old.guides != guides ||
+      old.rulers != rulers ||
+      old.gridSize != gridSize ||
       old.sheet != sheet ||
       old.scale != scale ||
       old.origin != origin ||

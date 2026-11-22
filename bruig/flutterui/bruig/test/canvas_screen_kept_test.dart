@@ -6,12 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 
 import 'support/canvas_app.dart';
@@ -76,6 +78,7 @@ void main() {
     c.mixerOpen = true;
     c.mixerSize = MixerSize.minimised;
     c.headerWidth = 210;
+    c.rulers = const CanvasRulers(top: true, bottom: true);
   }
 
   void expectLeft(CanvasController c) {
@@ -88,6 +91,7 @@ void main() {
     expect(c.mixerOpen, isTrue);
     expect(c.mixerSize, MixerSize.minimised);
     expect(c.headerWidth, 210);
+    expect(c.rulers, const CanvasRulers(top: true, bottom: true));
   }
 
   testWidgets("how the page was left is written down a moment after a change",
@@ -106,6 +110,7 @@ void main() {
     expect(prefs.mixerLook, c.mixerLook);
     expect(prefs.dock.switcher, DockSwitcher.tabs);
     expect(prefs.panels, c.panelState);
+    expect(prefs.rulers, const CanvasRulers(top: true, bottom: true));
     await leave(tester, c, prefs);
   });
 
@@ -157,6 +162,61 @@ void main() {
     await show(tester, c, prefs);
     expectLeft(c);
     await leave(tester, c, prefs);
+  });
+
+  testWidgets(
+      "the rulers set on the guides panel are drawn at once and kept as the "
+      "person's", (tester) async {
+    var c = _controller();
+    addTearDown(c.dispose);
+    var prefs = preferences();
+    await show(tester, c, prefs);
+
+    StagePainter painter() => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((p) => p.painter)
+        .whereType<StagePainter>()
+        .single;
+    expect(painter().rulers.drawn, isFalse);
+
+    await tester.tap(find.byTooltip("Grid, guides, rulers and snapping"));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    // The panel's strip scrolls sideways.
+    Future<void> tap(String key) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pump();
+    }
+
+    await tap("guidesRulerLeft");
+    expect(painter().rulers, const CanvasRulers(left: true),
+        reason: "drawn at once");
+    await tester.pump(const Duration(seconds: 1));
+    expect(prefs.rulers, const CanvasRulers(left: true), reason: "and kept");
+
+    await tap("guidesShowRulers");
+    expect(painter().rulers.drawn, isFalse);
+    await tester.pump(const Duration(seconds: 1));
+    expect(prefs.rulers, const CanvasRulers(left: true, shown: false));
+    await tap("guidesShowRulers");
+
+    // Another canvas, saved or new, opens with them as they were.
+    c.load(_document(), folder: "Films", name: "One");
+    await tester.pump(const Duration(seconds: 1));
+    c.load(_document());
+    await tester.pump(const Duration(seconds: 1));
+    expect(painter().rulers, const CanvasRulers(left: true));
+    expect(prefs.rulers, const CanvasRulers(left: true));
+    await leave(tester, c, prefs);
+
+    // And so does the next run of the app.
+    var next = _controller();
+    addTearDown(next.dispose);
+    await show(tester, next, prefs);
+    expect(painter().rulers, const CanvasRulers(left: true));
+    await leave(tester, next, prefs);
   });
 
   group("how one canvas was looked at", () {

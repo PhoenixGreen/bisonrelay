@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -1131,25 +1132,52 @@ void main() {
       expect(spread, findsOneWidget);
     });
 
-    // It was in the bar and nowhere else, so a canvas saved with the rulers
-    // hidden had no way back to them once the bar stopped carrying switches.
-    testWidgets("the rulers are shown and hidden from the panel",
+    // The rulers are the person's who is editing, not the canvas's: the
+    // panel sets them on the controller, which the page keeps in the
+    // preferences (KeptView), and the canvas itself is left alone.
+    testWidgets("the rulers are set from the panel, and are no edit",
         (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
+      // Saved under a name, so a change to it would be autosaved.
+      controller.load(const CanvasDocument(), name: "Ruled");
       await pump(tester, CanvasGuidesPanel(controller: controller));
+      var before = controller.document;
+      expect(controller.rulers, const CanvasRulers());
 
-      expect(controller.document.guides.showRulers, isTrue);
-      // The strip scrolls sideways and Rulers is the last group on it, so a
-      // tap at its coordinates lands outside the viewport.
-      await tester
-          .ensureVisible(find.byKey(const ValueKey("guidesShowRulers")));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("guidesShowRulers")));
-      await tester.pumpAndSettle();
-      expect(controller.document.guides.showRulers, isFalse);
-      expect(controller.document.guides.rulers.top, isFalse,
+      // The strip scrolls sideways, so a switch can lie outside the
+      // viewport until it is scrolled to.
+      Future<void> tap(String key) async {
+        await tester.ensureVisible(find.byKey(ValueKey(key)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pumpAndSettle();
+      }
+
+      await tap("guidesRulerTop");
+      expect(controller.rulers, const CanvasRulers(top: true));
+      await tap("guidesShowRulers");
+      expect(controller.rulers, const CanvasRulers(top: true, shown: false),
           reason: "hidden without forgetting which edges were asked for");
+
+      expect(identical(controller.document, before), isTrue,
+          reason: "the canvas is not changed");
+      expect(controller.dirty, isFalse, reason: "so nothing is autosaved");
+      expect(controller.canUndo, isFalse, reason: "and there is no undo step");
+
+      // Another canvas, or a new one, opens with them as they were.
+      controller.load(
+          const CanvasDocument(guides: CanvasGuides(showGrid: true)),
+          name: "Other");
+      await tester.pumpAndSettle();
+      controller.load(const CanvasDocument());
+      await tester.pumpAndSettle();
+      expect(controller.rulers, const CanvasRulers(top: true, shown: false));
+      CanvasToggle toggle(String key) =>
+          tester.widget<CanvasToggle>(find.byKey(ValueKey(key)));
+      expect(toggle("guidesRulerTop").value, isTrue);
+      expect(toggle("guidesRulerLeft").value, isFalse);
+      expect(toggle("guidesShowRulers").value, isFalse);
     });
   });
 

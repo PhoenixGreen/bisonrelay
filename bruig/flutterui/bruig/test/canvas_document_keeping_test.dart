@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -41,9 +40,20 @@ void main() {
       expect(again(c.document).scene.camera?.toZoom, 1.5);
     });
 
-    test("rulers switched off stay off", () {
-      var d = const CanvasDocument(guides: CanvasGuides(showRulers: false));
-      expect(again(d).guides.showRulers, isFalse);
+    test("rulers in a file read as nothing, and are not written again", () {
+      // Each person's own (CanvasPreferences.rulers): a file that carries
+      // them opens, and does not hand them on.
+      var json = const CanvasDocument().toJson();
+      json["guides"] = {
+        "rulers": {"t": true, "l": true},
+        "showRulers": false,
+      };
+      var d = CanvasDocument.fromJson(json);
+      expect(d.guides.isDefault, isTrue);
+      var saved = d.encode();
+      expect(saved, isNot(contains("rulers")));
+      expect(saved, isNot(contains("showRulers")));
+      expect(again(d).guides.isDefault, isTrue);
     });
 
     test("an element's design kept for a page shape holds no earlier ones", () {

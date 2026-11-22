@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -126,6 +127,11 @@ class CanvasPreferences extends ChangeNotifier {
   final _fit = _SavedText<CanvasFit>("canvasFit", CanvasFit.whole,
       read: (t) => CanvasFit.values.where((f) => f.name == t).firstOrNull,
       write: (v) => v.name);
+  final _rulers = _SavedText.json<CanvasRulers>(
+      "canvasRulers", const CanvasRulers(),
+      fromJson: (json) =>
+          json is Map<String, dynamic> ? CanvasRulers.fromJson(json) : null,
+      toJson: (v) => v.toJson());
   final _canvasViews =
       _SavedText.json<Map<String, Map<String, dynamic>>>("canvasViews", {},
           fromJson: (json) => json is! Map<String, dynamic>
@@ -212,6 +218,7 @@ class CanvasPreferences extends ChangeNotifier {
     _lastName,
     _filesFolder,
     _fit,
+    _rulers,
     _canvasViews,
     _sidebars,
     _sidebarAboveWidth,
@@ -344,6 +351,13 @@ class CanvasPreferences extends ChangeNotifier {
   /// by name, so reordering the fits does not change a saved one.
   CanvasFit get fit => _fit.value;
   set fit(CanvasFit value) => _change(_fit, value);
+
+  /// rulers is which edges of the stage carry a ruler and whether they
+  /// show. A preference, not part of a canvas, so a canvas sent to somebody
+  /// opens with their rulers rather than its sender's. The page hands it to
+  /// the controller and keeps it (KeptView).
+  CanvasRulers get rulers => _rulers.value;
+  set rulers(CanvasRulers value) => _change(_rulers, value);
 
   /// canvasView is how the canvas saved as [key] ("folder/name") was last
   /// looked at. See CanvasController.canvasView.

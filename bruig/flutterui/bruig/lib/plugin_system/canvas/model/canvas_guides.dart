@@ -7,8 +7,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 // the lines the reader puts down themselves, and what an element snaps to.
 //
 // It is saved in the document, not in preferences, because the grid and
-// guides are part of the design; whether they are shown is saved too.
-// Nothing here is drawn on an export: only the editor's stage draws it.
+// guides are part of the design; whether they are shown is saved too. The
+// rulers are not here: they are the person's, not the canvas's (see
+// canvas_rulers.dart). Nothing here is drawn on an export: only the editor's
+// stage draws it.
 
 /// GuideAxis is which way a guide runs: a vertical one is fixed at an x.
 enum GuideAxis { vertical, horizontal }
@@ -110,50 +112,7 @@ enum SnapTarget {
       };
 }
 
-/// CanvasRulers is which window edges carry a ruler (none by default).
-class CanvasRulers {
-  final bool top;
-  final bool left;
-  final bool right;
-  final bool bottom;
-
-  const CanvasRulers({
-    this.top = false,
-    this.left = false,
-    this.right = false,
-    this.bottom = false,
-  });
-
-  /// _defaults is one as made: what a saved one means by leaving a field
-  /// out.
-  static const _defaults = CanvasRulers();
-
-  bool get any => top || left || right || bottom;
-
-  CanvasRulers copyWith({bool? top, bool? left, bool? right, bool? bottom}) =>
-      CanvasRulers(
-        top: top ?? this.top,
-        left: left ?? this.left,
-        right: right ?? this.right,
-        bottom: bottom ?? this.bottom,
-      );
-
-  Map<String, dynamic> toJson() => {
-        if (top != _defaults.top) "t": top,
-        if (left != _defaults.left) "l": left,
-        if (right != _defaults.right) "r": right,
-        if (bottom != _defaults.bottom) "b": bottom,
-      };
-
-  factory CanvasRulers.fromJson(Map<String, dynamic> json) => CanvasRulers(
-        top: jsonBool(json["t"], _defaults.top),
-        left: jsonBool(json["l"], _defaults.left),
-        right: jsonBool(json["r"], _defaults.right),
-        bottom: jsonBool(json["b"], _defaults.bottom),
-      );
-}
-
-/// CanvasGuides is the grid, the guides, the rulers and what snaps to what.
+/// CanvasGuides is the grid, the guides and what snaps to what.
 class CanvasGuides {
   /// showGrid and gridSize are the regular grid. The size is in document
   /// units, so a grid on a 1280-wide canvas is the same grid at any zoom.
@@ -190,11 +149,6 @@ class CanvasGuides {
   final double stageStep;
   final double stageTurn;
 
-  final CanvasRulers rulers;
-
-  /// showRulers hides the rulers without forgetting their edges.
-  final bool showRulers;
-
   const CanvasGuides({
     this.showGrid = false,
     this.gridSize = 40,
@@ -208,8 +162,6 @@ class CanvasGuides {
     this.stageSnap = false,
     this.stageStep = 0.25,
     this.stageTurn = 15,
-    this.rulers = const CanvasRulers(),
-    this.showRulers = true,
   });
 
   /// _defaults is one as made: what a saved one means by leaving a
@@ -232,10 +184,6 @@ class CanvasGuides {
   /// Asked of what is saved, so a setting is never missed here.
   bool get isDefault => toJson().isEmpty;
 
-  /// rulersShown is whether any ruler is drawn: one asked for, and rulers
-  /// not hidden.
-  bool get rulersShown => showRulers && rulers.any;
-
   CanvasGuides copyWith({
     bool? showGrid,
     double? gridSize,
@@ -249,8 +197,6 @@ class CanvasGuides {
     bool? stageSnap,
     double? stageStep,
     double? stageTurn,
-    CanvasRulers? rulers,
-    bool? showRulers,
   }) =>
       CanvasGuides(
         showGrid: showGrid ?? this.showGrid,
@@ -269,8 +215,6 @@ class CanvasGuides {
             (stageStep ?? this.stageStep).clamp(minStageStep, maxStageStep),
         stageTurn:
             (stageTurn ?? this.stageTurn).clamp(minStageTurn, maxStageTurn),
-        rulers: rulers ?? this.rulers,
-        showRulers: showRulers ?? this.showRulers,
       );
 
   CanvasGuides withGuide(CanvasGuide guide) =>
@@ -302,11 +246,11 @@ class CanvasGuides {
       if (stageSnap != d.stageSnap) "stageSnap": stageSnap,
       if (stageStep != d.stageStep) "stageStep": stageStep,
       if (stageTurn != d.stageTurn) "stageTurn": stageTurn,
-      if (rulers.toJson() case var edges when edges.isNotEmpty) "rulers": edges,
-      if (showRulers != d.showRulers) "showRulers": showRulers,
     };
   }
 
+  /// fromJson passes over "rulers" and "showRulers" in a canvas that has
+  /// them: the rulers are the reader's own (CanvasRulers), not the file's.
   factory CanvasGuides.fromJson(Map<String, dynamic> json) {
     const d = _defaults;
     return CanvasGuides(
@@ -328,8 +272,6 @@ class CanvasGuides {
           .clamp(minStageStep, maxStageStep),
       stageTurn: jsonDouble(json["stageTurn"], d.stageTurn)
           .clamp(minStageTurn, maxStageTurn),
-      rulers: jsonSpec(json["rulers"], CanvasRulers.fromJson, d.rulers),
-      showRulers: jsonBool(json["showRulers"], d.showRulers),
     );
   }
 

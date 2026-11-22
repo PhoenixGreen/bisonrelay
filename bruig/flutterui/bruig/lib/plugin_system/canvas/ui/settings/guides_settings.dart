@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_align.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -31,40 +32,35 @@ void _slide(CanvasController controller, CanvasGuides next) {
   controller.apply(controller.document.copyWith(guides: next), transient: true);
 }
 
-/// _rulersGroup is which edges carry a ruler, and whether they show.
+/// _rulersGroup is which edges carry a ruler, and whether they show. They
+/// are the person's, not the canvas's (CanvasController.rulers): setting
+/// them is no edit of the canvas.
 Widget _rulersGroup(CanvasController controller) {
-  var guides = controller.document.guides;
-  void set(CanvasGuides next) => _set(controller, next);
+  var rulers = controller.rulers;
+  void set(CanvasRulers next) => controller.rulers = next;
   return CanvasFoldingGroup(
       label: "Rulers",
       remember: "guidesRulers",
       children: [
         for (var (label, on, apply)
             in <(String, bool, CanvasRulers Function(bool))>[
-          ("Top", guides.rulers.top, (v) => guides.rulers.copyWith(top: v)),
-          ("Left", guides.rulers.left, (v) => guides.rulers.copyWith(left: v)),
-          (
-            "Right",
-            guides.rulers.right,
-            (v) => guides.rulers.copyWith(right: v)
-          ),
-          (
-            "Bottom",
-            guides.rulers.bottom,
-            (v) => guides.rulers.copyWith(bottom: v)
-          ),
+          ("Top", rulers.top, (v) => rulers.copyWith(top: v)),
+          ("Left", rulers.left, (v) => rulers.copyWith(left: v)),
+          ("Right", rulers.right, (v) => rulers.copyWith(right: v)),
+          ("Bottom", rulers.bottom, (v) => rulers.copyWith(bottom: v)),
         ])
           CanvasToggle(
+            key: ValueKey("guidesRuler$label"),
             label: label,
             value: on,
-            onChanged: (v) => set(guides.copyWith(rulers: apply(v))),
+            onChanged: (v) => set(apply(v)),
           ),
         // Shown or hidden without forgetting which edges were asked for.
         CanvasToggle(
           key: const ValueKey("guidesShowRulers"),
           label: "Show",
-          value: guides.showRulers,
-          onChanged: (v) => set(guides.copyWith(showRulers: v)),
+          value: rulers.shown,
+          onChanged: (v) => set(rulers.copyWith(shown: v)),
         ),
         const CanvasHint(
             "Rulers sit against the edges of the canvas and are numbered from "

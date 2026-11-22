@@ -767,7 +767,7 @@ class CanvasStageState extends State<CanvasStage>
           painter =
               _scrolling(context, painter, content, down: down, across: across);
           // Over a page that scrolls, the rulers in a layer that does not.
-          if ((down || across) && document.guides.rulersShown) {
+          if ((down || across) && controller.rulers.drawn) {
             painter = _overRulers(painter);
           }
 
@@ -913,6 +913,7 @@ class CanvasStageState extends State<CanvasStage>
               : null,
       camerasShown: _camerasShown,
       selectedPath: _selectedPath(),
+      rulers: controller.rulers,
       rulersApart: _viewport.width > _visible.width + 0.5 ||
           _viewport.height > _visible.height + 0.5,
       spritePaintTick: controller.spritePaint?.tick ?? -1,
@@ -1119,7 +1120,8 @@ class CanvasStageState extends State<CanvasStage>
             animation: Listenable.merge([_scroller.down, _scroller.across]),
             builder: (context, _) => CustomPaint(
               painter: StageRulerLayer(
-                  guides: document.guides,
+                  rulers: controller.rulers,
+                  gridSize: document.guides.gridSize,
                   sheet: document.size.size,
                   scale: _scale,
                   origin: _view.origin - _scrolled,

@@ -357,7 +357,14 @@ tap into the app on release.
 
 `CanvasPreferences` (`canvas_preferences.dart`) is what is remembered about
 the app on this machine, as against what is saved in a canvas: whether the
-feature is on, the canvas last open, how the panels were left. To add one,
+feature is on, the canvas last open, how the panels were left, and the
+rulers along the stage (`CanvasRulers`, in `model/canvas_rulers.dart`: which
+edges, and whether they show). The rulers are the person's, so a canvas sent
+to somebody does not turn them on for them; the grid, the guides and the
+snap switches are the canvas's, saved in its `CanvasGuides`. What the
+controller holds of these (the frame, the rulers, the cues, the mixer, the
+panels) is handed to it as the page opens and written back as it changes,
+in one list in `ui/screen/kept_view.dart`. To add one,
 declare a `_Saved` value there, give it a getter and a setter, and add it to
 `_saved`. `test/canvas_preferences_test.dart` holds each key and the form it
 is stored in, since changing either loses what somebody had set.

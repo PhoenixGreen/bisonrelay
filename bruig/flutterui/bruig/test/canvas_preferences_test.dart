@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -63,6 +64,10 @@ void main() {
     }
     expect(prefs.stockLibrary, StockLibrary.initial);
     expect(prefs.stockFilters, isEmpty);
+    // As a new canvas has always shown them: the switch on, no edge chosen.
+    expect(prefs.rulers, const CanvasRulers());
+    expect(prefs.rulers.shown, isTrue);
+    expect(prefs.rulers.any, isFalse);
   });
 
   test("each value is read from its key, in the form it was stored", () async {
@@ -100,6 +105,7 @@ void main() {
         "freesound": {"license": "cc0"},
         "gone": {"license": "any"},
       }),
+      "canvasRulers": '{"hidden":true,"t":true,"l":true}',
     });
     expect(prefs.enabled, isTrue);
     expect(prefs.allowFetching, isTrue);
@@ -136,6 +142,8 @@ void main() {
           StockSource.freesound: {"license": "cc0"},
         },
         reason: "a source this build does not know is passed by");
+    expect(
+        prefs.rulers, const CanvasRulers(shown: false, top: true, left: true));
   });
 
   test("a stock source is stored by its name, a browser apart from them",
@@ -172,12 +180,14 @@ void main() {
     prefs.stockLibrary = const StockSourceLibrary(StockSource.jamendo);
     prefs.setStockFilter(StockSource.jamendo, "order", "popular");
     prefs.setStockFilter(StockSource.jamendo, "speed", "high");
+    prefs.rulers = const CanvasRulers(top: true, right: true);
 
     var stored = await SharedPreferences.getInstance();
     expect(stored.getString("canvasAssetViews"), '{"picture":"list"}');
     expect(stored.getString("canvasStockLibrary"), "jamendo");
     expect(stored.getString("canvasStockFilters"),
         '{"jamendo":{"order":"popular","speed":"high"}}');
+    expect(stored.getString("canvasRulers"), '{"t":true,"r":true}');
 
     var next = CanvasPreferences();
     addTearDown(next.dispose);
@@ -199,6 +209,7 @@ void main() {
     expect(next.stockFilters, {
       StockSource.jamendo: {"order": "popular", "speed": "high"},
     });
+    expect(next.rulers, const CanvasRulers(top: true, right: true));
 
     next.clearStudioColours();
     var last = CanvasPreferences();
@@ -245,6 +256,7 @@ void main() {
       "canvasAssetViews": "[\"list\"]",
       "canvasStockLibrary": "neon",
       "canvasStockFilters": "{",
+      "canvasRulers": "[true]",
     });
     expect(prefs.sidebars.current, "files");
     expect(prefs.dock, const DockLayout());
@@ -257,6 +269,30 @@ void main() {
     expect(prefs.assetView(AssetKind.audio), AssetView.list);
     expect(prefs.stockLibrary, StockLibrary.initial);
     expect(prefs.stockFilters, isEmpty);
+    expect(prefs.rulers, const CanvasRulers());
+  });
+
+  test("the rulers are stored as what differs from none, each edge alone",
+      () async {
+    // One value for the switch and the four edges, so they are read and
+    // written together; a field left out is as a new one has it.
+    var alone = <String, CanvasRulers>{
+      '{"hidden":true}': const CanvasRulers(shown: false),
+      '{"t":true}': const CanvasRulers(top: true),
+      '{"l":true}': const CanvasRulers(left: true),
+      '{"r":true}': const CanvasRulers(right: true),
+      '{"b":true}': const CanvasRulers(bottom: true),
+    };
+    for (var MapEntry(key: stored, value: rulers) in alone.entries) {
+      expect(jsonEncode(rulers.toJson()), stored);
+      var prefs = await loaded({"canvasRulers": stored});
+      expect(prefs.rulers, rulers, reason: stored);
+    }
+    expect(const CanvasRulers().toJson(), isEmpty);
+    expect(const CanvasRulers(top: true).drawn, isTrue);
+    expect(const CanvasRulers(top: true, shown: false).drawn, isFalse,
+        reason: "hidden without forgetting the edge");
+    expect(const CanvasRulers().drawn, isFalse, reason: "shown, but no edge");
   });
 
   test("only what the menu, Settings or the app's frame shows notifies",
@@ -273,6 +309,7 @@ void main() {
     prefs.setAssetView(AssetKind.video, AssetView.list);
     prefs.stockLibrary = const StockBrowserLibrary(StockBrowser.kenney);
     prefs.setStockFilter(StockSource.freesound, "license", "cc0");
+    prefs.rulers = const CanvasRulers(top: true);
     expect(heard, 0);
 
     prefs.enabled = true;

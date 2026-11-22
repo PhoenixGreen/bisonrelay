@@ -165,7 +165,6 @@ void main() {
           snap: false,
           snapTo: SnapTo(vertices: false, edges: true, centres: false),
           snapWithin: 12,
-          rulers: CanvasRulers(top: true, left: true),
           guides: [
             CanvasGuide(axis: GuideAxis.vertical, at: 120),
             CanvasGuide(axis: GuideAxis.horizontal, at: 340),
@@ -183,8 +182,6 @@ void main() {
       expect(back.snapTo.vertices, isFalse);
       expect(back.snapTo.edges, isTrue);
       expect(back.snapWithin, 12);
-      expect(back.rulers.top, isTrue);
-      expect(back.rulers.bottom, isFalse);
       expect(back.guides.length, 2);
       expect(back.guides.first.axis, GuideAxis.vertical);
       expect(back.guides.first.at, 120);
@@ -214,11 +211,6 @@ void main() {
         "stageSnap": d.copyWith(stageSnap: true),
         "stageStep": d.copyWith(stageStep: 0.5),
         "stageTurn": d.copyWith(stageTurn: 45),
-        "rulers.top": d.copyWith(rulers: const CanvasRulers(top: true)),
-        "rulers.left": d.copyWith(rulers: const CanvasRulers(left: true)),
-        "rulers.right": d.copyWith(rulers: const CanvasRulers(right: true)),
-        "rulers.bottom": d.copyWith(rulers: const CanvasRulers(bottom: true)),
-        "showRulers": d.copyWith(showRulers: false),
       };
       for (var MapEntry(key: field, value: guides) in alone.entries) {
         expect(guides.isDefault, isFalse, reason: field);
@@ -245,8 +237,6 @@ void main() {
         stageSnap: true,
         stageStep: 0.5,
         stageTurn: 45,
-        rulers: CanvasRulers(top: true, left: true, right: true, bottom: true),
-        showRulers: false,
       );
       expect(
           jsonEncode(every.toJson()),
@@ -254,9 +244,26 @@ void main() {
           '"guides":[{"axis":"vertical","at":120.0}],"hideGuides":true,'
           '"lockGuides":true,"noSnap":true,'
           '"snapTo":{"v":false,"e":false,"c":false,"o":false},'
-          '"within":12.0,"stageSnap":true,"stageStep":0.5,"stageTurn":45.0,'
-          '"rulers":{"t":true,"l":true,"r":true,"b":true},'
-          '"showRulers":false}');
+          '"within":12.0,"stageSnap":true,"stageStep":0.5,"stageTurn":45.0}');
+    });
+
+    test("rulers a canvas was saved with are passed over", () {
+      // They are the person's who is editing (CanvasPreferences.rulers), so
+      // a canvas sent to somebody does not turn them on for them.
+      var read = CanvasGuides.fromJson({
+        "rulers": {"t": true, "l": true, "r": true, "b": true},
+        "showRulers": false,
+      });
+      expect(read.isDefault, isTrue);
+      expect(read.toJson(), isEmpty);
+
+      var withGrid = CanvasGuides.fromJson({
+        "grid": true,
+        "rulers": {"t": true},
+        "showRulers": true,
+      });
+      expect(withGrid.showGrid, isTrue, reason: "the rest is read as ever");
+      expect(withGrid.toJson().keys, ["grid"]);
     });
 
     test("the scaffolding travels with the canvas", () {

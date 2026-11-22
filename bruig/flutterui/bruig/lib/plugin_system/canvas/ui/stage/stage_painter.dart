@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -261,6 +262,10 @@ class StagePainter extends CustomPainter {
   /// tilePaintTick changes with each change to a map being painted.
   final int tilePaintTick;
 
+  /// rulers is which edges carry a ruler: the person's, not the canvas's
+  /// (CanvasController.rulers), so not in [guides].
+  final CanvasRulers rulers;
+
   /// rulersApart leaves the rulers to their own layer (paintStageRulers).
   final bool rulersApart;
 
@@ -384,6 +389,7 @@ class StagePainter extends CustomPainter {
     required this.selectedPath,
     this.spritePaintTick = -1,
     this.tilePaintTick = -1,
+    this.rulers = const CanvasRulers(),
     this.rulersApart = false,
     this.editingVector,
     this.editingLayers,
@@ -765,6 +771,7 @@ class StagePainter extends CustomPainter {
       !identical(old.selectedPath, selectedPath) ||
       old.spritePaintTick != spritePaintTick ||
       old.tilePaintTick != tilePaintTick ||
+      old.rulers != rulers ||
       old.rulersApart != rulersApart ||
       old.editingVector != editingVector ||
       old.editingLayers != editingLayers ||
