@@ -172,15 +172,15 @@ extension CanvasMovement on CanvasController {
         return;
       }
       var rest = target.centreOf(spot);
-      replaceElement(target.withPlayer(
-          index, spot.copyWith(track: _bake(path, rest, from, to))));
+      replaceElement(target.withPlayer(index,
+          spot.copyWith(track: _bake(path, spot.track, rest, from, to))));
       return;
     }
 
     // An element is placed by its top-left, so the route, which describes
     // where the thing is, is measured from its centre and shifted back.
-    replaceElement(
-        target.withBase(track: _bake(path, target.center, from, to)));
+    replaceElement(target.withBase(
+        track: _bake(path, target.track, target.center, from, to)));
   }
 
   /// _bakeOnPitch is [_bake] for a player on a pitch, in the units a run on
@@ -189,32 +189,25 @@ extension CanvasMovement on CanvasController {
       TeamElement team, PlayerSpot spot, int from, int to) {
     var rest = teamFieldPoint(team, spot, ground.place);
     var ref = ground.place.reference;
-    var keys = <Keyframe>[];
-    for (var f = from; f <= to; f++) {
+    return followTrack(spot.track, (f) {
       var at = path.positionAtFrame(f);
-      if (at == null) continue;
-      var field = ground.field(at);
-      if (field == null) continue;
-      keys.add(Keyframe(
-          frame: f,
-          dx: (field.dx - rest.dx) * ref,
-          dy: -(field.dy - rest.dy) * ref));
-    }
-    return ElementTrack(keys);
+      var field = at == null ? null : ground.field(at);
+      if (field == null) return null;
+      return Offset((field.dx - rest.dx) * ref, -(field.dy - rest.dy) * ref);
+    }, from, to);
   }
 
-  /// _bake turns a path into a track of poses relative to [rest].
-  ElementTrack _bake(PathElement path, Offset rest, int from, int to) {
-    var keys = <Keyframe>[];
-    for (var f = from; f <= to; f++) {
-      var at = path.positionAtFrame(f);
-      if (at == null) continue;
-      keys.add(Keyframe(frame: f, dx: at.dx - rest.dx, dy: at.dy - rest.dy));
-    }
-    return ElementTrack(keys);
-  }
+  /// _bake lays a path into [track], the follower's keys, as its place
+  /// relative to [rest] on each frame (see followTrack).
+  ElementTrack _bake(PathElement path, ElementTrack? track, Offset rest,
+          int from, int to) =>
+      followTrack(track, (f) {
+        var at = path.positionAtFrame(f);
+        return at == null ? null : at - rest;
+      }, from, to);
 
-  /// clearPathFollow takes the baked keys off, or the follower is stranded.
+  /// clearPathFollow takes the baked places off, or the follower is
+  /// stranded, and leaves what else it has keyed (see ownTrack).
   void clearPathFollow(PathElement path) {
     var follow = path.follow;
     if (follow == null) return;
@@ -224,11 +217,15 @@ extension CanvasMovement on CanvasController {
     var index = follow.playerIndex;
     if (target is TeamElement && index != null) {
       if (index < 0 || index >= target.players.length) return;
+      var own = ownTrack(target.players[index].track);
       replaceElement(target.withPlayer(
-          index, target.players[index].copyWith(clearTrack: true)));
+          index,
+          own.isEmpty
+              ? target.players[index].copyWith(clearTrack: true)
+              : target.players[index].copyWith(track: own)));
       return;
     }
-    replaceElement(target.withBase(clearTrack: true));
+    replaceElement(withTrackOrNone(target, ownTrack(target.track)));
   }
 
   /// followerLabel names what a path is attached to, for the settings.

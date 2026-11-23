@@ -39,7 +39,7 @@ reason, as debts to pay off; nothing may be added to the list without one.
 |---|---|
 | (top) | `canvas_controller.dart` and what every part uses: `controls.dart`, `canvas_dialogs.dart`, `element_factory.dart`, `element_settings.dart`, `canvas_align.dart` (lining chosen elements or a picture's layers up with each other), presets, studio colours. |
 | `controller/` | The controller's own parts, as `extension` files (see below). |
-| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates` (the view made from the controller and layout, and the selection's box), `stage_hit_testing` (what is under the pointer), `stage_press` (every press, editing or playing, as a list of steps), `stage_synth_controls` (a synth module's keys, knobs, screens, jacks and cables, and the gestures on them), `stage_code_controls` (a Code or Run panel's controls, the gestures on them, and the editor and live preview over them), `stage_element_controls` (the other elements' controls: counter and its loose pieces, chart key, a chart's placed labels and a table's column rules as drawn and taken, video, speaker, metronome, a play task's steps, a flow link dropped), `stage_gesture` (what the pointer is doing, as one value from press to release: see Gestures on the stage, below), `stage_pending_click` (the clicks that ride on a press, made if it is let go where it began), `stage_drag` (a move, resize, slant or turn, from its start; a chart's label, a table's column rule, an anchor and the held marker's note dragged), `stage_release`, `stage_vector_tools`, `stage_picture_tools`, `stage_framing` (a picture reframed inside its frame), `stage_guides` (guides taken, pulled from a ruler, moved and dropped), `stage_retouch` (the retouching stroke's preview and commit), `stage_team_players` (a team's players pressed and dragged), `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, fourteen libraries beside it do not import it (`test/canvas_layers_test.dart` holds all fifteen to that): `stage_hit_test.dart`, what is at a point of the document now; `picked_parts.dart`, the parts picked inside one element, which the keys act on too; `stage_transform.dart`, where the page sits in the window and how a stage point becomes a document point; `stage_scroll.dart`, the scroll views kept in step with the controller's pan; `in_place_edit.dart`, the one thing open for typing on the page (a text, a cell or a counter's Set field); `stage_rulers.dart`, the rulers: their strips, the gap between their numbers, and their drawing, in the painter or in a layer of their own over a page that scrolls; `stage_painter_inputs.dart`, what the painter draws from (see Adding a mark to the stage, below); and the seven libraries the painter draws with, one for each subject of the stage, each function given the values it reads: `stage_paint_page.dart`, the page (its shadow, the document with its facing leaf, a transition being watched or a game's change of scene, a held marker's label, a game's level, and the shade, border and hint round the page); `stage_paint_selection.dart`, the selection (its box, handles and turn knob, each element of several, a reused element's copies, the motion trail, the whole chain under a join, its anchors, and the move through the scene's camera they are drawn with); `stage_paint_elements.dart`, the marks on elements (every element's box, cameras, touch areas, text flow links and grips, a chart's labels, a table's column rules, a Layout's lines, knobs and numbers, a path's points); `stage_paint_tools.dart`, the tool in hand (a drawing's points, shape box and mirror lines, a picture's layers and warp grid, a picture being reframed, the knife, the caret, the marquee); `stage_paint_retouch.dart`, the retouching brush; `stage_paint_guides.dart`, the grid, guides and snap lines; and `stage_paint_kit.dart`, the pieces they are all drawn from (the handle blue `stageBlue`, a square handle, a round knob, a dashed line, a line dark under light, a rectangle or line put on screen). `stage_painter.dart` is the painter itself: the order these are drawn in. `stage_geometry.dart` is the sizes and places of what is grabbed, which the painter and the hit-testing share, and the steps a turn takes with Shift. |
+| `stage/` | The canvas being edited. `canvas_stage.dart` holds its state, lifecycle and build; its keys are a line each of the page's table in `stage_keys.dart` (see Keys, below); what it does is in parts by concern: `stage_coordinates` (the view made from the controller and layout, and the selection's box), `stage_hit_testing` (what is under the pointer), `stage_press` (every press, editing or playing, as a list of steps), `stage_synth_controls` (a synth module's keys, knobs, screens, jacks and cables, and the gestures on them), `stage_code_controls` (a Code or Run panel's controls, the gestures on them, and the editor and live preview over them), `stage_element_controls` (the other elements' controls: counter and its loose pieces, chart key, a chart's placed labels and a table's column rules as drawn and taken, video, speaker, metronome, a play task's steps, a flow link dropped), `stage_gesture` (what the pointer is doing, as one value from press to release: see Gestures on the stage, below), `stage_pending_click` (the clicks that ride on a press, made if it is let go where it began), `stage_drag` (a move, resize, slant or turn, from its start; a chart's label, a table's column rule, an anchor and the held marker's note dragged), `stage_release`, `stage_vector_tools`, `stage_path_points` (a selected path's points and handles: which is under the pointer, and one dragged), `stage_picture_tools`, `stage_framing` (a picture reframed inside its frame), `stage_guides` (guides taken, pulled from a ruler, moved and dropped), `stage_retouch` (the retouching stroke's preview and commit), `stage_team_players` (a team's players pressed and dragged), `stage_3d_view`, `stage_text_pieces`, `stage_layouts`. Like `stage_keys.dart`, fourteen libraries beside it do not import it (`test/canvas_layers_test.dart` holds all fifteen to that): `stage_hit_test.dart`, what is at a point of the document now; `picked_parts.dart`, the parts picked inside one element, which the keys act on too; `stage_transform.dart`, where the page sits in the window and how a stage point becomes a document point; `stage_scroll.dart`, the scroll views kept in step with the controller's pan; `in_place_edit.dart`, the one thing open for typing on the page (a text, a cell or a counter's Set field); `stage_rulers.dart`, the rulers: their strips, the gap between their numbers, and their drawing, in the painter or in a layer of their own over a page that scrolls; `stage_painter_inputs.dart`, what the painter draws from (see Adding a mark to the stage, below); and the seven libraries the painter draws with, one for each subject of the stage, each function given the values it reads: `stage_paint_page.dart`, the page (its shadow, the document with its facing leaf, a transition being watched or a game's change of scene, a held marker's label, a game's level, and the shade, border and hint round the page); `stage_paint_selection.dart`, the selection (its box, handles and turn knob, each element of several, a reused element's copies, the motion trail, the whole chain under a join, its anchors, and the move through the scene's camera they are drawn with); `stage_paint_elements.dart`, the marks on elements (every element's box, cameras, touch areas, text flow links and grips, a chart's labels, a table's column rules, a Layout's lines, knobs and numbers, a path's points); `stage_paint_tools.dart`, the tool in hand (a drawing's points, shape box and mirror lines, a picture's layers and warp grid, a picture being reframed, the knife, the caret, the marquee); `stage_paint_retouch.dart`, the retouching brush; `stage_paint_guides.dart`, the grid, guides and snap lines; and `stage_paint_kit.dart`, the pieces they are all drawn from (the handle blue `stageBlue`, a square handle, a round knob, a dashed line, a line dark under light, a rectangle or line put on screen). `stage_painter.dart` is the painter itself: the order these are drawn in. `stage_geometry.dart` is the sizes and places of what is grabbed, which the painter and the hit-testing share, and the steps a turn takes with Shift. |
 | `screen/` | The editor around the stage: settings bar, dock, play bar, publishing, the file player. |
 | `timeline/` | Rows, channels, scenes, markers, keys, automation. |
 | `mixer/` | The mixer, its strips and devices, the clip slots. |
@@ -333,6 +333,57 @@ cap reaches past the cut. `test/canvas_stroke_ends_test.dart` draws every
 end at several widths, sizes and caps and holds the stroke to meeting it
 with no gap and showing through no hollow one, and a path's ends to a
 line's.
+
+A stroke's fade is laid over the stroke as drawn, the curve's bounds grown
+by half its width, so it runs across the thickness of a level or upright
+stroke as well as along it.
+
+### A line's and a path's curve
+
+Where a stroke's curve is has one answer. `StrokedElement.curve` is the
+line the stroke runs along in its box, before its turn and slant: what
+`paintStroke` strokes once `paintElement` has laid the canvas out by the
+element's `boxFrame`. `curvePoints` is that walked into points, and
+`curveOnPage` those points laid on the page through the turn and slant
+(`BoxFrame.place`, the point form of `placePath`). `bowedBy` gives a line
+the bow a pose keys. `curveOfElement` (`render/scene_renderer_shapes.dart`)
+is the curve on the page with the bow its track keys on a frame, and what
+asks where the curve is asks it: the selection box (`visualBoundsOf`), the
+press (`StageHitTest.contains`), text set on a line and the Follow path
+device. A loop runs round `curvePoints`, inside the frame the painter has
+already laid out. A lone line's or path's selection box is that box round
+its curve as drawn, so the stage lays it out upright (`_boxIsDrawn`), not
+turned and slanted a second time; its corner handles resize its box, and
+move one of its ends only while the line is neither turned nor slanted
+(`_applyLineEnd`). The painter alone takes a clip's keyed bow too; the rest
+take the track's, as text on a line always has.
+
+A path's point or handle on the page is `PathElement.gripOnPage`, and
+`fractionAt` the way back from the page to the fraction of the box a point
+keeps: the stage's marks (`paintPathControls`), the press and the drag
+(`stage_path_points.dart`) use the two, so a turned or slanted path's points
+are drawn, taken and moved where the curve is. A follower's baked place
+(`positionAtFrame`) is on the page too. The press takes what is drawn on
+the ends where it is drawn: `strokeEndMarks` (`render/paint_util_stroke.dart`)
+is the outline of each end, which `paintStroke` draws by.
+
+A path is made of `CubicSegment`s (`model/cubic_segment.dart`): a piece is
+evaluated, split (`insertAfter`) and walked there, and distance along any
+run of points is `PointsAlong`, which the path's follower and the Follow
+path device share. Whether a handle is pulled out of its point is
+`PathNode.hasIn` and `hasOut`. The vector drawing (`vector_editing.dart`,
+`vector_cut.dart`) still does the same arithmetic in copies of its own;
+`CubicSegment` is there for it to take up.
+
+A path's follower is baked into its keys (`CanvasController.applyPathFollow`).
+`followTrack` writes the follower's place on every frame of the run, and on
+every frame it has a key of its own, and keeps what else it has keyed as it
+plays: a key of its own keeps its turn, size, fade, channels and easing, and
+a key added between takes them as its keys give them there. Unlinking
+(`clearPathFollow`) is `ownTrack`: the fewest keys that play as all of them
+do in everything but place, with no place. A key that held nothing but a
+place goes, whoever keyed it, since a place keyed by hand and a place baked
+over it are one value on one key.
 
 ## The editor
 

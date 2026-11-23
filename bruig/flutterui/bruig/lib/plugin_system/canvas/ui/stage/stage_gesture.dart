@@ -304,14 +304,14 @@ class _AnchorDrag extends StageGesture {
 /// _PathPointDrag is a point of the selected path dragged, or one of its
 /// handles. The path stays selected.
 class _PathPointDrag extends StageGesture {
-  _PathPointDrag(this.index, {required this.isHandle, required this.handleOut});
+  _PathPointDrag(this.index, this.grip);
 
   /// index is the point's place in the path.
   final int index;
 
-  /// isHandle is whether a handle of the point is dragged, not the point,
-  /// and handleOut whether it is the outgoing one.
-  final bool isHandle, handleOut;
+  /// grip is what of the point is dragged: the point, or one of its
+  /// handles.
+  final PathGrip grip;
 
   @override
   bool get opensUndoStep => true;
@@ -321,7 +321,7 @@ class _PathPointDrag extends StageGesture {
 
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) =>
-      stage._applyNodeMove(doc, index, handle: isHandle, out: handleOut);
+      stage._applyNodeMove(doc, index, grip);
 
   @override
   void release(CanvasStageState stage, Offset at,

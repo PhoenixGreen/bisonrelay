@@ -7,25 +7,22 @@ part of 'paint_util.dart';
 /// paintStroke draws [stroke] along [along], a single curve: a line's or a
 /// path's.
 void paintStroke(ui.Canvas canvas, Path along, StrokeSpec stroke) {
-  // Across the whole curve, so a fade runs end to end whichever way it
-  // points.
+  // Across the stroke as drawn, the curve's bounds grown by half its width,
+  // so a fade runs end to end whichever way it points, and across the
+  // thickness of a level or upright stroke, whose curve has no height or
+  // no width to lay it over.
   var paint = PaintSpec(stroke.color, gradient: stroke.fade).into(
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke.strokeWidth
         ..strokeCap = stroke.cap.flutter,
-      along.getBounds());
+      along.getBounds().inflate(stroke.strokeWidth / 2));
 
   // A path metric gives the exact position and direction at each end, so the
   // ends sit square on a curve.
-  var metrics = along.computeMetrics().toList();
-  if (metrics.isEmpty) return;
-  var metric = metrics.first;
+  var metric = _strokeMetric(along);
+  if (metric == null) return;
   var length = metric.length;
-
-  var startTangent = metric.getTangentForOffset(0);
-  var endTangent = metric.getTangentForOffset(length);
-  if (startTangent == null || endTangent == null) return;
 
   // An end is drawn on the stroke's end, so the stroke stops where the
   // end's ink begins (StrokeSpec.cutBack): no gap before it, and nothing
@@ -44,10 +41,6 @@ void paintStroke(ui.Canvas canvas, Path along, StrokeSpec stroke) {
       stroke.dash > 0 ? dashPath(body, stroke.dash, stroke.dash * 0.8) : body,
       paint);
 
-  // From the vector, never Tangent.angle: that is *minus* atan2(dy, dx), y
-  // up, and flips every end on a diagonal in canvas space.
-  double heading(ui.Tangent t) => math.atan2(t.vector.dy, t.vector.dx);
-
   // The ends in the stroke's own paint, its fade laid over the same curve,
   // so each is the colour the stroke has where it is.
   var fill = Paint()
@@ -60,93 +53,183 @@ void paintStroke(ui.Canvas canvas, Path along, StrokeSpec stroke) {
     ..strokeJoin = StrokeJoin.miter
     ..color = paint.color
     ..shader = paint.shader;
-  var w = stroke.strokeWidth * stroke.endSize;
-
-  // The start's end points back out of the stroke: the curve reversed.
-  _paintEnd(canvas, stroke.startEnd, startTangent.position,
-      heading(startTangent) + math.pi, w, fill, outline);
-  _paintEnd(canvas, stroke.endEnd, endTangent.position, heading(endTangent), w,
-      fill, outline);
+  for (var mark in _marksOn(metric, stroke)) {
+    _paintEnd(canvas, mark, fill, outline);
+  }
 }
 
-/// _paintEnd draws one end along [angle], the stroke's direction at that
-/// end from the path metric, so it sits square however bent the curve. [w]
-/// is its end width (EndShape); a solid end is drawn in [fill], a hollow one
-/// or a bar in [outline].
-void _paintEnd(ui.Canvas canvas, LineEnd end, Offset at, double angle, double w,
-    Paint fill, Paint outline) {
-  if (end == LineEnd.none) return;
+/// _strokeMetric is [along]'s first contour measured, with a direction at
+/// each end; null where it has none (no curve, or one of no length).
+ui.PathMetric? _strokeMetric(Path along) {
+  var metrics = along.computeMetrics().iterator;
+  if (!metrics.moveNext()) return null;
+  var metric = metrics.current;
+  if (metric.getTangentForOffset(0) == null ||
+      metric.getTangentForOffset(metric.length) == null) {
+    return null;
+  }
+  return metric;
+}
 
-  var along = Offset(math.cos(angle), math.sin(angle));
-  var across = Offset(-along.dy, along.dx);
-  var back = angle + math.pi;
-  Offset barb(double length, double side) => at.translate(
-      math.cos(back + side * EndShape.arrowSpread) * length,
-      math.sin(back + side * EndShape.arrowSpread) * length);
+/// strokeEndMarks is what [stroke] draws on each end of [along], where it
+/// is drawn in the curve's own space: what the stage presses, so a large
+/// end is taken wherever its ink is.
+List<EndMark> strokeEndMarks(Path along, StrokeSpec stroke) {
+  if (stroke.startEnd == LineEnd.none && stroke.endEnd == LineEnd.none) {
+    return const [];
+  }
+  var metric = _strokeMetric(along);
+  return metric == null ? const [] : _marksOn(metric, stroke);
+}
 
-  switch (end) {
+List<EndMark> _marksOn(ui.PathMetric metric, StrokeSpec stroke) {
+  // From the vector, never Tangent.angle: that is *minus* atan2(dy, dx), y
+  // up, and flips every end on a diagonal in canvas space.
+  double heading(ui.Tangent t) => math.atan2(t.vector.dy, t.vector.dx);
+  var startTangent = metric.getTangentForOffset(0)!;
+  var endTangent = metric.getTangentForOffset(metric.length)!;
+  var w = stroke.strokeWidth * stroke.endSize;
+  return [
+    // The start's end points back out of the stroke: the curve reversed.
+    if (EndMark.of(stroke.startEnd, startTangent.position,
+            heading(startTangent) + math.pi, w)
+        case var mark?)
+      mark,
+    if (EndMark.of(stroke.endEnd, endTangent.position, heading(endTangent), w)
+        case var mark?)
+      mark,
+  ];
+}
+
+/// EndMark is one end's mark where it is drawn: on [at], heading along
+/// [angle] (the stroke's direction there, from the path metric, so it sits
+/// square however bent the curve), [w] its end width (EndShape). Its
+/// outline is [corners], closed but for a bar's two ends, or a circle of
+/// [radius] about [at]. A [solid] one is filled; the rest are drawn as an
+/// edge the stroke's width.
+class EndMark {
+  final LineEnd end;
+  final Offset at;
+  final double angle;
+  final double w;
+  final List<Offset> corners;
+  final double radius;
+
+  EndMark._(this.end, this.at, this.angle, this.w, this.corners,
+      {this.radius = 0});
+
+  /// of is [end]'s mark on [at] heading along [angle], [w] wide; null for
+  /// no end.
+  static EndMark? of(LineEnd end, Offset at, double angle, double w) {
+    var along = Offset(math.cos(angle), math.sin(angle));
+    var across = Offset(-along.dy, along.dx);
+    var back = angle + math.pi;
+    Offset barb(double length, double side) => at.translate(
+        math.cos(back + side * EndShape.arrowSpread) * length,
+        math.sin(back + side * EndShape.arrowSpread) * length);
+    EndMark mark(List<Offset> corners, {double radius = 0}) =>
+        EndMark._(end, at, angle, w, corners, radius: radius);
+
+    switch (end) {
+      case LineEnd.none:
+        return null;
+      case LineEnd.arrow:
+      case LineEnd.hollowArrow:
+        var length = w * EndShape.arrowBarb;
+        return mark([at, barb(length, -1), barb(length, 1)]);
+      case LineEnd.openArrow:
+        // A filled chevron rather than two strokes: thickest at the tip and
+        // pointed at each outer end, as an open arrow is drawn by hand. The
+        // notch behind the tip gives it its thickness.
+        var length = w * EndShape.openArrowBarb;
+        var notch = at - along * (length * EndShape.openArrowNotch);
+        return mark([at, barb(length, -1), notch, barb(length, 1)]);
+      case LineEnd.diamond:
+      case LineEnd.hollowDiamond:
+        // Centred on the end, like the circle and the square.
+        var long = along * (w * EndShape.diamondLength);
+        var wide = across * (w * EndShape.diamondWidth);
+        return mark([
+          Offset(at.dx + long.dx, at.dy + long.dy),
+          Offset(at.dx + wide.dx, at.dy + wide.dy),
+          Offset(at.dx - long.dx, at.dy - long.dy),
+          Offset(at.dx - wide.dx, at.dy - wide.dy),
+        ]);
+      case LineEnd.circle:
+      case LineEnd.hollowCircle:
+        return mark(const [], radius: w * EndShape.circleRadius);
+      case LineEnd.square:
+        var half = w * EndShape.squareSide / 2;
+        return mark([
+          for (var (a, b) in const [(1, 1), (-1, 1), (-1, -1), (1, -1)])
+            at + along * (half * a) + across * (half * b),
+        ]);
+      case LineEnd.bar:
+        // A tick across the stroke, which is what a measurement wants at
+        // each end.
+        return mark([
+          at - across * (w * EndShape.barReach),
+          at + across * (w * EndShape.barReach),
+        ]);
+    }
+  }
+
+  /// solid is whether it is filled, not drawn as an edge.
+  bool get solid => switch (end) {
+        LineEnd.arrow ||
+        LineEnd.openArrow ||
+        LineEnd.diamond ||
+        LineEnd.circle ||
+        LineEnd.square =>
+          true,
+        LineEnd.none ||
+        LineEnd.hollowArrow ||
+        LineEnd.hollowDiamond ||
+        LineEnd.hollowCircle ||
+        LineEnd.bar =>
+          false,
+      };
+
+  /// outline is [corners] as a path, closed but for a bar.
+  Path get outline {
+    var path = Path()..moveTo(corners.first.dx, corners.first.dy);
+    for (var c in corners.skip(1)) {
+      path.lineTo(c.dx, c.dy);
+    }
+    return end == LineEnd.bar ? path : (path..close());
+  }
+}
+
+/// _paintEnd draws one end's [mark]: a solid one in [fill], a hollow one or
+/// a bar in [outline].
+void _paintEnd(ui.Canvas canvas, EndMark mark, Paint fill, Paint outline) {
+  var paint = mark.solid ? fill : outline;
+  switch (mark.end) {
     case LineEnd.none:
       return;
-    case LineEnd.arrow:
-    case LineEnd.hollowArrow:
-      var length = w * EndShape.arrowBarb;
-      var b1 = barb(length, -1), b2 = barb(length, 1);
-      canvas.drawPath(
-          Path()
-            ..moveTo(at.dx, at.dy)
-            ..lineTo(b1.dx, b1.dy)
-            ..lineTo(b2.dx, b2.dy)
-            ..close(),
-          end == LineEnd.arrow ? fill : outline);
-    case LineEnd.openArrow:
-      // A filled chevron rather than two strokes: thickest at the tip and
-      // pointed at each outer end, as an open arrow is drawn by hand.
-      var length = w * EndShape.openArrowBarb;
-      var b1 = barb(length, -1), b2 = barb(length, 1);
-      // The notch behind the tip gives it its thickness.
-      var notch = at - along * (length * EndShape.openArrowNotch);
-      canvas.drawPath(
-        Path()
-          ..moveTo(at.dx, at.dy)
-          ..lineTo(b1.dx, b1.dy)
-          ..lineTo(notch.dx, notch.dy)
-          ..lineTo(b2.dx, b2.dy)
-          ..close(),
-        fill,
-      );
-    case LineEnd.diamond:
-    case LineEnd.hollowDiamond:
-      // Centred on the end, like the circle and the square.
-      var long = along * (w * EndShape.diamondLength);
-      var wide = across * (w * EndShape.diamondWidth);
-      canvas.drawPath(
-        Path()
-          ..moveTo(at.dx + long.dx, at.dy + long.dy)
-          ..lineTo(at.dx + wide.dx, at.dy + wide.dy)
-          ..lineTo(at.dx - long.dx, at.dy - long.dy)
-          ..lineTo(at.dx - wide.dx, at.dy - wide.dy)
-          ..close(),
-        end == LineEnd.diamond ? fill : outline,
-      );
     case LineEnd.circle:
-      canvas.drawCircle(at, w * EndShape.circleRadius, fill);
     case LineEnd.hollowCircle:
-      canvas.drawCircle(at, w * EndShape.circleRadius, outline);
+      canvas.drawCircle(mark.at, mark.radius, paint);
     case LineEnd.square:
+      // Turned onto the stroke and drawn as a rectangle, which lands on the
+      // pixels as its outline's corners say.
       canvas.save();
-      canvas.translate(at.dx, at.dy);
-      canvas.rotate(angle);
+      canvas.translate(mark.at.dx, mark.at.dy);
+      canvas.rotate(mark.angle);
       canvas.drawRect(
           Rect.fromCenter(
               center: Offset.zero,
-              width: w * EndShape.squareSide,
-              height: w * EndShape.squareSide),
-          fill);
+              width: mark.w * EndShape.squareSide,
+              height: mark.w * EndShape.squareSide),
+          paint);
       canvas.restore();
     case LineEnd.bar:
-      // A tick across the stroke, which is what a measurement wants at each
-      // end.
-      canvas.drawLine(at - across * (w * EndShape.barReach),
-          at + across * (w * EndShape.barReach), outline);
+      canvas.drawLine(mark.corners.first, mark.corners.last, paint);
+    case LineEnd.arrow:
+    case LineEnd.hollowArrow:
+    case LineEnd.openArrow:
+    case LineEnd.diamond:
+    case LineEnd.hollowDiamond:
+      canvas.drawPath(mark.outline, paint);
   }
 }

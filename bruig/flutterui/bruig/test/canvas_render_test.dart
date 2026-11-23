@@ -622,7 +622,7 @@ void main() {
       // The bow was written out twice and the arrowheads used neither, which
       // is how they ended up pointing somewhere the curve does not go.
       var bowed = line(curvature: 0.35);
-      var control = lineControlPoint(bowed);
+      var control = bowed.controlPoint;
       var curve = curveOfElement(bowed)!;
 
       // The apex of a quadratic is at t=0.5, half way between the chord's
@@ -637,7 +637,7 @@ void main() {
 
     test("a straight line's control point is its own midpoint", () {
       var straight = line();
-      expect(lineControlPoint(straight), (straight.start + straight.end) / 2);
+      expect(straight.controlPoint, (straight.start + straight.end) / 2);
     });
 
     test("the selection box leaves room for what is on the ends", () {

@@ -251,6 +251,7 @@ extension StageCoordinates on CanvasStageState {
     if (_oneCopy case (var e, var i)?) {
       return (e.rotation + _copyPose(e, i).rotate) * math.pi / 180;
     }
+    if (_boxIsDrawn) return 0;
     return _chosen.length == 1
         ? _chosen.first.movedRotationAt(controller.frame, controller.document,
                 live: controller.liveMotion) *
@@ -260,10 +261,22 @@ extension StageCoordinates on CanvasStageState {
   }
 
   /// _skewOfSelection is the lone selection's slant in degrees, or zero.
-  Offset get _skewOfSelection =>
-      _chosen.length == 1 && _onePiece == null && _oneFreeCell == null
-          ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
-          : Offset.zero;
+  Offset get _skewOfSelection => _chosen.length == 1 &&
+          _onePiece == null &&
+          _oneFreeCell == null &&
+          !_boxIsDrawn
+      ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
+      : Offset.zero;
+
+  /// _boxIsDrawn is whether the lone selection's box is already round it as
+  /// it is drawn on the page, turned and slanted: a line's or a path's,
+  /// which is round its curve (visualBoundsOf), so it is not laid out by
+  /// the element's turn and slant again. Not one copy of a reused one,
+  /// which has a box of its own.
+  bool get _boxIsDrawn =>
+      _chosen.length == 1 &&
+      _chosen.first is StrokedElement &&
+      _oneCopy == null;
 
   /// _frameOfSelection is the selection box's turn and slant on the page.
   BoxFrame get _frameOfSelection => BoxFrame(

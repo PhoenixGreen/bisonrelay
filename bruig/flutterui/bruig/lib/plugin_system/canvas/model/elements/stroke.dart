@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
@@ -332,4 +333,32 @@ abstract class StrokedElement extends CanvasElement {
 
   /// withStroke is this element drawn with [stroke] instead.
   StrokedElement withStroke(StrokeSpec stroke);
+
+  /// curve is the line the stroke runs along, in the box as it is drawn
+  /// before its turn and slant: what paintStroke strokes once paintElement
+  /// has laid the canvas out by [boxFrame]. Empty where there is nothing
+  /// to stroke (a path of fewer than two points).
+  Path get curve;
+
+  /// curvePoints is [curve] walked into points, in the same space, finely
+  /// enough to stand for it (CubicSegment.samplesPerPiece to a piece):
+  /// what a loop runs round, and, on the page, what is pressed, measured
+  /// and ridden. Empty where [curve] is.
+  List<Offset> get curvePoints;
+
+  /// bowedBy is this element as [pose] shapes its curve: a line bowed as
+  /// the pose keys it (KeyframeChannel.bow). A path has no bow of its own.
+  StrokedElement bowedBy(Keyframe pose) => this;
+
+  /// curveOnPage is [curvePoints] where they are drawn on the page: the one
+  /// answer to where the curve is, which the selection box, the press, text
+  /// set on it and whatever follows it ask (render's curveOfElement, with
+  /// the bow keyed on a frame).
+  List<Offset> get curveOnPage {
+    var points = curvePoints;
+    var frame = boxFrame;
+    if (frame.upright) return points;
+    var middle = center;
+    return [for (var p in points) frame.place(p, middle)];
+  }
 }

@@ -255,6 +255,8 @@ extension StageDrag on CanvasStageState {
   /// drawn, so a turned element is snapped by the corners that show.
   Rect _seenBounds(CanvasElement e) {
     var box = _visualBounds(e);
+    // A line's or a path's is round its curve as drawn already.
+    if (e is StrokedElement) return box;
     var frame = BoxFrame(
         e.movedRotationAt(controller.frame, document,
             live: controller.liveMotion),
@@ -319,7 +321,12 @@ extension StageDrag on CanvasStageState {
     // The line at the drag's start: every step works from it, since crossing
     // one end past the other swaps the ends and their arrows.
     var line = from.elements[from.visual.keys.first];
-    if (line is! LineElement || line.curvature != 0 || line.locked) {
+    // Its ends are its box's corners only while the box is not turned or
+    // slanted; a turned or slanted line's handles resize its box.
+    if (line is! LineElement ||
+        line.curvature != 0 ||
+        line.locked ||
+        !line.boxFrame.upright) {
       return false;
     }
     var was = line.bounds;

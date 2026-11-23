@@ -224,12 +224,11 @@ Path _loopOutline(CanvasElement element, Rect bounds, int frame) {
         out.addPath(d.outline.transform(matrix), Offset.zero);
       }
       return out;
-    case LineElement e:
-      var points = _curvePoints(lineWithPose(e, frame));
-      if (points != null && points.length > 1) return _polyline(points);
-    case PathElement e:
-      var points = _curvePoints(e);
-      if (points != null && points.length > 1) return _polyline(points);
+    case StrokedElement e:
+      // In its box, as it is drawn: the canvas is already turned and
+      // slanted as the element is.
+      var points = e.bowedBy(e.poseAt(frame)).curvePoints;
+      if (points.length > 1) return _polyline(points);
     default:
       break;
   }

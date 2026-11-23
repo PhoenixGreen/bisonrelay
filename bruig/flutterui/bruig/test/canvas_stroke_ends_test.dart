@@ -248,8 +248,7 @@ void main() {
         endEnd: LineEnd.arrow,
         endSize: 2);
 
-    // A little off level: a fade across a stroke whose curve has no height
-    // at all has nowhere to run, and is drawn in its first colour.
+    // A little off level, so the fade along it reaches each end.
     const from = Offset(40.5, 100.5);
     var line = const LineElement(ElementBase(id: "l"))
         .withEnds(from, _tip)
@@ -270,6 +269,47 @@ void main() {
             reason: "the arrow is where the stroke is blue");
         expect(picture.red(atStart), greaterThan(picture.blue(atStart)),
             reason: "the square is where the stroke is red");
+      });
+    }
+  });
+
+  group("a fade on a level or upright stroke", () {
+    // Red running to blue, 12 wide: laid over the stroke as drawn, so it
+    // runs across the stroke's thickness, and along a stroke whose curve
+    // has no height.
+    var faded = _plain(width: 12)
+        .copyWith(color: const Color(0xFFFF2020), endEnd: LineEnd.arrow);
+    StrokeSpec at(double angle) => faded.copyWith(
+        fade: GradientSpec(to: const Color(0xFF2040FF), angle: angle));
+
+    /// blueAt is the blue of the pixel at [x], [y].
+    int blueAt(_Picture p, int x, int y) => p.rgba[p._at(x, y) + 2];
+
+    for (var (kind, make) in <(String, StrokedElement Function(StrokeSpec))>[
+      ("line", _line),
+      ("path", _path),
+    ]) {
+      test("across a level $kind, it runs from edge to edge", () async {
+        // Read up: blue at its top edge, red at its bottom, and between
+        // them more blue the higher, a step at a time, not two bands.
+        var picture = await _draw(make(at(0)));
+        var column = 120, top = 115, bottom = 125;
+        var blues = [
+          for (var y = bottom; y >= top; y--) blueAt(picture, column, y)
+        ];
+        for (var i = 1; i < blues.length; i++) {
+          expect(blues[i], greaterThanOrEqualTo(blues[i - 1]),
+              reason: "row ${bottom - i} is no less blue than below it");
+        }
+        expect(blues.toSet().length, greaterThan(4),
+            reason: "a run of shades, not two");
+      });
+
+      test("along a level $kind, it runs from end to end", () async {
+        var picture = await _draw(make(at(90)));
+        expect(blueAt(picture, 190, 120) - blueAt(picture, 50, 120),
+            greaterThan(100),
+            reason: "blue towards the end, red at the start");
       });
     }
   });

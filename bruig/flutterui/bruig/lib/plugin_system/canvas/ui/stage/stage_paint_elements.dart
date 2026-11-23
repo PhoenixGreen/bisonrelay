@@ -315,7 +315,8 @@ void paintLayoutMarks(
 }
 
 /// paintPathControls draws a path's points, and handles where a node is
-/// bent (an unbent node's sit on it).
+/// bent (an unbent node's sit on it), where the path is drawn: through its
+/// turn and slant (PathElement.gripOnPage).
 void paintPathControls(
     Canvas canvas, PathElement path, double scale, Offset origin) {
   Offset at(Offset doc) => doc * scale + origin;
@@ -326,14 +327,11 @@ void paintPathControls(
     ..color = stageBlue.withAlpha(0x88);
 
   for (var node in path.nodes) {
-    var point = at(path.pointOf(node));
+    var point = at(path.gripOnPage(node, PathGrip.point));
 
-    for (var (dx, dy, handle) in [
-      (node.outDx, node.outDy, path.outHandleOf(node)),
-      (node.inDx, node.inDy, path.inHandleOf(node)),
-    ]) {
-      if (!handleBent(dx, dy)) continue;
-      var end = at(handle);
+    for (var grip in const [PathGrip.outHandle, PathGrip.inHandle]) {
+      if (!node.hasGrip(grip)) continue;
+      var end = at(path.gripOnPage(node, grip));
       canvas.drawLine(point, end, line);
       drawRoundKnob(canvas, end, 4, edge: stageBlue.withAlpha(0x88), width: 1);
     }

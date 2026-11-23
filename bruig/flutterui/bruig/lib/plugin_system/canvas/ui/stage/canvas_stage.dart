@@ -130,6 +130,7 @@ part 'stage_code_controls.dart';
 part 'stage_element_controls.dart';
 part 'stage_press.dart';
 part 'stage_vector_tools.dart';
+part 'stage_path_points.dart';
 part 'stage_picture_tools.dart';
 part 'stage_framing.dart';
 part 'stage_guides.dart';

@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show channelLevelAt;
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/cubic_segment.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/design_device.dart';
@@ -25,7 +26,7 @@ import 'package:bruig/plugin_system/canvas/model/own_motion.dart'
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
-    show pathPointsOf, wholeLoopOf;
+    show curveOfElement, wholeLoopOf;
 
 // motion_document.dart joins clips to a document: where every placed clip
 // in the scene plays, worked out once per scene, and an element's pose with
@@ -758,7 +759,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
     case MotionDeviceKind.followPath:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
       var host = doc.elementById(d.target);
-      var points = host == null ? null : pathPointsOf(host, frame);
+      var points = curveOfElement(host, frame);
       if (points == null || points.length < 2) return p;
       var t = _seconds(frame, doc, live);
       var u = d.value("start") + t / d.value("lap");
@@ -771,7 +772,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
         2 => 1 - ((u % 2) - 1).abs(),
         _ => u % 1,
       };
-      var (point, angle) = _alongPath(points, u);
+      var (point, angle) = PointsAlong(points).heading(u);
       if (back) angle += math.pi;
       var turned = d.value("turns").round() == 1;
       return p.copyWith(
@@ -840,28 +841,6 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
 /// motionSoundPeaks is where Follow sound reads a recording's loudness, by
 /// asset: the editor's. Null (a lone element drawn) follows nothing.
 Float32List? Function(String assetId)? motionSoundPeaks;
-
-/// _alongPath is the point [u] of the way along [points] (nought to one,
-/// by length) and the way it heads there, in radians.
-(Offset, double) _alongPath(List<Offset> points, double u) {
-  var lengths = <double>[0];
-  for (var i = 1; i < points.length; i++) {
-    lengths.add(lengths.last + (points[i] - points[i - 1]).distance);
-  }
-  var want = u.clamp(0.0, 1.0) * lengths.last;
-  for (var i = 1; i < points.length; i++) {
-    if (lengths[i] >= want || i == points.length - 1) {
-      var span = lengths[i] - lengths[i - 1];
-      var f = span <= 0 ? 0.0 : (want - lengths[i - 1]) / span;
-      var a = points[i - 1], b = points[i];
-      return (
-        Offset.lerp(a, b, f.clamp(0.0, 1.0))!,
-        math.atan2(b.dy - a.dy, b.dx - a.dx)
-      );
-    }
-  }
-  return (points.first, 0);
-}
 
 /// _looking is how deep Look at is in asking where its targets are: two
 /// elements looking at each other would ask for ever.

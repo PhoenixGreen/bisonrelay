@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/element_reading.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -151,6 +152,56 @@ void main() {
         "follow": {"id": "x" * 2000000},
       });
       expect(p.follow!.elementId.length, maxIdLength);
+    });
+
+    test("its points, handles and timing are no more than a page can use", () {
+      for (var far in [_huge, -_huge]) {
+        var p = _read(_path, {
+          "nodes": [
+            {"x": far, "y": far, "ix": far, "iy": far, "ox": far, "oy": far},
+            {"x": 0, "y": 0, "f": far},
+          ],
+        });
+        var a = p.nodes.first, b = p.nodes.last;
+        for (var v in [a.x, a.y, a.inDx, a.inDy, a.outDx, a.outDy]) {
+          expect(v, inInclusiveRange(-maxPathFraction, maxPathFraction));
+        }
+        expect(b.frame, inInclusiveRange(0, maxFrameCount));
+      }
+    });
+
+    test("a player who cannot be there is no follower", () {
+      for (var player in [-1, maxTeamPlayers, _huge]) {
+        var p = _read(_path, {
+          "follow": {"id": "t", "player": player},
+        });
+        expect(p.follow, isNull, reason: "player $player");
+      }
+      var p = _read(_path, {
+        "follow": {"id": "t", "player": maxTeamPlayers - 1},
+      });
+      expect(p.follow!.playerIndex, maxTeamPlayers - 1);
+    });
+
+    test("every point its panel and the stage can set reads back as it was",
+        () {
+      // A box a unit wide as far out as a box is read, a point as far the
+      // other way as the panel's X and Y go, and the last frame there is.
+      var tiny = PathElement(
+          const ElementBase(id: "p", x: -1e6, y: 1e6, width: 1, height: 1),
+          nodes: [
+            const PathNode(x: 0, y: 0, frame: 0),
+            PathNode(
+                x: 1.1e6,
+                y: -1.1e6,
+                inDx: -2.2e6,
+                inDy: 2.2e6,
+                outDx: 0.5,
+                outDy: -0.5,
+                frame: maxFrameCount - 1),
+          ],
+          follow: const PathFollow(elementId: "t", playerIndex: 0));
+      expect(jsonEncode(_again(tiny).toJson()), jsonEncode(tiny.toJson()));
     });
 
     test("every value its panel can set reads back as it was", () {

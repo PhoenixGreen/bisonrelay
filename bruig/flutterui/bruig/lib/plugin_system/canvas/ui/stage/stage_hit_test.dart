@@ -139,11 +139,13 @@ class StageHitTest {
       }
     }
     // A curve is hit by its stroke, not its box: a bowed line or path bulges
-    // out of its box, and text on a line is wherever the line is.
+    // out of its box, and text on a line is wherever the line is. What is
+    // drawn on its ends is hit where it is drawn, however far it reaches.
     if (e is StrokedElement) {
-      var curve = curveOfElement(e is LineElement ? lineWithPose(e, frame) : e);
+      var curve = curveOfElement(e, frame);
       if (curve != null && curve.length >= 2) {
-        return _nearPolyline(curve, at, _strokeReach(e.strokeWidth));
+        return _nearPolyline(curve, at, _strokeReach(e.strokeWidth)) ||
+            _onEnds(e.bowedBy(e.poseAt(frame)), curve, at);
       }
     }
     if (e is TextElement) {
@@ -215,6 +217,39 @@ class StageHitTest {
       if ((d.dx * d.dx) / (sx * sx) + (d.dy * d.dy) / (sy * sy) <= 1) return i;
     }
     return null;
+  }
+
+  /// _onEnds is whether [at] is on what [e] draws on its ends: inside one,
+  /// or near enough its edge to pick it (a hollow one's edge, or a bar,
+  /// being drawn the stroke's width). [curve] is where it is drawn on the
+  /// page, whose two ends are asked about only when [at] is in their reach.
+  bool _onEnds(StrokedElement e, List<Offset> curve, Offset at) {
+    var stroke = e.drawnStroke;
+    var slop = _strokeReach(0), edge = _strokeReach(e.strokeWidth);
+    // In the curve's own space, before its turn and slant, where the marks
+    // are worked out and their reach is measured.
+    var local = e.fromPage(at);
+    bool within(LineEnd end, Offset tip) =>
+        end != LineEnd.none &&
+        (local - e.fromPage(tip)).distance <=
+            e.strokeWidth * stroke.endSize * end.reach + edge;
+    if (!within(stroke.startEnd, curve.first) &&
+        !within(stroke.endEnd, curve.last)) {
+      return false;
+    }
+    for (var mark in strokeEndMarks(e.curve, stroke)) {
+      var reach = mark.solid ? slop : edge;
+      if (mark.corners.isEmpty) {
+        if ((local - mark.at).distance <= mark.radius + reach) return true;
+        continue;
+      }
+      if (mark.end != LineEnd.bar && mark.outline.contains(local)) return true;
+      var ring = mark.end == LineEnd.bar
+          ? mark.corners
+          : [...mark.corners, mark.corners.first];
+      if (_nearPolyline(ring, local, reach)) return true;
+    }
+    return false;
   }
 
   /// _strokeReach is how near a line, in document units, counts as on it.

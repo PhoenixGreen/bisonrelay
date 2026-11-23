@@ -40,10 +40,6 @@ Offset shapeTurnKnob(Offset top) => top - const Offset(0, shapeTurnReach);
 /// how near it a press takes the anchor.
 const double anchorReach = 10;
 
-/// handleBent is whether a path point's handle, [dx] and [dy] from the
-/// point, is drawn and can be taken: an unbent one lies on its point.
-bool handleBent(double dx, double dy) => dx != 0 || dy != 0;
-
 /// tableColumnGrips is where the two grips of a table's column rule are
 /// drawn, for a rule from [top] to [bottom], all on screen: a short bar
 /// just inside each end.

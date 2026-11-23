@@ -720,6 +720,17 @@ abstract class CanvasElement {
   BoxFrame frameAt(int frame) =>
       BoxFrame(rotationAt(frame), base.skewX, base.skewY);
 
+  /// boxFrame is how the box is laid on the page about its middle as it
+  /// rests: its own turn and slant, which paintElement lays the canvas out
+  /// by before a pose turns or sizes it about the anchor.
+  BoxFrame get boxFrame => BoxFrame(rotation, base.skewX, base.skewY);
+
+  /// onPage is [p], a point of the box as it is drawn before its turn and
+  /// slant, where it lands on the page ([boxFrame] about the box's
+  /// middle); fromPage is the way back, for a press or a drag on the page.
+  Offset onPage(Offset p) => boxFrame.place(p, center);
+  Offset fromPage(Offset p) => boxFrame.unplace(p, center);
+
   double get opacity => base.opacity;
   bool get visible => base.visible;
   bool get locked => base.locked;
@@ -988,6 +999,17 @@ class BoxFrame {
     if (det.abs() < 1e-12) return p;
     return Offset((d * p.dx - b * p.dy) / det, (-c * p.dx + a * p.dy) / det);
   }
+
+  /// place is [p], a point in box space, laid out this way about [centre],
+  /// as [placePath] lays a path; unplace is the way back.
+  Offset place(Offset p, Offset centre) {
+    if (upright) return p;
+    var x = p.dx - centre.dx, y = p.dy - centre.dy;
+    return Offset(centre.dx + x * a + y * b, centre.dy + x * c + y * d);
+  }
+
+  Offset unplace(Offset p, Offset centre) =>
+      upright ? p : centre + invert(p - centre);
 
   /// applyTo transforms [canvas] about [centre] so what is drawn next in box
   /// space lands where the element is.

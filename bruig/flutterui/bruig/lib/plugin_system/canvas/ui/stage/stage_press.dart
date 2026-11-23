@@ -257,10 +257,8 @@ extension StagePress on CanvasStageState {
     // A selected path's points and handles first: they are over the curve.
     var path = _selectedPath();
     if (path != null) {
-      var grab = _hitPathControl(path, doc);
-      if (grab != null) {
-        var (index, isHandle, isOut) = grab;
-        _gesture = _PathPointDrag(index, isHandle: isHandle, handleOut: isOut);
+      if (_hitPathControl(path, doc) case (:var index, :var grip)) {
+        _gesture = _PathPointDrag(index, grip);
         controller.beginInteraction();
         return true;
       }

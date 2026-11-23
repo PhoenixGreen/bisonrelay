@@ -582,7 +582,7 @@ void paintElement(
   bool hovered = false,
 
   /// editing is true on the stage and false wherever a document is turned
-  /// into a file: a guide path is drawn only while editing (_paintPath).
+  /// into a file: a guide path is drawn only while editing (_paintStroked).
   bool editing = false,
 
   /// skipTextItem is the piece not to draw, under an open CanvasTextEditor.
@@ -953,7 +953,7 @@ void paintElement(
             () => _paintShape(canvas, bounds, e, images));
       case LineElement e:
         arriving(canvas, bounds, e.animation, pose,
-            () => _paintLine(canvas, _bowed(e, pose)));
+            () => _paintStroked(canvas, e.bowedBy(pose), editing));
       case ImageElement e:
         // The time its drift and its layers' loops go by: see _imageClock.
         var was = _imageClock;
@@ -1144,7 +1144,7 @@ void paintElement(
                     document == null ? null : parallaxLoopFrames(document)));
       case PathElement e:
         arriving(canvas, bounds, e.animation, pose,
-            () => _paintPath(canvas, bounds, e, editing));
+            () => _paintStroked(canvas, e, editing));
       case TeamElement e:
         paintTeam(canvas, bounds, e, frame, document: document, images: images);
       case StageElement e:

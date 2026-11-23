@@ -2,11 +2,13 @@ import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+import 'package:bruig/plugin_system/canvas/model/cubic_segment.dart';
 
 // path_element.dart is a bezier curve, and optionally the route a named
 // follower takes along it, timed node by node. The movement is not worked
@@ -51,6 +53,27 @@ class PathNode {
   Offset get inHandle => Offset(x + inDx, y + inDy);
   Offset get outHandle => Offset(x + outDx, y + outDy);
 
+  /// hasIn and hasOut are whether a handle is pulled out of the point, so
+  /// is drawn and can be taken: one that is not lies on the point, and its
+  /// side of the curve leaves the point straight.
+  bool get hasIn => inDx != 0 || inDy != 0;
+  bool get hasOut => outDx != 0 || outDy != 0;
+
+  /// gripOf is where [grip] is, as a fraction of the box.
+  Offset gripOf(PathGrip grip) => switch (grip) {
+        PathGrip.point => point,
+        PathGrip.inHandle => inHandle,
+        PathGrip.outHandle => outHandle,
+      };
+
+  /// hasGrip is whether [grip] can be taken apart from the point: the point
+  /// always, a handle when it is pulled out.
+  bool hasGrip(PathGrip grip) => switch (grip) {
+        PathGrip.point => true,
+        PathGrip.inHandle => hasIn,
+        PathGrip.outHandle => hasOut,
+      };
+
   PathNode copyWith({
     double? x,
     double? y,
@@ -89,16 +112,28 @@ class PathNode {
         "f": frame,
       };
 
-  factory PathNode.fromJson(Map<String, dynamic> json) => PathNode(
-        x: jsonDouble(json["x"], 0),
-        y: jsonDouble(json["y"], 0),
-        inDx: jsonDouble(json["ix"], _defaults.inDx),
-        inDy: jsonDouble(json["iy"], _defaults.inDy),
-        outDx: jsonDouble(json["ox"], _defaults.outDx),
-        outDy: jsonDouble(json["oy"], _defaults.outDy),
-        frame: jsonInt(json["f"], _defaults.frame),
-      );
+  /// PathNode.fromJson reads one saved by [toJson], its point and handles
+  /// no further than maxPathFraction from the box and its frame within the
+  /// longest a scene can be.
+  factory PathNode.fromJson(Map<String, dynamic> json) {
+    double fraction(String key, double fallback) =>
+        jsonDouble(json[key], fallback)
+            .clamp(-maxPathFraction, maxPathFraction);
+    return PathNode(
+      x: fraction("x", 0),
+      y: fraction("y", 0),
+      inDx: fraction("ix", _defaults.inDx),
+      inDy: fraction("iy", _defaults.inDy),
+      outDx: fraction("ox", _defaults.outDx),
+      outDy: fraction("oy", _defaults.outDy),
+      frame: jsonInt(json["f"], _defaults.frame).clamp(0, maxFrameCount),
+    );
+  }
 }
+
+/// PathGrip is which part of a path's point is taken: the point, or one of
+/// its handles.
+enum PathGrip { point, inHandle, outHandle }
 
 /// PathFollow names what travels the curve: an element, or a team's
 /// player, by the team's id and row index, as the timeline does.
@@ -115,11 +150,138 @@ class PathFollow {
         if (playerIndex != null) "player": playerIndex,
       };
 
-  factory PathFollow.fromJson(Map<String, dynamic> json) => PathFollow(
-        elementId: jsonId(json["id"], ""),
-        playerIndex:
-            json["player"] is num ? (json["player"] as num).toInt() : null,
-      );
+  /// PathFollow.fromJson reads one saved by [toJson]; null for a player
+  /// no team can have, which nothing here writes, so that nothing follows
+  /// rather than somebody else.
+  static PathFollow? fromJson(Map<String, dynamic> json) {
+    var player = json["player"];
+    if (player is! num) return PathFollow(elementId: jsonId(json["id"], ""));
+    var index = jsonDouble(player, -1);
+    if (index < 0 || index >= maxTeamPlayers) return null;
+    return PathFollow(
+        elementId: jsonId(json["id"], ""), playerIndex: index.toInt());
+  }
+}
+
+/// followTrack is a follower's keys with its place on the path baked in: a
+/// key on every frame of the run, [from] to [to], and on every frame it has
+/// a key of its own, each shifted from its rest by [shiftAt] (null where it
+/// has no place on that frame). What else it has keyed is kept as it plays:
+/// a key of its own keeps its turn, size, fade, channels and easing; a key
+/// the bake adds between takes them as the follower's keys give them there.
+/// A bake already in [track] is taken back first ([ownTrack]), so baking
+/// again replaces the route rather than adding to it.
+ElementTrack followTrack(ElementTrack? track,
+    Offset? Function(int frame) shiftAt, int from, int to) {
+  var own = ownTrack(track);
+  var frames = {
+    for (var f = from; f <= to; f++) f,
+    for (var k in own.keys) k.frame
+  };
+  var keys = <Keyframe>[];
+  for (var f in frames) {
+    var mine = own.keyAt(f);
+    var shift = shiftAt(f);
+    if (shift == null) {
+      if (mine != null) keys.add(mine);
+      continue;
+    }
+    var key = mine ?? _sampled(own, f);
+    keys.add(key.copyWith(dx: shift.dx, dy: shift.dy));
+  }
+  return ElementTrack(keys);
+}
+
+/// _sampled is a key on [frame] holding what [own] plays there besides a
+/// place, eased straight to the next: one of a run of keys a frame apart,
+/// which plays as [own] did on every frame.
+Keyframe _sampled(ElementTrack own, int frame) {
+  if (own.isEmpty) return Keyframe(frame: frame);
+  var p = own.at(frame);
+  return Keyframe(
+      frame: frame,
+      scale: p.scale,
+      rotate: p.rotate,
+      opacity: p.opacity,
+      values: p.values);
+}
+
+/// ownTrack is [track] with a bake taken back off: the follower's own keys,
+/// with no place. The keys kept are the fewest that play as all of them do
+/// in everything but place, so every key a bake added (each lies on the
+/// way between the follower's own) goes. A key that holds nothing but a
+/// place goes too, whoever keyed it: a place keyed by hand and a place
+/// baked over it cannot be told apart, and the bake wrote over that place.
+/// Where nothing is left but rest, no keys at all.
+ElementTrack ownTrack(ElementTrack? track) {
+  var keys = track?.keys ?? const <Keyframe>[];
+  if (keys.isEmpty) return ElementTrack.empty;
+
+  // From each key kept, the furthest key that every key between lies on
+  // the way to, eased as the kept one eases: the next one kept.
+  var kept = [keys.first];
+  var held = <String, double>{...keys.first.values};
+  var i = 0;
+  while (i < keys.length - 1) {
+    var next = i + 1;
+    for (var j = keys.length - 1; j > i + 1; j--) {
+      if (_between(keys, i, j, held)) {
+        next = j;
+        break;
+      }
+    }
+    kept.add(keys[next]);
+    held.addAll(keys[next].values);
+    i = next;
+  }
+  // A key at the start the next one holds back to, and at the end one
+  // that only holds what came before, play as nothing.
+  while (kept.length > 1 && _sameAs(kept[0], kept[1], kept[1].values)) {
+    kept.removeAt(0);
+  }
+  while (kept.length > 1) {
+    var before = <String, double>{};
+    for (var k in kept.take(kept.length - 1)) {
+      before.addAll(k.values);
+    }
+    if (!_sameAs(kept.last, kept[kept.length - 2], before)) break;
+    kept.removeLast();
+  }
+
+  var placeless = [for (var k in kept) k.copyWith(dx: 0, dy: 0)];
+  if (placeless.every((k) => k.isRest)) return ElementTrack.empty;
+  return ElementTrack(placeless);
+}
+
+/// _between is whether every key strictly between [keys]'s [i] and [j]
+/// plays, in all but place, as the way from one to the other gives it, with
+/// [held], the channels held from before [i].
+bool _between(List<Keyframe> keys, int i, int j, Map<String, double> held) {
+  var a = keys[i], b = keys[j];
+  var span = b.frame - a.frame;
+  if (span <= 0) return false;
+  for (var m = i + 1; m < j; m++) {
+    var way = a.lerp(b, a.ease((keys[m].frame - a.frame) / span));
+    if (!_sameAs(keys[m], way, {...held, ...way.values})) return false;
+  }
+  return true;
+}
+
+/// _sameAs is whether [k] plays as [as] does, in all but place, with
+/// [values] as the channels [as] gives.
+bool _sameAs(Keyframe k, Keyframe as, Map<String, double> values) {
+  bool near(double x, double y) => (x - y).abs() <= 1e-9 * (1 + x.abs());
+  if (!near(k.scale, as.scale) ||
+      !near(k.rotate, as.rotate) ||
+      !near(k.opacity, as.opacity) ||
+      k.values.length != values.length) {
+    return false;
+  }
+  for (var e in k.values.entries) {
+    var v = values[e.key];
+    if (v == null || !near(e.value, v)) return false;
+  }
+  return true;
 }
 
 /// PathElement is a stroke along a bezier curve through its nodes. Its
@@ -172,14 +334,30 @@ class PathElement extends StrokedElement {
   @override
   ElementKind get kind => ElementKind.path;
 
+  /// pointOf is where [node] is in the box as it is drawn before its turn
+  /// and slant (the space [curve] is in); gripOnPage is where it, or a
+  /// handle of it, is on the page.
   Offset pointOf(PathNode node) =>
       Offset(x + node.x * width, y + node.y * height);
 
-  Offset _scaled(Offset fractional) =>
+  Offset _inBox(Offset fractional) =>
       Offset(x + fractional.dx * width, y + fractional.dy * height);
 
-  Offset inHandleOf(PathNode node) => _scaled(node.inHandle);
-  Offset outHandleOf(PathNode node) => _scaled(node.outHandle);
+  /// gripOnPage is where [grip] of [node] is drawn on the page: through the
+  /// element's turn and slant, as the curve is.
+  Offset gripOnPage(PathNode node, PathGrip grip) =>
+      onPage(_inBox(node.gripOf(grip)));
+
+  /// fractionAt is [page], a point on the page, as a fraction of the box,
+  /// which is what a node keeps: the way back from [gripOnPage], for a
+  /// point or a handle dragged there. A box with no width or height is
+  /// taken as one unit across, so the fraction stays finite.
+  Offset fractionAt(Offset page) {
+    var p = fromPage(page);
+    var w = width == 0 ? 1.0 : width;
+    var h = height == 0 ? 1.0 : height;
+    return Offset((p.dx - x) / w, (p.dy - y) / h);
+  }
 
   /// firstFrame and lastFrame are when the follower sets off and arrives.
   int get firstFrame => nodes.isEmpty ? 0 : nodes.first.frame;
@@ -189,68 +367,48 @@ class PathElement extends StrokedElement {
   int get segments =>
       nodes.length < 2 ? 0 : (closed ? nodes.length : nodes.length - 1);
 
-  /// pointOnSegment is one cubic piece at [t], in document coordinates.
-  Offset pointOnSegment(int index, double t) {
-    if (nodes.length < 2) {
-      return nodes.isEmpty ? center : pointOf(nodes.first);
-    }
+  /// segment is the curve piece after node [index] (the last back to the
+  /// first, on a closed path), in the box as it is drawn before its turn and
+  /// slant. Asked only of a path with two nodes or more.
+  CubicSegment segment(int index) {
     var a = nodes[index % nodes.length];
     var b = nodes[(index + 1) % nodes.length];
-
-    var p0 = pointOf(a);
-    var p3 = pointOf(b);
-    // A node with no handles gives a straight segment, which is what a path
-    // drawn by clicking rather than dragging should be.
-    var p1 = a.outDx == 0 && a.outDy == 0 ? p0 : outHandleOf(a);
-    var p2 = b.inDx == 0 && b.inDy == 0 ? p3 : inHandleOf(b);
-
-    var u = 1 - t;
-    return Offset(
-      u * u * u * p0.dx +
-          3 * u * u * t * p1.dx +
-          3 * u * t * t * p2.dx +
-          t * t * t * p3.dx,
-      u * u * u * p0.dy +
-          3 * u * u * t * p1.dy +
-          3 * u * t * t * p2.dy +
-          t * t * t * p3.dy,
-    );
+    // A node with no handle gives a straight side, which is what a path
+    // drawn by clicking rather than dragging should be: its handle is its
+    // point.
+    return CubicSegment(
+        pointOf(a), _inBox(a.outHandle), _inBox(b.inHandle), pointOf(b));
   }
 
-  /// _arcSamples is how finely a segment is measured when turning a time into
-  /// a distance: well under a pixel of error, and cheap enough to bake a path.
-  static const int _arcSamples = 16;
-
-  /// positionOnSegment is [t] along a segment *by distance*: the curve's
-  /// own parameter runs slow round a bend, slowing a follower there.
-  Offset positionOnSegment(int index, double t) {
-    if (t <= 0) return pointOnSegment(index, 0);
-    if (t >= 1) return pointOnSegment(index, 1);
-
-    var lengths = <double>[0];
-    var previous = pointOnSegment(index, 0);
-    var total = 0.0;
-    for (var i = 1; i <= _arcSamples; i++) {
-      var at = pointOnSegment(index, i / _arcSamples);
-      total += (at - previous).distance;
-      lengths.add(total);
-      previous = at;
+  @override
+  Path get curve {
+    var path = Path();
+    if (nodes.length < 2) return path;
+    var start = pointOf(nodes.first);
+    path.moveTo(start.dx, start.dy);
+    for (var i = 0; i < segments; i++) {
+      var s = segment(i);
+      path.cubicTo(s.c1.dx, s.c1.dy, s.c2.dx, s.c2.dy, s.p3.dx, s.p3.dy);
     }
-    if (total <= 0) return previous;
-
-    var wanted = t * total;
-    for (var i = 1; i < lengths.length; i++) {
-      if (lengths[i] < wanted) continue;
-      var span = lengths[i] - lengths[i - 1];
-      var within = span <= 0 ? 0.0 : (wanted - lengths[i - 1]) / span;
-      return pointOnSegment(index, (i - 1 + within) / _arcSamples);
-    }
-    return pointOnSegment(index, 1);
+    if (closed) path.close();
+    return path;
   }
 
-  /// positionAtFrame is where a follower is on [frame], holding at the nearer
-  /// end before the first node and after the last.
+  @override
+  List<Offset> get curvePoints => [
+        for (var i = 0; i < segments; i++)
+          ...segment(i).points().skip(i == 0 ? 0 : 1),
+      ];
+
+  /// positionAtFrame is where a follower is on [frame], on the page: along
+  /// each segment by distance, holding at the nearer end before the first
+  /// node and after the last.
   Offset? positionAtFrame(int frame) {
+    var inBox = _positionInBox(frame);
+    return inBox == null ? null : onPage(inBox);
+  }
+
+  Offset? _positionInBox(int frame) {
     if (nodes.isEmpty) return null;
     if (nodes.length == 1) return pointOf(nodes.first);
     if (frame <= nodes.first.frame) return pointOf(nodes.first);
@@ -261,7 +419,7 @@ class PathElement extends StrokedElement {
       if (frame < a.frame || frame > b.frame) continue;
       var span = b.frame - a.frame;
       if (span <= 0) return pointOf(b);
-      return positionOnSegment(i, (frame - a.frame) / span);
+      return segment(i).along((frame - a.frame) / span);
     }
     return pointOf(nodes.last);
   }
@@ -296,36 +454,27 @@ class PathElement extends StrokedElement {
     var a = nodes[index];
     var b = nodes[index + 1];
 
-    Offset lerp(Offset p, Offset q) =>
-        Offset((p.dx + q.dx) / 2, (p.dy + q.dy) / 2);
-
     // In the element's own fractional space, which is what the nodes store.
-    var p0 = a.point;
-    var p1 = (a.outDx == 0 && a.outDy == 0) ? a.point : a.outHandle;
-    var p2 = (b.inDx == 0 && b.inDy == 0) ? b.point : b.inHandle;
-    var p3 = b.point;
-
-    var q0 = lerp(p0, p1);
-    var q1 = lerp(p1, p2);
-    var q2 = lerp(p2, p3);
-    var r0 = lerp(q0, q1);
-    var r1 = lerp(q1, q2);
-    var mid = lerp(r0, r1);
+    var (before, after) =
+        CubicSegment(a.point, a.outHandle, b.inHandle, b.point).split(0.5);
+    var mid = before.p3;
 
     var frame = (a.frame + b.frame) ~/ 2;
     var made = PathNode(
       x: mid.dx,
       y: mid.dy,
-      inDx: r0.dx - mid.dx,
-      inDy: r0.dy - mid.dy,
-      outDx: r1.dx - mid.dx,
-      outDy: r1.dy - mid.dy,
+      inDx: before.c2.dx - mid.dx,
+      inDy: before.c2.dy - mid.dy,
+      outDx: after.c1.dx - mid.dx,
+      outDy: after.c1.dy - mid.dy,
       frame: frame,
     );
 
     var next = [...nodes];
-    next[index] = a.copyWith(outDx: q0.dx - a.x, outDy: q0.dy - a.y);
-    next[index + 1] = b.copyWith(inDx: q2.dx - b.x, inDy: q2.dy - b.y);
+    next[index] =
+        a.copyWith(outDx: before.c1.dx - a.x, outDy: before.c1.dy - a.y);
+    next[index + 1] =
+        b.copyWith(inDx: after.c2.dx - b.x, inDy: after.c2.dy - b.y);
     next.insert(index + 1, made);
     // Two neighbours a single frame apart leave no whole frame between them,
     // so the halved frame lands on one of them.

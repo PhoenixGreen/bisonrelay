@@ -5,36 +5,6 @@ part of 'canvas_stage.dart';
 // lifecycle and build are in canvas_stage.dart.
 
 extension StageVectorTools on CanvasStageState {
-  PathElement? _selectedPath() {
-    var selected = controller.selected;
-    return selected is PathElement ? selected : null;
-  }
-
-  /// _hitPathControl is the point or handle under [doc], as (index, isHandle,
-  /// isOutHandle). Handles first, so one on top of an unbent node's point
-  /// can still be pulled out.
-  (int, bool, bool)? _hitPathControl(PathElement path, Offset doc) {
-    // In document units, so the grab area is one size on screen at any zoom.
-    var reach = handleReach() / _scale;
-    for (var i = 0; i < path.nodes.length; i++) {
-      var node = path.nodes[i];
-      if ((doc - path.outHandleOf(node)).distance <= reach &&
-          handleBent(node.outDx, node.outDy)) {
-        return (i, true, true);
-      }
-      if ((doc - path.inHandleOf(node)).distance <= reach &&
-          handleBent(node.inDx, node.inDy)) {
-        return (i, true, false);
-      }
-    }
-    for (var i = 0; i < path.nodes.length; i++) {
-      if ((doc - path.pointOf(path.nodes[i])).distance <= reach) {
-        return (i, false, false);
-      }
-    }
-    return null;
-  }
-
   /// _pressVector answers a press on a drawing being edited, and says
   /// whether it took it.
   ///
@@ -1188,40 +1158,5 @@ extension StageVectorTools on CanvasStageState {
             drag: controller.vectorHandleDrag,
             snap: controller.vectorHandleSnap || _shiftHeld),
         transient: true);
-  }
-
-  /// _applyNodeMove puts the selected path's point [index] at [doc], or,
-  /// with [handle], one of its handles: the outgoing one if [out].
-  void _applyNodeMove(Offset doc, int index,
-      {required bool handle, required bool out}) {
-    var path = _selectedPath();
-    if (path == null || index < 0 || index >= path.nodes.length) {
-      return;
-    }
-    var w = path.width == 0 ? 1.0 : path.width;
-    var h = path.height == 0 ? 1.0 : path.height;
-    var fraction = Offset((doc.dx - path.x) / w, (doc.dy - path.y) / h);
-    var node = path.nodes[index];
-
-    // Alt breaks the handle pair, making a corner.
-    var next = handle
-        ? (HardwareKeyboard.instance.isAltPressed
-            ? (out
-                ? node.copyWith(
-                    outDx: fraction.dx - node.x, outDy: fraction.dy - node.y)
-                : node.copyWith(
-                    inDx: fraction.dx - node.x, inDy: fraction.dy - node.y))
-            : node.withMirroredHandle(out: out, to: fraction))
-        : node.copyWith(x: fraction.dx, y: fraction.dy);
-
-    controller.replaceElement(path.withNode(index, next), transient: true);
-  }
-
-  /// _bakePathFollow lays the selected path's follower along it again, once
-  /// a drag of its points is done rather than every pixel: a route is
-  /// dozens of keyframes.
-  void _bakePathFollow() {
-    var path = _selectedPath();
-    if (path != null) controller.applyPathFollow(path);
   }
 }

@@ -30,6 +30,13 @@ const int maxGuides = 1000;
 /// path is sampled at each hit test and each frame something follows it).
 const int maxPathNodes = 2000, maxTeamPlayers = 200, maxCodeSteps = 2000;
 
+/// maxPathFraction is how many of its box's widths (or heights) a path's
+/// point, or a handle from its point, is read as lying from the box: far
+/// past what the panel's X and Y can set on a box a unit wide anywhere a box
+/// is read, and few enough that every point stays a place a page can be
+/// drawn and pressed with.
+const double maxPathFraction = 1e8;
+
 /// audioFrameRate is the steps a second a piece of sound's timeline counts
 /// in: fine enough that any beat lands within a few milliseconds of a step.
 const int audioFrameRate = 120;

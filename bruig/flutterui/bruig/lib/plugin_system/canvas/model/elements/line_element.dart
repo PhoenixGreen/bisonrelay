@@ -2,7 +2,9 @@ import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/cubic_segment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
@@ -118,6 +120,53 @@ class LineElement extends StrokedElement {
   LineElement get plumb {
     var d = end - start;
     return withEnds(start, start + Offset(0, d.dy < 0 ? -length : length));
+  }
+
+  /// controlPoint is the control point of a bowed line's quadratic, in the
+  /// box as it is drawn before its turn and slant. Pushed out square to the
+  /// chord, so the bow is the same either way round.
+  Offset get controlPoint {
+    var a = start, b = end;
+    var mid = (a + b) / 2;
+    var d = b - a;
+    var length = d.distance;
+    if (length == 0 || curvature == 0) return mid;
+    return mid + Offset(-d.dy / length, d.dx / length) * (length * curvature);
+  }
+
+  @override
+  LineElement bowedBy(Keyframe pose) {
+    var bow = pose.values[KeyframeChannel.bow];
+    return bow == null ? this : copyWith(curvature: bow);
+  }
+
+  @override
+  Path get curve {
+    var path = Path()..moveTo(start.dx, start.dy);
+    if (curvature == 0) return path..lineTo(end.dx, end.dy);
+    var control = controlPoint;
+    return path..quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
+  }
+
+  /// curvePoints is a bowed line's quadratic walked as finely as two pieces
+  /// of a path are; a straight line is its two ends.
+  @override
+  List<Offset> get curvePoints {
+    var a = start, b = end;
+    if (curvature == 0) return [a, b];
+    var control = controlPoint;
+    const steps = CubicSegment.samplesPerPiece * 2;
+    return [
+      for (var i = 0; i <= steps; i++) _quadratic(a, control, b, i / steps)
+    ];
+  }
+
+  static Offset _quadratic(Offset a, Offset control, Offset b, double t) {
+    var u = 1 - t;
+    return Offset(
+      u * u * a.dx + 2 * u * t * control.dx + t * t * b.dx,
+      u * u * a.dy + 2 * u * t * control.dy + t * t * b.dy,
+    );
   }
 
   @override
