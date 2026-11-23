@@ -84,6 +84,11 @@ extension StageTextPieces on CanvasStageState {
   /// _keptMiddle is [sized] moved so its middle is where [start]'s was: a
   /// slot holds a piece by an edge, so it would otherwise grow away from
   /// it, out from under the handle being dragged.
+  ///
+  /// Worked out in the box at rest, not where the text is on this frame: the
+  /// pieces are laid out in that box and the keys move and size the drawing
+  /// afterwards, so a piece's side and down are in its units. A box grown by
+  /// its keys would hold a wide picture to the wrong width.
   TextItem _keptMiddle(TextElement e, int i, TextItem start, TextItem sized) {
     var bounds = e.bounds;
     TextElement put(TextItem it) => e.copyWith(items: [

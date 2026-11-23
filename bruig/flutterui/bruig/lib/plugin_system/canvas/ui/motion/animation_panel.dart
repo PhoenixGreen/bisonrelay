@@ -977,7 +977,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
           (c.kind == MotionKind.arrive || c.kind == MotionKind.leave)) ||
       e is CounterElement ||
       e is LineElement ||
-      (e is TextElement && e.curve != null);
+      (e is TextElement &&
+          e.wordsSetIn(controller.document) == WordsSet.onLine);
 
   /// _insideDevice is what only this kind of element does in the clip, kept as
   /// settings rather than keys: its own arrival or way out played across the
@@ -1046,7 +1047,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
             ...span("count", "Counts", e.from, e.to, decimals: 0),
           if (e is LineElement)
             ...span("bow", "Bows", e.curvature, e.curvature == 0 ? 0.5 : 0),
-          if (e is TextElement && e.curve != null)
+          if (e is TextElement &&
+              e.wordsSetIn(controller.document) == WordsSet.onLine)
             ...span("slide", "Slides along its line", e.curve!.offset, 1),
         ]),
         colors,

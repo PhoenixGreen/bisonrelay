@@ -35,6 +35,12 @@ export 'package:bruig/plugin_system/canvas/ui/scripting/canvas_scripting.dart'
     show CanvasScripting;
 export 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
     show CanvasDocument;
+// For the app to hand the Canvas the Writing library a text reads from and
+// a canvas is published into: see writing_library.dart.
+export 'package:bruig/plugin_system/canvas/storage/writing_library.dart'
+    show WritingLibrary;
+export 'package:bruig/plugin_system/canvas/model/text_document.dart'
+    show TextDocumentRef;
 
 /// registerCanvas attaches this module to the plugin system, once at startup.
 /// It registers a feature, not a capability: the section appears when a

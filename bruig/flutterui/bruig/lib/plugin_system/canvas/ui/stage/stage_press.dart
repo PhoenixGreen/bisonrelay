@@ -661,7 +661,7 @@ extension StagePress on CanvasStageState {
     // come from a document or a flow: it does not own them, and typing would
     // be overwritten.
     if (element is TextElement &&
-        !element.document.on &&
+        !element.wordsFromDocument &&
         flowSourceOf(element, document) == null &&
         _secondClickOn(element)) {
       // A locked piece is neither opened nor picked, and it is not the

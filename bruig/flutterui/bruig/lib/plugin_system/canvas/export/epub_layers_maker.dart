@@ -127,7 +127,8 @@ class _LayerMaker {
     }
     var names = [
       for (var f = 0; f < frames; f++)
-        _lookAt(e, f, poseAt(f), frames, page.frameRate, poseAt: poseAt),
+        _lookAt(e, f, poseAt(f), frames, page.frameRate,
+            poseAt: poseAt, page: page),
     ];
     var changes = names.toSet().length > 1 || media != null;
 
@@ -704,7 +705,7 @@ class _LayerMaker {
     switch (e) {
       case TextElement t:
         var a = t.animation;
-        return t.curve == null &&
+        return t.wordsSetIn(page) != WordsSet.onLine &&
             (!a.on || wholeBlockMotion(a.preset.motion)) &&
             (!a.closes || wholeBlockMotion(a.exit.motion)) &&
             // A part of the words with an animation of its own moves on its

@@ -122,11 +122,12 @@ Widget _bodyQuick(CanvasController controller, TextElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var t = _bodyEdit(e, write, begin, commit);
   var styles = controller.textStyles;
+  var fitted = e.fittedIn(controller.document);
   // Face and size, then colour and alignment, then style.
   return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
     panelRow([
       cell(typeFont(t), flex: 3, min: 120),
-      cell(typeSize(t, fitted: e.autoSize), width: 132),
+      cell(typeSize(t, fitted: fitted), width: 132),
     ]),
     const SizedBox(height: 8),
     panelRow([
@@ -145,7 +146,7 @@ Widget _bodyQuick(CanvasController controller, TextElement e,
       )),
     ]),
     const SizedBox(height: 8),
-    if (e.autoSize)
+    if (fitted)
       CanvasStateNote(
           "Its size follows the box. Set a size and the fitting "
           "turns off.",
@@ -184,7 +185,7 @@ List<PanelBit> _bodyBits(
     PanelBit(PanelSection.content,
         summary: [
           "\u201c${words.length > 28 ? "${words.substring(0, 28)}…" : words}\u201d",
-          if (e.autoSize) "fitted to the box",
+          if (e.fittedIn(controller.document)) "fitted to the box",
         ].join(" · "),
         children: [
           CanvasControlGroup(
@@ -195,7 +196,7 @@ List<PanelBit> _bodyBits(
               children: [
                 // Typed here as well as on the canvas where the words are the
                 // element's own; a document's are read, not typed.
-                if (!e.document.on)
+                if (!e.wordsFromDocument)
                   CanvasTextField(
                     key: const ValueKey("textWordsField"),
                     label: "Words",
@@ -229,11 +230,12 @@ List<PanelBit> _bodyBits(
                       : e.copyWith(slot: TextSlot.fromName(v))),
                 ),
                 if (e.slot != null &&
-                    (!e.columns.isSingle || e.flowTo.isNotEmpty))
+                    e.text.isNotEmpty &&
+                    e.bodySlotIn(controller.document) == null)
                   const CanvasHint(
-                      "Columns and a chain of boxes are arrangements of the whole "
-                      "box, so the words fill it while either is on and the slot "
-                      "waits."),
+                      "A line, columns and a chain of boxes are arrangements of "
+                      "the whole text, so the words ride the line or fill the box "
+                      "while one is on and the slot waits."),
                 if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
                 // How the lines sit in the box: vertically, and justified
                 // across it (Align, in the strip above, is the rest).
@@ -298,10 +300,13 @@ List<PanelBit> _bodyBits(
           compact: true),
     ]),
     PanelBit(PanelSection.layout,
-        summary: [
-          if (e.columns.count > 1) "${e.columns.count} columns",
-          if (e.curve != null) "on a line",
-        ].join(" · "),
+        summary: switch (e.wordsSetIn(controller.document)) {
+          WordsSet.onLine => "on a line",
+          WordsSet.wrapped ||
+          WordsSet.inColumns ||
+          WordsSet.inBox =>
+            e.columns.count > 1 ? "${e.columns.count} columns" : "",
+        },
         children: [
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
@@ -495,13 +500,13 @@ List<PanelBit> _bodyBits(
     ]),
     PanelBit(PanelSection.more,
         summary: [
-          if (e.document.on && e.document.markdown) "Markdown",
+          if (e.wordsFromDocument && e.document.markdown) "Markdown",
           e.parts.isEmpty
               ? "Parts of the text"
               : "${e.parts.length} part${e.parts.length == 1 ? "" : "s"}",
         ].join(", "),
         children: [
-          if (e.document.on && e.document.markdown)
+          if (e.wordsFromDocument && e.document.markdown)
             _markdownSection(controller, e, write, begin, commit),
           _partsSection(e, write, begin, commit),
         ]),

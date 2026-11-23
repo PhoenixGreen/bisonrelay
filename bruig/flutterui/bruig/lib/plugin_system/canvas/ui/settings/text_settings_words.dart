@@ -36,7 +36,7 @@ Widget _textWordsCard(
         // A field the page fills in (text_fields.dart), put at the end of
         // the words of the layer picked: its Name typed over on the canvas.
         // Not where the words are a document's, which each read puts back.
-        if (!e.document.on)
+        if (!e.wordsFromDocument)
           CanvasDropdown<TextFieldKind?>(
             key: const ValueKey("textAddField"),
             label: "Field",
@@ -78,7 +78,7 @@ Widget _textWordsCard(
           CanvasToggle(
             key: const ValueKey("textFromDocument"),
             label: "From document",
-            value: e.document.on,
+            value: e.wordsFromDocument,
             onChanged: (v) async {
               if (!v) {
                 // Back to what was typed before the document took over, or the
@@ -91,7 +91,7 @@ Widget _textWordsCard(
                     documentParts: const []));
                 return;
               }
-              var picked = await pickLibraryDocument(context);
+              var picked = await pickTextDocument(context);
               var fresh = freshOf(controller, e);
               if (picked == null || fresh == null) return;
               w.now(fresh.copyWith(
@@ -100,13 +100,13 @@ Widget _textWordsCard(
               await refreshTextDocuments(controller);
             },
           ),
-        if (e.document.on) ...[
+        if (e.wordsFromDocument) ...[
           CanvasIconButton(
             key: const ValueKey("textDocumentPick"),
             icon: Icons.description_outlined,
             tooltip: "Choose another document",
             onPressed: () async {
-              var picked = await pickLibraryDocument(context);
+              var picked = await pickTextDocument(context);
               var fresh = freshOf(controller, e);
               if (picked == null || fresh == null) return;
               // The remembered words are the element's own, not the last

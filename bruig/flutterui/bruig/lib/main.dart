@@ -10,6 +10,7 @@ import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/route_error.dart';
 import 'package:bruig/models/emoji.dart';
 import 'package:bruig/models/audio.dart';
+import 'package:bruig/models/canvas_writing_library.dart';
 import 'package:bruig/models/menus.dart';
 import 'package:bruig/models/payments.dart';
 import 'package:bruig/plugin_system/link_previews/link_previews.dart';
@@ -199,6 +200,10 @@ Future<void> runMainApp(Config cfg) async {
   // never learns what a dictionary is -- see plugin_system/plugin_settings.
   registerWritingTools();
   registerCanvas();
+  // The Writing library a text reads its words from and a canvas is
+  // published into, handed to the Canvas from here: neither feature may
+  // reach into the other.
+  WritingLibrary.use(const PostStorageLibrary());
 
   // Awaited for the same reason the notes preferences above are: this one
   // decides whether the Canvas nav item exists, and a destination that

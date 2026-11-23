@@ -389,7 +389,7 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   bool get _hasJoins {
     var document = controller.document;
     for (var e in document.elements) {
-      if (e is! TextElement || e.flowTo.isEmpty) continue;
+      if (e is! TextElement || !e.flowsOnIn(document)) continue;
       if (document.elementById(e.flowTo) != null) return true;
     }
     return false;

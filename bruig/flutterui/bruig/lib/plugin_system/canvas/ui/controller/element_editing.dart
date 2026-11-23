@@ -415,7 +415,7 @@ extension CanvasElementEditing on CanvasController {
     var e = selected;
     if (e is! TextElement) return null;
     var item = textLayer(e);
-    if (item == null || !e.handlesPiece(item)) return null;
+    if (item == null || !e.handlesPiece(item, document)) return null;
     var moved = item.movedBy(
         Offset(dx, dy), e.movedRotationAt(_frame, _document, live: liveMotion));
     return e.copyWith(items: [

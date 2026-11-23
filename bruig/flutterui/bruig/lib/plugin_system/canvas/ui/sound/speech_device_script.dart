@@ -24,7 +24,7 @@ extension _SpeechScript on _SpeechDeviceState {
   /// _pickDocument reads the script from a Writing document ([again]
   /// rereads it), keeping the typed script.
   Future<void> _pickDocument(SpeechSpec spec, {bool again = false}) async {
-    var picked = await pickLibraryDocument(context);
+    var picked = await pickTextDocument(context);
     if (picked == null || !mounted) return;
     _set(spec.copyWith(
         document: again

@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -188,4 +189,63 @@ void main() {
       });
     });
   }
+  group("on a frame where the text's keys have taken it from rest", () {
+    // The piece is laid out in the text's own box and drawn wherever the
+    // keys have put the text; the size kept its middle by the box at rest.
+    // Sized there, the picture must stay where it is drawn on this frame.
+    // A narrow text holds its picture to the width of its box at rest, the
+    // width it is laid out at whatever size its keys draw it.
+    var narrow = _text.copyWith(items: [
+      _text.items.single
+          .copyWith(icon: _text.items.single.icon!.copyWith(size: 200))
+    ]).withBase(width: 300) as TextElement;
+    for (var (name, start, pose) in [
+      ("moved", _text, const Keyframe(frame: 20, dx: -150, dy: 120)),
+      (
+        "moved and grown",
+        _text,
+        const Keyframe(frame: 20, dx: -150, dy: 120, scale: 1.5)
+      ),
+      (
+        "grown, past its box's width",
+        narrow,
+        const Keyframe(frame: 20, dx: 100, scale: 1.5)
+      ),
+    ]) {
+      testWidgets("$name: the picture keeps its middle", (tester) async {
+        var keyed = start.withBase(
+            track: ElementTrack([const Keyframe(frame: 0), pose]));
+        var c = CanvasController(
+            const CanvasDocument(frames: 24).addElement(keyed));
+        addTearDown(c.dispose);
+        c.frame = 20;
+        c.selectOnly("t");
+        c.pickTextLayer("t", "pic");
+        var key = GlobalKey<CanvasStageState>();
+        setTestScreen(tester, _viewport);
+        await tester.pumpWidget(canvasApp(SizedBox(
+            width: _viewport.width,
+            height: _viewport.height,
+            child: CanvasStage(key: key, controller: c))));
+        await tester.pumpAndSettle();
+        var s = key.currentState!;
+
+        // Where the picture is drawn on this frame: laid out in the box at
+        // rest, then moved and grown about the text's middle as its pose is.
+        Offset drawn() {
+          var e = text(c);
+          var at = textItemRects(e, e.bounds).single.center;
+          var middle = e.bounds.center;
+          return middle + (at - middle) * pose.scale + Offset(pose.dx, pose.dy);
+        }
+
+        var before = drawn();
+        await drag(tester, s.handleAt(StageHandle.bottomRight),
+            const Offset(50, 50) * scaleOf(s, c));
+        expect(pic(c).icon!.size, greaterThan(start.items.single.icon!.size),
+            reason: "it was sized");
+        expect(drawn(), offsetMoreOrLessEquals(before, epsilon: 1));
+      });
+    }
+  });
 }

@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
-import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -7,21 +7,14 @@ import 'package:flutter/material.dart';
 // list rather than a file dialog: a system picker would open deep in the
 // application support folder, on .md files under their internal names.
 
-/// pickLibraryDocument asks which document a text element should read, and
-/// returns a reference to it -- or null if the reader changed their mind.
-Future<TextDocumentRef?> pickLibraryDocument(BuildContext context) async {
-  // The library is one level deep: see PostStorage.list.
-  var entries = <PostEntry>[];
+/// pickTextDocument asks which Writing library document a text or a Speech
+/// device should read its words from, and returns a reference to it -- or
+/// null if the reader changed their mind.
+Future<TextDocumentRef?> pickTextDocument(BuildContext context) async {
+  var library = WritingLibrary.current;
+  var entries = <TextDocumentRef>[];
   try {
-    for (var entry in await PostStorage.list()) {
-      if (!entry.isFolder) {
-        entries.add(entry);
-        continue;
-      }
-      for (var inside in await PostStorage.list(entry.name)) {
-        if (!inside.isFolder) entries.add(inside);
-      }
-    }
+    entries = await library.documents();
   } catch (_) {
     // An unreadable library is shown as an empty one, not as an error.
   }
@@ -39,7 +32,10 @@ Future<TextDocumentRef?> pickLibraryDocument(BuildContext context) async {
           height: 380,
           child: entries.isEmpty
               ? Center(
-                  child: Text("There is nothing in the Writing library yet.",
+                  child: Text(
+                      library.here
+                          ? "There is nothing in the Writing library yet."
+                          : "There is no Writing library here to read from.",
                       style: TextStyle(
                           fontSize: 12, color: theme.colors.onSurfaceVariant)))
               : ListView.builder(
@@ -58,8 +54,7 @@ Future<TextDocumentRef?> pickLibraryDocument(BuildContext context) async {
                               style: TextStyle(
                                   fontSize: 11,
                                   color: theme.colors.onSurfaceVariant)),
-                      onTap: () => Navigator.of(context).pop(TextDocumentRef(
-                          folder: entry.folder, name: entry.name)),
+                      onTap: () => Navigator.of(context).pop(entry),
                     );
                   },
                 ),

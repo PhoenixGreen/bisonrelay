@@ -1,3 +1,5 @@
+import 'package:bruig/models/canvas_writing_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'support/canvas_app.dart';
 import 'dart:async';
@@ -843,6 +845,9 @@ esac
     test("read from a Writing document, and kept up to date", () async {
       var root = Directory.systemTemp.createTempSync("speech-doc");
       PostStorage.rootOverride = root.path;
+      // The library the app hands the Canvas at start, over that folder.
+      WritingLibrary.use(const PostStorageLibrary());
+      addTearDown(WritingLibrary.forgetForTest);
       addTearDown(() {
         PostStorage.rootOverride = null;
         root.deleteSync(recursive: true);

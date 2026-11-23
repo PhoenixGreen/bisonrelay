@@ -31,8 +31,9 @@ Rect _regionFor(
   }
   // Things drawn somewhere other than their own box: text riding a line, and
   // a page number mirrored to the outside edge of a left-hand leaf.
-  var elsewhere = (e is TextElement && e.curve != null) ||
-      (e is CounterElement && e.isPageNumber);
+  var elsewhere =
+      (e is TextElement && e.wordsSetIn(document) == WordsSet.onLine) ||
+          (e is CounterElement && e.isPageNumber);
   Rect region;
   if (elsewhere) {
     region = pageBox;
@@ -112,7 +113,8 @@ bool _changes(CanvasElement e, int frames, CanvasDocument page) {
   var rate = page.frameRate;
   Keyframe poseAt(int f) => poseWithMotion(e, f, page);
   var first = poseAt(0);
-  var firstLook = _lookAt(e, 0, first, frames, rate, poseAt: poseAt);
+  var firstLook =
+      _lookAt(e, 0, first, frames, rate, poseAt: poseAt, page: page);
   for (var f = 1; f < frames; f++) {
     var pose = poseAt(f);
     if (pose.dx != first.dx ||
@@ -122,18 +124,19 @@ bool _changes(CanvasElement e, int frames, CanvasDocument page) {
         pose.opacity != first.opacity) {
       return true;
     }
-    if (_lookAt(e, f, pose, frames, rate, poseAt: poseAt) != firstLook) {
+    if (_lookAt(e, f, pose, frames, rate, poseAt: poseAt, page: page) !=
+        firstLook) {
       return true;
     }
   }
   return false;
 }
 
-/// _lookAt names [e]'s look at frame [f], pose aside: the same name is the
-/// same picture. Mostly the pose's pinned channels; what reads the frame
-/// itself (staggered text, series, players, patterns) adds it.
+/// _lookAt names [e]'s look at frame [f] of [page], pose aside: the same
+/// name is the same picture. Mostly the pose's pinned channels; what reads
+/// the frame itself (staggered text, series, players, patterns) adds it.
 String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
-    {Keyframe Function(int frame)? poseAt}) {
+    {Keyframe Function(int frame)? poseAt, required CanvasDocument page}) {
   var values = pose.values.entries.toList()
     ..sort((a, b) => a.key.compareTo(b.key));
   var named = values.map((v) => "${v.key}=${v.value}").join(";");
@@ -143,7 +146,7 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
       named = "$named;series=${series.join(",")}";
     }
   }
-  var span = _frameSpan(e, frames, poseAt, rate: rate);
+  var span = _frameSpan(e, frames, poseAt, page, rate: rate);
   if (span == null) return named;
   var (from, to) = span;
   var when = f < from
@@ -154,10 +157,10 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
   return "$named@$when";
 }
 
-/// _frameSpan is the stretch of frames over which [e]'s look depends on the
-/// frame itself, or null where it never does.
-(int, int)? _frameSpan(
-    CanvasElement e, int frames, Keyframe Function(int frame)? poseAt,
+/// _frameSpan is the stretch of frames over which [e]'s look on [page]
+/// depends on the frame itself, or null where it never does.
+(int, int)? _frameSpan(CanvasElement e, int frames,
+    Keyframe Function(int frame)? poseAt, CanvasDocument page,
     {int rate = 24}) {
   var all = (0, frames - 1);
   switch (e) {
@@ -174,7 +177,7 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
     case TeamElement t:
       return t.players.any((p) => p.track?.isEmpty == false) ? all : null;
     case TextElement t:
-      if (t.curve != null) return all;
+      if (t.wordsSetIn(page) == WordsSet.onLine) return all;
       return _valuedSpan(t, frames, poseAt);
     case ChartElement _:
       // Named by its channels and its series -- see _lookAt.

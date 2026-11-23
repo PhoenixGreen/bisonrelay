@@ -123,12 +123,12 @@ List<Offset>? pathPointsOf(CanvasElement host, int frame) {
   return points == null ? null : _rotatedWith(drawn, points);
 }
 
-/// _curveFor is the line text [e] rides, as document-space points, or null.
-/// Found by id, so the text follows it; if deleted, the text uses its box.
+/// _curveFor is the line text [e] rides, as document-space points, or null
+/// where its words are not set on a line (TextElement.wordsSetIn). Found by
+/// id, so the text follows it; if deleted, the text uses its box.
 List<Offset>? _curveFor(TextElement e, CanvasDocument? doc, int frame) {
-  var on = e.curve;
-  if (on == null || doc == null) return null;
-  var host = doc.elementById(on.elementId);
+  if (e.wordsSetIn(doc) != WordsSet.onLine) return null;
+  var host = doc!.elementById(e.curve!.elementId);
   // The host's animated bow counts (its track only; clips' bows do not).
   if (host is LineElement) host = _bowed(host, host.poseAt(frame));
   var points = _curvePoints(host);

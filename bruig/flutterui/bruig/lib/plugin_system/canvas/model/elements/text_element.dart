@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -198,6 +201,11 @@ class TextOnCurve {
   /// field out.
   static const _defaults = TextOnCurve(elementId: "");
 
+  /// canRide is whether [host] is something words can be set along: a
+  /// line, or a path with at least two points.
+  static bool canRide(CanvasElement? host) =>
+      host is LineElement || (host is PathElement && host.nodes.length >= 2);
+
   TextOnCurve copyWith({
     String? elementId,
     double? offset,
@@ -233,6 +241,31 @@ class TextOnCurve {
         hideHost: jsonBool(json["hideHost"], false),
         mask: jsonBool(json["mask"], false),
       );
+}
+
+/// WordsSet is how a text's words are set on the page. A text may hold the
+/// fields of several arrangements at once (a line to ride, wrapping,
+/// columns) and keeps them all, so a text taken off its line gets its
+/// columns back; TextElement.wordsSetIn is the one place that says which of
+/// them wins, and every reader asks it.
+enum WordsSet {
+  /// onLine is letter by letter along the line or path the text rides
+  /// (TextElement.curve). There is no box: no pieces, slot, fitting,
+  /// wrapping, columns or flow.
+  onLine,
+
+  /// wrapped is line by line round whatever on the page overlaps the box
+  /// (text_wrap.dart), on a frame where something does and there is room
+  /// round it; on any other frame the words are set as
+  /// TextElement.unwrappedSet says.
+  wrapped,
+
+  /// inColumns is the box's room shared between columns (TextColumns).
+  inColumns,
+
+  /// inBox is one paragraph filling the box, or held in a slot of it: the
+  /// usual.
+  inBox,
 }
 
 /// maxTextPieces and maxTextParts are the most pieces and parts a text is
@@ -336,13 +369,79 @@ class TextElement extends CanvasElement {
         ...box.assetIds,
       };
 
+  /// wordsSetIn is how the words are set on a page of [doc]: the first of
+  /// these that holds. Along the line [curve] names, when that line is on the
+  /// page (without it, or without a page, the text stays in its own box);
+  /// round what is in the way, with [wrap] on; in [columns], with more than
+  /// one; in the box. The fields of the ways that lose are kept, unread.
+  ///
+  /// A new way of setting words is a case in WordsSet and its place in this
+  /// order; every reader switches over the answer without a default, so the
+  /// compiler names each one that must say what the new way does.
+  WordsSet wordsSetIn(CanvasDocument? doc) {
+    if (curve case var on?
+        when TextOnCurve.canRide(doc?.elementById(on.elementId))) {
+      return WordsSet.onLine;
+    }
+    if (wrap.on) return WordsSet.wrapped;
+    return unwrappedSet;
+  }
+
+  /// unwrappedSet is how the words are set in the box with nothing in their
+  /// way: in columns or in one paragraph. What a wrapped text is set as on a
+  /// frame where nothing overlaps it.
+  WordsSet get unwrappedSet =>
+      columns.isSingle ? WordsSet.inBox : WordsSet.inColumns;
+
+  /// fittedIn is whether the type is sized to fill the box (autoSize) on a
+  /// page of [doc]: never on a line, which has no box to fill.
+  bool fittedIn(CanvasDocument? doc) =>
+      autoSize && wordsSetIn(doc) != WordsSet.onLine;
+
+  /// flowsOnIn is whether the words that do not fit run on into the box
+  /// [flowTo] names, on a page of [doc]. Not from a text on a line, which
+  /// draws all of its words, nor into one, which draws its own; see
+  /// flowFor.
+  bool flowsOnIn(CanvasDocument? doc) {
+    if (flowTo.isEmpty || wordsSetIn(doc) == WordsSet.onLine) return false;
+    var into = doc?.elementById(flowTo);
+    return !(into is TextElement && into.wordsSetIn(doc) == WordsSet.onLine);
+  }
+
+  /// showsPiecesIn is whether the pieces ([items]) are drawn, and so
+  /// pressed, on a page of [doc]: not on a line, where there is no box to
+  /// hold them. They are kept, and come back with the box.
+  bool showsPiecesIn(CanvasDocument? doc) =>
+      items.isNotEmpty && wordsSetIn(doc) != WordsSet.onLine;
+
+  /// bodySlotIn is the slot the text's own words are held in, a block among
+  /// the pieces, on a page of [doc]; null for words filling the box. Only in
+  /// a box of their own: not on a line, in columns or running on into
+  /// another box, and not with no words to hold.
+  TextSlot? bodySlotIn(CanvasDocument? doc) {
+    if (slot == null || text.isEmpty || flowsOnIn(doc)) return null;
+    return switch (wordsSetIn(doc)) {
+      WordsSet.onLine || WordsSet.inColumns => null,
+      // Round what is in the way within the slot's block; in columns, with
+      // nothing in the way, the columns win as they do unwrapped.
+      WordsSet.wrapped => columns.isSingle ? slot : null,
+      WordsSet.inBox => slot,
+    };
+  }
+
+  /// wordsFromDocument is whether the words are read from a Writing
+  /// document ([document]) rather than typed. Whatever the setting: a line,
+  /// columns and wrapping all set the document's words. A box flowed into
+  /// draws the head's words, a document's or not (flowFor).
+  bool get wordsFromDocument => document.on;
+
   /// handlesPiece is whether piece [item] is handled on the canvas by a box
   /// of its own, moved by the arrows and dragged: a picture chosen, shown
-  /// and unlocked, in an unlocked text in its own box (on a line, pieces are
-  /// not drawn).
-  bool handlesPiece(TextItem item) =>
+  /// and unlocked, in an unlocked text whose pieces are drawn on a page of
+  /// [doc] (see showsPiecesIn).
+  bool handlesPiece(TextItem item, CanvasDocument? doc) =>
       !locked &&
-      curve == null &&
+      showsPiecesIn(doc) &&
       item.isIcon &&
       item.icon!.on &&
       !item.hidden &&

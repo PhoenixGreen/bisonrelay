@@ -18,9 +18,10 @@ void _paintText(
       showWords: skipItem != textBodyWords);
   // The extra pieces of writing, over the paragraph in the same box: out
   // here because the body returns from many places. Not on a line (no box).
-  if (e.items.isEmpty || _curveFor(e, doc, frame) != null) return;
+  if (!e.showsPiecesIn(doc)) return;
   var (animation, reveal) = _arrival(e, pose);
   paintTextItems(canvas, bounds, e,
+      doc: doc,
       animation: animation,
       reveal: reveal,
       images: images,
@@ -45,27 +46,31 @@ void _paintTextBody(
     onLayer(canvas, box, MotionDevice.bodyLayer, draw);
   }
 
-  // Text on a curve has no box of its own to fill or frame.
-  var curve = _curveFor(e, doc, frame);
-  if (curve != null) {
-    // The pose may slide the words along the line (KeyframeChannel.slide):
-    // an absolute position, not an offset.
-    var on = e.curve!;
-    var slide = pose.values[KeyframeChannel.slide];
-    // The words still arrive letter by letter, each in its turned frame.
-    var (curveAnimation, curveReveal) = _arrival(e, pose);
-    letters(
-        canvas,
-        bounds,
-        (canvas) => paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
-            slide == null ? on : on.copyWith(offset: slide),
-            animation: curveAnimation,
-            reveal: curveReveal,
-            parts: e.drawnParts,
-            timings: _partTimings(e, frame, pose),
-            asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0,
-            images: images));
-    return;
+  switch (e.wordsSetIn(doc)) {
+    // Text on a curve has no box of its own to fill or frame.
+    case WordsSet.onLine:
+      var curve = _curveFor(e, doc, frame);
+      if (curve == null) return;
+      // The pose may slide the words along the line (KeyframeChannel.slide):
+      // an absolute position, not an offset.
+      var on = e.curve!;
+      var slide = pose.values[KeyframeChannel.slide];
+      // The words still arrive letter by letter, each in its turned frame.
+      var (curveAnimation, curveReveal) = _arrival(e, pose);
+      letters(
+          canvas,
+          bounds,
+          (canvas) => paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
+              slide == null ? on : on.copyWith(offset: slide),
+              animation: curveAnimation,
+              reveal: curveReveal,
+              parts: e.drawnParts,
+              timings: _partTimings(e, frame, pose),
+              asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0,
+              images: images));
+      return;
+    case WordsSet.wrapped || WordsSet.inColumns || WordsSet.inBox:
+      break;
   }
 
   var inner = e.box.inner(bounds);
@@ -78,7 +83,7 @@ void _paintTextBody(
 
   // Given a slot, the element's own words are a block in the box like any
   // piece, so they stack with the pieces. See TextElement.slot.
-  inner = textBodyRect(e, bounds) ?? inner;
+  inner = textBodyRect(e, bounds, doc: doc) ?? inner;
   if (inner.width <= 0 || inner.height <= 0) {
     if (!_waitingToArrive(e, pose, e.drawnParts)) {
       paintBox(canvas, bounds, e.box, images);
@@ -86,7 +91,7 @@ void _paintTextBody(
     return;
   }
 
-  var spec = drawnTextSpec(e, bounds);
+  var spec = drawnTextSpec(e, bounds, doc: doc);
 
   // A box in a chain sharing one text draws its own share. See flowFor.
   var flow = flowFor(e, doc, inner, spec, frame: frame, images: images);
@@ -110,93 +115,107 @@ void _paintTextBody(
   // The words, and what is drawn with them -- after the box, which is not
   // theirs: see MotionDevice.layer.
   void drawWords(ui.Canvas canvas) {
-    // Set line by line round whatever is in the way (text_wrap.dart).
     var blocked = flow.blocked;
-    if (e.wrap.on &&
-        blocked.isNotEmpty &&
-        wrapFits(words, spec, inner, blocked, e.wrap, parts: drawn)) {
-      // The arrival applies as a block, set line by line, there being no
-      // pieces to move; marks line by line. Outline and fill as everywhere
-      // (outlineSpecFor).
-      var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
-          parts: drawn,
-          outlineSpec: outlineSpecFor(spec,
-              parts: drawn, animation: animation, reveal: reveal));
-      var frameOf = animation.on && (reveal < 1 || animation.keeps)
-          ? applyMotionSpec(
-              canvas, inner, animation.spec, animation.progressAt(reveal, 0, 1),
-              from: animation.spec.from)
-          : const MotionFrame(1, 0, false);
-      if (frameOf.alpha > 0) {
-        if (frameOf.alpha < 1) {
-          canvas.saveLayer(inner.inflate(inner.height),
-              Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
-        }
-        // The stroke drawn onto the words, where that is the preset: the
-        // motion leaves the opacity alone (applyMotionSpec), so it is done here.
-        var p = animation.progressAt(reveal, 0, 1);
-        var stroke = animation.on &&
-            animation.preset.motion == TextMotion.strokeOn &&
-            reveal < 1;
-        var written = stroke ? p : null;
-        var fillAlpha =
-            stroke && animation.draw.start == TextDrawStart.fadeText ? p : null;
-        paintWrappedMarks(canvas, wrapped, words, spec, drawn,
-            behind: true, timings: timings);
-        if (!spec.fill.on) {
-          paintWrapped(canvas, wrapped, spec,
-              written: written, fillAlpha: fillAlpha);
-        } else {
-          paintWrapped(canvas, wrapped, spec,
-              phase: TextDrawPhase.behind, written: written);
-          paintThroughText(
-              canvas,
-              inner,
-              spec.fill,
-              images,
-              () => paintWrapped(canvas, wrapped, spec,
-                  phase: TextDrawPhase.letters,
-                  written: written,
-                  fillAlpha: fillAlpha));
-        }
-        paintWrappedMarks(canvas, wrapped, words, spec, drawn,
-            behind: false, timings: timings);
-        if (frameOf.alpha < 1) canvas.restore();
-      }
-      for (var r = 0; r < frameOf.depth; r++) {
-        canvas.restore();
-      }
-      return;
+    switch (wordsSetRound(e, doc, words, spec, inner, blocked, parts: drawn)) {
+      // Drawn above, along the line.
+      case WordsSet.onLine:
+        return;
+      // Set line by line round whatever is in the way (text_wrap.dart).
+      case WordsSet.wrapped:
+        _paintWrappedWords(canvas, e, words, spec, inner, blocked, drawn,
+            animation: animation,
+            reveal: reveal,
+            timings: timings,
+            images: images);
+      case WordsSet.inBox:
+        // Clipped to its box at rest, so words that do not fit are hidden
+        // (and can run on into another box, see flowFor) -- but not while
+        // arriving, since many presets bring the words in from outside the
+        // box.
+        var arriving = animation.on && (reveal < 1 || animation.keeps);
+        paintWordsInBox(canvas, words, spec, inner,
+            clip: !arriving && !partsAnimate(drawn),
+            animation: animation,
+            reveal: reveal,
+            parts: drawn,
+            timings: timings,
+            asOne: leaving,
+            images: images);
+      case WordsSet.inColumns:
+        // Pieces are worked out once for the whole paragraph and drawn
+        // column by column, so a stagger runs on; tidied tops are
+        // TextFlow.tidyStart's.
+        paintTextInColumns(canvas, words, spec, inner,
+            e.columns.copyWith(noBlankStart: flow.tidyStart),
+            animation: animation,
+            reveal: reveal,
+            parts: drawn,
+            timings: timings,
+            asOne: leaving,
+            images: images);
     }
-
-    if (e.columns.isSingle) {
-      // Clipped to its box at rest, so words that do not fit are hidden (and
-      // can run on into another box, see flowFor) -- but not while arriving,
-      // since many presets bring the words in from outside the box.
-      var arriving = animation.on && (reveal < 1 || animation.keeps);
-      paintWordsInBox(canvas, words, spec, inner,
-          clip: !arriving && !partsAnimate(drawn),
-          animation: animation,
-          reveal: reveal,
-          parts: drawn,
-          timings: timings,
-          asOne: leaving,
-          images: images);
-      return;
-    }
-    // Pieces are worked out once for the whole paragraph and drawn column by
-    // column, so a stagger runs on; tidied tops are TextFlow.tidyStart's.
-    paintTextInColumns(canvas, words, spec, inner,
-        e.columns.copyWith(noBlankStart: flow.tidyStart),
-        animation: animation,
-        reveal: reveal,
-        parts: drawn,
-        timings: timings,
-        asOne: leaving,
-        images: images);
   }
 
   letters(canvas, inner, drawWords);
+}
+
+/// _paintWrappedWords draws [words] set line by line round [blocked] in
+/// [inner]. The arrival applies as a block, there being no pieces to move;
+/// marks line by line. Outline and fill as everywhere (outlineSpecFor).
+void _paintWrappedWords(ui.Canvas canvas, TextElement e, String words,
+    TextSpec spec, Rect inner, List<WrapShape> blocked, List<TextPart> drawn,
+    {required TextAnimation animation,
+    required double reveal,
+    required List<PartTiming> timings,
+    CanvasImageSource? images}) {
+  var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
+      parts: drawn,
+      outlineSpec: outlineSpecFor(spec,
+          parts: drawn, animation: animation, reveal: reveal));
+  var frameOf = animation.on && (reveal < 1 || animation.keeps)
+      ? applyMotionSpec(
+          canvas, inner, animation.spec, animation.progressAt(reveal, 0, 1),
+          from: animation.spec.from)
+      : const MotionFrame(1, 0, false);
+  if (frameOf.alpha > 0) {
+    if (frameOf.alpha < 1) {
+      canvas.saveLayer(inner.inflate(inner.height),
+          Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
+    }
+    // The stroke drawn onto the words, where that is the preset: the
+    // motion leaves the opacity alone (applyMotionSpec), so it is done here.
+    var p = animation.progressAt(reveal, 0, 1);
+    var stroke = animation.on &&
+        animation.preset.motion == TextMotion.strokeOn &&
+        reveal < 1;
+    var written = stroke ? p : null;
+    var fillAlpha =
+        stroke && animation.draw.start == TextDrawStart.fadeText ? p : null;
+    paintWrappedMarks(canvas, wrapped, words, spec, drawn,
+        behind: true, timings: timings);
+    if (!spec.fill.on) {
+      paintWrapped(canvas, wrapped, spec,
+          written: written, fillAlpha: fillAlpha);
+    } else {
+      paintWrapped(canvas, wrapped, spec,
+          phase: TextDrawPhase.behind, written: written);
+      paintThroughText(
+          canvas,
+          inner,
+          spec.fill,
+          images,
+          () => paintWrapped(canvas, wrapped, spec,
+              phase: TextDrawPhase.letters,
+              written: written,
+              fillAlpha: fillAlpha));
+    }
+    paintWrappedMarks(canvas, wrapped, words, spec, drawn,
+        behind: false, timings: timings);
+    if (frameOf.alpha < 1) canvas.restore();
+  }
+  for (var r = 0; r < frameOf.depth; r++) {
+    canvas.restore();
+  }
 }
 
 /// _waitingToArrive is whether [e] has an arrival still to come on this
@@ -238,12 +257,13 @@ List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
   ];
 }
 
-/// drawnTextSpec is the type a text element is drawn in: with Fit to box
-/// on, sized to the room inside [bounds] (padding included). The editor asks
-/// too, so a fitted paragraph keeps its size when clicked into.
-TextSpec drawnTextSpec(TextElement e, Rect bounds) {
+/// drawnTextSpec is the type a text element is drawn in on a page of [doc]:
+/// fitted (TextElement.fittedIn), sized to the room inside [bounds] (padding
+/// included). The editor asks too, so a fitted paragraph keeps its size when
+/// clicked into.
+TextSpec drawnTextSpec(TextElement e, Rect bounds, {CanvasDocument? doc}) {
   var spec = e.textSpec;
-  if (!e.autoSize) return spec;
+  if (!e.fittedIn(doc)) return spec;
 
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return spec;

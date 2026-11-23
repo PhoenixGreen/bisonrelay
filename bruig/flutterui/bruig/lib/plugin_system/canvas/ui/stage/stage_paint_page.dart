@@ -40,7 +40,7 @@ String? _skippedWords(CanvasDocument document, StageTextEdit? text) {
   for (var it in e.items) {
     if (it.id == text?.item) item = it;
   }
-  if (!editorDrawsWords(e, item)) return null;
+  if (!editorDrawsWords(e, item, document)) return null;
   return item?.id ?? textBodyWords;
 }
 

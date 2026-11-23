@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:bruig/components/paint_spec.dart' show PaintSpec;
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/arrival.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
@@ -37,7 +39,11 @@ enum OwnStyleKind { element, text, chart }
 /// written alike.
 class OwnStyle {
   final CanvasElement element;
-  const OwnStyle(this.element);
+
+  /// document is the page [element] is on, which decides whether a text's
+  /// pieces are drawn there (TextElement.showsPiecesIn); none is a box.
+  final CanvasDocument? document;
+  const OwnStyle(this.element, {this.document});
 
   /// of is [e]'s, or null where it has no own animation.
   static OwnStyle? of(CanvasElement e) =>
@@ -61,6 +67,23 @@ class OwnStyle {
       (element as TextElement).copyWith(animation: a);
   CanvasElement _withChart(ChartAnimation a) =>
       (element as ChartElement).copyWith(animation: a);
+
+  /// _arrival is the box's arrival or the words', which hold alike what the
+  /// two share (Arrival); null for a chart's, which is not one.
+  Arrival? get _arrival => switch (kind) {
+        OwnStyleKind.element => _box,
+        OwnStyleKind.text => _text,
+        OwnStyleKind.chart => null,
+      };
+
+  /// _withArrival is the element with [a] for its arrival: one of its own
+  /// kind, as _arrival answered it.
+  CanvasElement _withArrival(Arrival<ArrivalPreset, dynamic> a) =>
+      switch (kind) {
+        OwnStyleKind.element => _withBox(a as ElementAnimation),
+        OwnStyleKind.text => _withText(a as TextAnimation),
+        OwnStyleKind.chart => element,
+      };
 
   /// presets are the ways it can arrive or leave, by name.
   List<(String, String)> presets() => switch (kind) {
@@ -122,38 +145,31 @@ class OwnStyle {
     }
   }
 
-  ChartEase get ease => switch (kind) {
-        OwnStyleKind.element => _box.ease,
-        OwnStyleKind.text => _text.ease,
-        OwnStyleKind.chart => _chart.ease,
-      };
+  ChartEase get ease => _arrival?.ease ?? _chart.ease;
 
-  CanvasElement withEase(ChartEase e) => switch (kind) {
-        OwnStyleKind.element => _withBox(_box.copyWith(ease: e)),
-        OwnStyleKind.text => _withText(_text.copyWith(ease: e)),
-        OwnStyleKind.chart => _withChart(_chart.copyWith(ease: e)),
+  CanvasElement withEase(ChartEase e) => switch (_arrival) {
+        var a? => _withArrival(a.copyWith(ease: e)),
+        null => _withChart(_chart.copyWith(ease: e)),
       };
 
   /// scale is where a growing arrival starts from (the preset's own where
   /// none is set), or null where nothing grows.
-  double? get scale => switch (kind) {
-        OwnStyleKind.element => _box.scales ? _box.scaleFor(_box.preset) : null,
-        OwnStyleKind.text => _text.scales ? _text.scaleFor(_text.preset) : null,
-        OwnStyleKind.chart => null,
+  double? get scale => switch (_arrival) {
+        var a? when a.scales => a.scaleFor(a.preset),
+        _ => null,
       };
 
-  CanvasElement withScale(double v) => switch (kind) {
-        OwnStyleKind.element => _withBox(_box.copyWith(scale: v)),
-        OwnStyleKind.text => _withText(_text.copyWith(scale: v)),
-        OwnStyleKind.chart => element,
+  CanvasElement withScale(double v) => switch (_arrival) {
+        var a? => _withArrival(a.copyWith(scale: v)),
+        null => element,
       };
 
   /// piecesInTurn is whether a text's pieces (see TextItem) come in one
-  /// after another rather than together; null where it has none.
-  bool? get piecesInTurn =>
-      kind == OwnStyleKind.text && (element as TextElement).items.isNotEmpty
-          ? _text.piecesInTurn
-          : null;
+  /// after another rather than together; null where none are drawn.
+  bool? get piecesInTurn => kind == OwnStyleKind.text &&
+          (element as TextElement).showsPiecesIn(document)
+      ? _text.piecesInTurn
+      : null;
   CanvasElement withPiecesInTurn(bool v) =>
       _withText(_text.copyWith(piecesInTurn: v));
 
@@ -205,16 +221,14 @@ class OwnStyle {
       };
 
   /// effect is how a cutting preset cuts, or null where none cuts.
-  EffectSpec? get effect => switch (kind) {
-        OwnStyleKind.element => _box.cuts ? _box.effect : null,
-        OwnStyleKind.text => _text.cuts ? _text.effect : null,
-        OwnStyleKind.chart => null,
+  EffectSpec? get effect => switch (_arrival) {
+        var a? when a.cuts => a.effect,
+        _ => null,
       };
 
-  CanvasElement withEffect(EffectSpec v) => switch (kind) {
-        OwnStyleKind.element => _withBox(_box.copyWith(effect: v)),
-        OwnStyleKind.text => _withText(_text.copyWith(effect: v)),
-        OwnStyleKind.chart => element,
+  CanvasElement withEffect(EffectSpec v) => switch (_arrival) {
+        var a? => _withArrival(a.copyWith(effect: v)),
+        null => element,
       };
 
   /// draw and echo are a text's mark and copies, where its preset has them.
@@ -230,31 +244,25 @@ class OwnStyle {
 
   /// direction and strength are where it comes from and how far, for the
   /// box's and the words' arrivals ([leaving], their ways out).
-  bool get directed => kind != OwnStyleKind.chart;
+  bool get directed => _arrival != null;
 
-  double strength({bool leaving = false}) => switch (kind) {
-        OwnStyleKind.element => leaving ? _box.exitStrength : _box.strength,
-        OwnStyleKind.text => leaving ? _text.exitStrength : _text.strength,
-        OwnStyleKind.chart => 1,
+  double strength({bool leaving = false}) => switch (_arrival) {
+        var a? => leaving ? a.exitStrength : a.strength,
+        null => 1,
       };
 
   CanvasElement withStrength(double v, {bool leaving = false}) =>
-      switch (kind) {
-        OwnStyleKind.element => _withBox(leaving
-            ? _box.copyWith(exitStrength: v)
-            : _box.copyWith(strength: v)),
-        OwnStyleKind.text => _withText(leaving
-            ? _text.copyWith(exitStrength: v)
-            : _text.copyWith(strength: v)),
-        OwnStyleKind.chart => element,
+      switch (_arrival) {
+        var a? => _withArrival(
+            leaving ? a.copyWith(exitStrength: v) : a.copyWith(strength: v)),
+        null => element,
       };
 
   ElementLoop get loop => CanvasController.elementLoopOf(element);
 
-  CanvasElement withLoop(ElementLoop v) => switch (kind) {
-        OwnStyleKind.element => _withBox(_box.copyWith(loop: v)),
-        OwnStyleKind.text => _withText(_text.copyWith(loop: v)),
-        OwnStyleKind.chart => _withChart(_chart.copyWith(loop: v)),
+  CanvasElement withLoop(ElementLoop v) => switch (_arrival) {
+        var a? => _withArrival(a.copyWith(loop: v)),
+        null => _withChart(_chart.copyWith(loop: v)),
       };
 }
 
@@ -610,7 +618,7 @@ class OwnStyleCard extends StatelessWidget {
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
     var c = controller;
-    var style = OwnStyle(element);
+    var style = OwnStyle(element, document: c.document);
     var leaving = clip.kind == MotionKind.leave;
     var looping = clip.kind == MotionKind.loop;
     const accent = Color(0xFF3FB08D);

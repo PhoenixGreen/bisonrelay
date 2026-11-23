@@ -72,7 +72,7 @@ void nudgeWarpPicks(CanvasController c, Offset by) {
   var e = chosen.first;
   if (e is! TextElement) return null;
   var item = c.textLayer(e);
-  if (item == null || !e.handlesPiece(item)) return null;
+  if (item == null || !e.handlesPiece(item, c.document)) return null;
   var i = e.items.indexOf(item);
   return i < 0 ? null : (e, i);
 }

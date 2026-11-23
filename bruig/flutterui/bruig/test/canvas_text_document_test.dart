@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:ui' show Color;
+import 'package:bruig/models/canvas_writing_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -252,6 +254,9 @@ Some **bold** and *italic* and a [link](https://example.com).
     test("wherever the text is: another scene, the master, the Cast", () async {
       var root = Directory.systemTemp.createTempSync("text-doc");
       PostStorage.rootOverride = root.path;
+      // The library the app hands the Canvas at start, over that folder.
+      WritingLibrary.use(const PostStorageLibrary());
+      addTearDown(WritingLibrary.forgetForTest);
       addTearDown(() {
         PostStorage.rootOverride = null;
         root.deleteSync(recursive: true);

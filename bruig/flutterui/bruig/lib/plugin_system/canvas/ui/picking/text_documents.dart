@@ -4,15 +4,16 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter/foundation.dart';
 
 // text_documents.dart keeps a document-backed text element up to date. The
 // words are copied into the element (see TextDocumentRef), so a poll while the
 // canvas is open reads each referenced document and writes back only what
-// differs. A poll because the library is a folder of files with no change
-// feed; a canvas with no document-backed element does no work.
+// differs. A poll because the library tells nobody of an edit
+// (WritingLibrary.read); a canvas with no document-backed element does no
+// work.
 
 /// _canvasDocumentPoll is how often the library is looked at while a canvas is
 /// open: cheap, and quick enough that an edit made in Writing is there on
@@ -30,13 +31,14 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
   // Read first, applied after: the reads wait, and a document captured
   // before them would put back whatever was edited meanwhile. Each file
   // once, however many texts show it.
+  var library = WritingLibrary.current;
   var read = <(String, String), String>{};
   for (var element in _documentTexts(controller.document)) {
     var ref = (element.document.folder, element.document.name);
     if (read.containsKey(ref)) continue;
     String? raw;
     try {
-      raw = await PostStorage.read(ref.$1, ref.$2);
+      raw = await library.read(element.document);
     } catch (exception) {
       debugPrint("Unable to read ${element.document.says}: $exception");
       continue;
@@ -52,7 +54,7 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
     var out = [...list];
     var differs = false;
     for (var (i, e) in list.indexed) {
-      if (e is! TextElement || !e.document.on) continue;
+      if (e is! TextElement || !e.wordsFromDocument) continue;
       var raw = read[(e.document.folder, e.document.name)];
       if (raw == null) continue;
       var (:text, :parts) = readDocument(raw,
@@ -98,7 +100,7 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
     if (spec == null || !spec.document.on) continue;
     String? raw;
     try {
-      raw = await PostStorage.read(spec.document.folder, spec.document.name);
+      raw = await library.read(spec.document);
     } catch (exception) {
       debugPrint("Unable to read ${spec.document.says}: $exception");
       continue;
@@ -165,7 +167,7 @@ Iterable<TextElement> _documentTexts(CanvasDocument document) => [
       for (var s in document.allScenes) ...s.elements,
       ...?document.master?.elements,
       ...document.cast,
-    ].whereType<TextElement>().where((e) => e.document.on);
+    ].whereType<TextElement>().where((e) => e.wordsFromDocument);
 
 /// _same is whether two lists of derived parts say the same thing.
 bool _same(List parts, List other) {

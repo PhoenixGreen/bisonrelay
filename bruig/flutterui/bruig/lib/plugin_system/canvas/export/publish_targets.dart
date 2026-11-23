@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:bruig/components/share_settings.dart';
 import 'package:bruig/models/client.dart';
@@ -8,9 +7,9 @@ import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
-import 'package:bruig/plugin_system/writing_tools/post_library/post_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:golib_plugin/golib_plugin.dart';
@@ -130,30 +129,25 @@ Future<String?> sendToChat(ChatModel chat, CanvasExport export,
 }
 
 /// publishToLibrary writes the canvas into the post library as a document
-/// a post or a page can embed: the picture goes into the embed store and
-/// the document references it, as a draft with a picture does.
+/// a post or a page can embed (WritingLibrary.publishPicture). None to hand,
+/// nothing is written.
 Future<PublishRecord?> publishToLibrary(
   CanvasExport export,
   String name,
   PublishRecord existing,
 ) async {
-  var clean = PostStorage.sanitizeName(name);
-  if (clean == null) return null;
-
   try {
-    // Reusing the embed id on an update overwrites the old picture rather
-    // than orphaning a copy per republish.
-    var id = existing.embedId.isNotEmpty ? existing.embedId : _newEmbedId();
-    await EmbedStore.save(id, base64Encode(export.data));
-
-    var content = "--embed[type=${export.mime},data=[content $id]]--\n";
-    var written = await PostStorage.write(publishedFolderName, clean, content);
-    if (written == null) return null;
+    // Reusing the picture's id on an update overwrites the old picture
+    // rather than orphaning a copy per republish.
+    var put = await WritingLibrary.current.publishPicture(
+        publishedFolderName, name, export.mime, export.data,
+        pictureId: existing.embedId);
+    if (put == null) return null;
 
     return existing.copyWith(
-      documentFolder: publishedFolderName,
-      documentName: written,
-      embedId: id,
+      documentFolder: put.at.folder,
+      documentName: put.at.name,
+      embedId: put.pictureId,
       format: export.mime,
       publishedAt: DateTime.now(),
     );
@@ -163,15 +157,12 @@ Future<PublishRecord?> publishToLibrary(
   }
 }
 
-/// unpublishFromLibrary removes the document and its picture.
+/// unpublishFromLibrary removes the document, leaving its picture (below).
 Future<void> unpublishFromLibrary(PublishRecord record) async {
   if (!record.hasDocument) return;
   try {
-    await PostStorage.delete(PostEntry(
-      name: record.documentName,
-      folder: record.documentFolder,
-      isFolder: false,
-    ));
+    await WritingLibrary.current.remove(TextDocumentRef(
+        folder: record.documentFolder, name: record.documentName));
   } catch (exception) {
     debugPrint("Unable to remove the published canvas: $exception");
   }
@@ -231,17 +222,4 @@ Future<void> unshareFiles(PublishRecord record) async {
   } catch (exception) {
     debugPrint("Unable to unshare the canvas: $exception");
   }
-}
-
-/// _newEmbedId matches what the composer generates: twelve letters and
-/// digits, which EmbedStore requires before it becomes a path. Securely
-/// random, since a collision would show one canvas's picture for another.
-String _newEmbedId() {
-  const alphabet =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  var random = math.Random.secure();
-  return String.fromCharCodes([
-    for (var i = 0; i < 12; i++)
-      alphabet.codeUnitAt(random.nextInt(alphabet.length)),
-  ]);
 }

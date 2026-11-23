@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -35,18 +36,18 @@ import 'package:flutter/services.dart';
 const double _caretRoom = CanvasTextEditor.cursorWidth + 1;
 
 /// editorDrawsWords is whether the field must show [e]'s words (or piece
-/// [item]'s) itself, because the painter sets them in a way a TextField
-/// cannot match. See the top of this file.
+/// [item]'s) itself, on a page of [doc], because the painter sets them in a
+/// way a TextField cannot match. See the top of this file.
 ///
 /// Words with a field in them (text_fields.dart) are typed as written, a
 /// "{page}", where the canvas draws them filled in: the field shows them.
-bool editorDrawsWords(TextElement e, TextItem? item) {
+bool editorDrawsWords(TextElement e, TextItem? item, CanvasDocument? doc) {
   if (item != null) return hasFields(item.text);
-  return e.curve != null ||
-      !e.columns.isSingle ||
-      e.wrap.on ||
-      e.flowTo.isNotEmpty ||
-      hasFields(e.text);
+  return switch (e.wordsSetIn(doc)) {
+    // Wrapped whenever something is in the way, which a drag may change.
+    WordsSet.onLine || WordsSet.wrapped || WordsSet.inColumns => true,
+    WordsSet.inBox => e.flowsOnIn(doc) || hasFields(e.text),
+  };
 }
 
 /// CanvasTextEditor is the field itself. It is given the rectangle the words
@@ -56,6 +57,10 @@ class CanvasTextEditor extends StatefulWidget {
   static const double cursorWidth = 1.5;
 
   final TextElement element;
+
+  /// document is the page [element] is on, which decides how its words are
+  /// set (TextElement.wordsSetIn).
+  final CanvasDocument? document;
 
   /// item is the extra piece being typed into, or null for the element's own
   /// paragraph.
@@ -92,6 +97,7 @@ class CanvasTextEditor extends StatefulWidget {
 
   const CanvasTextEditor({
     required this.element,
+    this.document,
     this.item,
     required this.rect,
     required this.scale,
@@ -183,14 +189,15 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
     var item = widget.item;
     // The type it is drawn in (with Fit to box, not the type it is set in),
     // and a piece held to its slot's edge, so nothing moves as it is typed.
+    var doc = widget.document;
     var spec = item == null
-        ? drawnTextSpec(e, e.bounds)
+        ? drawnTextSpec(e, e.bounds, doc: doc)
         : item.spec.copyWith(
             align: item.slot.across,
             verticalAlign: VerticalAlignSpec.top,
           );
     var scale = widget.scale;
-    var fills = item == null && !bodyIsBlock(e);
+    var fills = item == null && !bodyIsBlock(e, doc: doc);
     var style = textStyleOf(spec, scale: scale);
     // The runs the canvas draws differently, so the letters are where they
     // are drawn; a piece has none.

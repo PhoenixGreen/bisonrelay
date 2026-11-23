@@ -121,12 +121,14 @@ extension StageHitTesting on CanvasStageState {
   TextFlowGrips? _flowGrips() {
     if (!controller.showHelpers) return null;
     var e = _selectedText();
-    if (e == null || e.curve != null || _onePiece != null) return null;
+    if (e == null || _onePiece != null) return null;
+    if (e.wordsSetIn(document) == WordsSet.onLine) return null;
     var bounds = _selectionBounds;
     if (bounds == null) return null;
 
     var inner = e.box.inner(e.bounds);
-    var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
+    var flow = flowFor(
+        e, document, inner, drawnTextSpec(e, e.bounds, doc: document),
         frame: controller.frame, images: controller.images);
 
     return TextFlowGrips(
@@ -134,7 +136,7 @@ extension StageHitTesting on CanvasStageState {
       outAt: _gripPosition(bounds, top: false),
       overflowing: flow.overflows,
       receiving: flow.receiving,
-      linked: e.flowTo.isNotEmpty && document.elementById(e.flowTo) != null,
+      linked: e.flowsOnIn(document) && document.elementById(e.flowTo) != null,
     );
   }
 
@@ -157,7 +159,7 @@ extension StageHitTesting on CanvasStageState {
     var out = <FlowLine>[];
 
     for (var e in document.elements) {
-      if (e is! TextElement || e.flowTo.isEmpty) continue;
+      if (e is! TextElement || !e.flowsOnIn(document)) continue;
       var into = document.elementById(e.flowTo);
       if (into == null || !e.visible || !into.visible) continue;
 
@@ -172,7 +174,8 @@ extension StageHitTesting on CanvasStageState {
       if (!shown) continue;
 
       var inner = e.box.inner(e.bounds);
-      var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
+      var flow = flowFor(
+          e, document, inner, drawnTextSpec(e, e.bounds, doc: document),
           frame: controller.frame);
       out.add(FlowLine(
         _toStage(_flowPointOf(_hit.posed(e), top: false)),
@@ -222,14 +225,15 @@ extension StageHitTesting on CanvasStageState {
   }
 
   /// _textItemAt is [e]'s extra piece at a document point, or null, from
-  /// what draws them (see textItemRects). A locked piece is passed over
-  /// unless [locked], for a click that must know it landed on one.
+  /// what draws them (see textItemRects): none where its pieces are not
+  /// drawn (TextElement.showsPiecesIn). A locked piece is passed over unless
+  /// [locked], for a click that must know it landed on one.
   TextItem? _textItemAt(TextElement e, Offset doc, {bool locked = false}) {
-    if (e.items.isEmpty) return null;
+    if (!e.showsPiecesIn(document)) return null;
     // Where it is drawn, its fields filled in.
     e = textWithFields(e, document);
     var bounds = _hit.posed(e);
-    var rects = textItemRects(e, bounds);
+    var rects = textItemRects(e, bounds, doc: document);
     // Backwards: the last drawn is on top.
     for (var i = e.items.length - 1; i >= 0; i--) {
       // Hidden or locked in the Layers, it cannot be pressed.

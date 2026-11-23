@@ -63,10 +63,10 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   var blocked = wrapObstacles(e, doc, frame, inner, images: images);
 
   // A box on its own: everything it has, and whether all of it is showing.
-  if (doc == null || (e.flowTo.isEmpty && !_isTarget(e, doc))) {
+  if (doc == null || (!e.flowsOnIn(doc) && !_isTarget(e, doc))) {
     return TextFlow(
       text: mine,
-      overflows: _consumed(mine, e, inner, spec,
+      overflows: _consumed(mine, e, doc, inner, spec,
               tidy: e.columns.noBlankStart,
               parts: e.drawnPartsWith(e.documentParts)) <
           mine.length,
@@ -94,7 +94,7 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     if (tidy && box.id != head.id) at += _blankRun(text.substring(at));
     if (at >= text.length) break;
     var room = _roomOf(box);
-    at += _consumed(text.substring(at), box, room, _specOf(box),
+    at += _consumed(text.substring(at), box, doc, room, _specOf(box),
         tidy: tidy,
         blocked: wrapObstacles(box, doc, frame, room, images: images),
         parts: box.drawnPartsWith(_partsAt(head, text, at)));
@@ -108,7 +108,7 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   var rest = at >= text.length ? "" : text.substring(at);
   // The head's styled runs, counted from this box's own first word.
   var parts = receiving ? _partsAt(head, text, at) : head.documentParts;
-  var took = _consumed(rest, e, inner, spec,
+  var took = _consumed(rest, e, doc, inner, spec,
       tidy: tidy, blocked: blocked, parts: e.drawnPartsWith(parts));
   return TextFlow(
     text: rest,
@@ -136,14 +136,15 @@ bool wouldLoop(TextElement from, String to, CanvasDocument doc) {
   return false;
 }
 
-/// flowSourceOf is the element whose words land in [e], if any.
+/// flowSourceOf is the element whose words land in [e], if any: one that
+/// flows on into it (TextElement.flowsOnIn).
 TextElement? flowSourceOf(TextElement e, CanvasDocument? doc) {
   if (doc == null) return null;
   var list = doc.elements;
   var sources = _sources[list] ??= () {
     var out = <String, TextElement>{};
     for (var other in list) {
-      if (other is TextElement && other.flowTo.isNotEmpty) {
+      if (other is TextElement && other.flowsOnIn(doc)) {
         out.putIfAbsent(other.flowTo, () => other);
       }
     }
@@ -176,7 +177,7 @@ List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
 
   var chain = <TextElement>[head];
   var at = head;
-  while (at.flowTo.isNotEmpty && at.id != e.id) {
+  while (at.flowsOnIn(doc) && at.id != e.id) {
     var next = doc.elementById(at.flowTo);
     if (next is! TextElement) break;
     if (chain.any((b) => b.id == next.id)) break;
@@ -216,27 +217,32 @@ int _blankRun(String text) {
   return at;
 }
 
-/// _consumed is how many characters of [text] this box can show, laid out
-/// with the [parts] it is drawn with, since a part may change the size.
-int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
+/// _consumed is how many characters of [text] this box can show on a page of
+/// [doc], laid out with the [parts] it is drawn with, since a part may
+/// change the size.
+int _consumed(
+    String text, TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     {bool tidy = false,
     List<WrapShape> blocked = const [],
     required List<TextPart> parts}) {
-  if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
-
-  // Wrapped, the room a box has is what is left once the things in the way
-  // are taken out. Measured as it is drawn (see layoutWrapped), so the grip
-  // and the canvas agree.
-  if (e.wrap.on &&
-      blocked.isNotEmpty &&
-      wrapFits(text, spec, inner, blocked, e.wrap, parts: parts)) {
-    return layoutWrapped(text, spec, inner, blocked, e.wrap, parts: parts)
-        .consumed;
+  if (text.isEmpty) return 0;
+  double width;
+  switch (wordsSetRound(e, doc, text, spec, inner, blocked, parts: parts)) {
+    // A line draws every word it has, however long.
+    case WordsSet.onLine:
+      return text.length;
+    // Wrapped, the room a box has is what is left once the things in the
+    // way are taken out. Measured as it is drawn (see layoutWrapped), so the
+    // grip and the canvas agree.
+    case WordsSet.wrapped:
+      return layoutWrapped(text, spec, inner, blocked, e.wrap, parts: parts)
+          .consumed;
+    case WordsSet.inBox:
+      width = inner.width;
+    case WordsSet.inColumns:
+      width = e.columns.columnWidth(inner.width);
   }
-
-  var width =
-      e.columns.isSingle ? inner.width : e.columns.columnWidth(inner.width);
-  if (width <= 0) return 0;
+  if (width <= 0 || inner.height <= 0) return 0;
 
   // How many lines fit: the same packing the columns use, so a box with three
   // columns passes on what would not fit in the third rather than what would

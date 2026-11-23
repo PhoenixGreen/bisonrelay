@@ -254,7 +254,8 @@ extension StageElementControls on CanvasStageState {
     // nowhere; text on a line has no box to show it in: both refused.
     var taking = onto == null ? null : flowSourceOf(onto, document);
     if (onto != null &&
-        (onto.curve != null || (taking != null && taking.id != from.id))) {
+        (onto.wordsSetIn(document) == WordsSet.onLine ||
+            (taking != null && taking.id != from.id))) {
       return;
     }
 

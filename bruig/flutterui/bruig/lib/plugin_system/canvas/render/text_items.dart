@@ -36,36 +36,34 @@ TextElement textWithFields(TextElement e, CanvasDocument doc) {
   );
 }
 
-/// textItemRects is where each of [e]'s items is drawn, in the element's own
-/// coordinates and order. Items in one slot stack in the order added: down
-/// from the top for a top slot, up from the bottom for a bottom one, and
-/// about the middle for a middle one.
-List<Rect> textItemRects(TextElement e, Rect bounds) =>
-    _blockRects(e, bounds).skip(1).toList();
+/// textItemRects is where each of [e]'s items is drawn on a page of [doc], in
+/// the element's own coordinates and order. Items in one slot stack in the
+/// order added: down from the top for a top slot, up from the bottom for a
+/// bottom one, and about the middle for a middle one. Where they are not
+/// drawn (TextElement.showsPiecesIn), where they would be in the box.
+List<Rect> textItemRects(TextElement e, Rect bounds, {CanvasDocument? doc}) =>
+    _blockRects(e, bounds, doc).skip(1).toList();
 
-/// textBodyRect is where the element's own words go when they have been given
-/// a slot, or null when they fill the box as usual. See TextElement.slot.
-Rect? textBodyRect(TextElement e, Rect bounds) {
-  if (!bodyIsBlock(e)) return null;
-  var rect = _blockRects(e, bounds).first;
+/// textBodyRect is where the element's own words go on a page of [doc] when
+/// they are held in a slot, or null when they fill the box as usual. See
+/// TextElement.bodySlotIn.
+Rect? textBodyRect(TextElement e, Rect bounds, {CanvasDocument? doc}) {
+  if (!bodyIsBlock(e, doc: doc)) return null;
+  var rect = _blockRects(e, bounds, doc).first;
   return rect.isEmpty ? null : rect;
 }
 
 /// bodyIsBlock is whether the element's own words are one of the blocks in a
-/// slot rather than the paragraph filling the box. Not when they are set
-/// along a line, in columns, or flowing on into another box.
-bool bodyIsBlock(TextElement e) =>
-    e.slot != null &&
-    e.curve == null &&
-    e.columns.isSingle &&
-    e.flowTo.isEmpty &&
-    e.text.isNotEmpty;
+/// slot on a page of [doc] rather than the paragraph filling the box: see
+/// TextElement.bodySlotIn.
+bool bodyIsBlock(TextElement e, {CanvasDocument? doc}) =>
+    e.bodySlotIn(doc) != null;
 
 /// _blockRects is every block this element draws: the element's own words
 /// first, whether or not they are in a slot, and then the pieces.
-List<Rect> _blockRects(TextElement e, Rect bounds) {
-  var body = bodyIsBlock(e);
-  if (e.items.isEmpty && !body) {
+List<Rect> _blockRects(TextElement e, Rect bounds, CanvasDocument? doc) {
+  var body = e.bodySlotIn(doc);
+  if (e.items.isEmpty && body == null) {
     return [Rect.zero, for (var _ in e.items) Rect.zero];
   }
   var inner = e.box.inner(bounds);
@@ -74,10 +72,9 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
   }
 
   // The blocks, by the slot each is in. Index 0 is the element's own words.
-  TextSlot? slotOf(int i) =>
-      i == 0 ? (body ? e.slot : null) : e.items[i - 1].slot;
+  TextSlot? slotOf(int i) => i == 0 ? body : e.items[i - 1].slot;
   Size sizeOf(int i) => i == 0
-      ? _sizeOfText(e.text, drawnTextSpec(e, bounds), inner.width,
+      ? _sizeOfText(e.text, drawnTextSpec(e, bounds, doc: doc), inner.width,
           parts: e.drawnParts)
       : _sizeOf(e.items[i - 1], inner.width);
   double gapOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
@@ -177,6 +174,7 @@ void paintTextItems(
   ui.Canvas canvas,
   Rect bounds,
   TextElement e, {
+  CanvasDocument? doc,
   TextAnimation? animation,
   double reveal = 1,
   CanvasImageSource? images,
@@ -189,8 +187,8 @@ void paintTextItems(
   /// CanvasTextEditor.
   String? skip,
 }) {
-  if (e.items.isEmpty) return;
-  var rects = textItemRects(e, bounds);
+  if (!e.showsPiecesIn(doc)) return;
+  var rects = textItemRects(e, bounds, doc: doc);
   for (var (i, item) in e.items.indexed) {
     var rect = rects[i];
     if (rect.isEmpty || item.hidden) continue;

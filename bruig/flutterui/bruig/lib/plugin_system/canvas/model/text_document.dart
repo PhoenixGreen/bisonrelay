@@ -178,7 +178,8 @@ class MarkdownAllow {
 
 /// TextDocumentRef is the Writing library document a text takes words from.
 class TextDocumentRef {
-  /// folder is "" for the top level; the library is one level deep.
+  /// folder and name are where the document is, as the library names it
+  /// (WritingLibrary.documents); folder is "" for none.
   final String folder;
   final String name;
 

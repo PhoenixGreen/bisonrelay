@@ -1243,22 +1243,24 @@ class CanvasStageState extends State<CanvasStage>
         ? -1
         : element.items.indexWhere((item) => item.id == itemId);
     var item = at < 0 ? null : element.items[at];
-    var shows = editorDrawsWords(element, item);
+    var shows = editorDrawsWords(element, item, document);
 
     // Where the words are laid out, worked out again on every keystroke as
     // the painter does, so the field stays on them -- except text on a line,
     // whose box is frozen where it opened (the letters move as they come).
     var bounds = _hit.posed(element);
-    var box = element.curve != null
-        ? _frozenBox(edit, element)
-        : item != null
-            ? _wordsBlockFor(element, bounds, item: item, at: at)
-            : bodyIsBlock(element)
-                ? _wordsBlockFor(element, bounds)
-                : bounds;
+    var box = switch (element.wordsSetIn(document)) {
+      WordsSet.onLine => _frozenBox(edit, element),
+      WordsSet.wrapped || WordsSet.inColumns || WordsSet.inBox => item != null
+          ? _wordsBlockFor(element, bounds, item: item, at: at)
+          : bodyIsBlock(element, doc: document)
+              ? _wordsBlockFor(element, bounds)
+              : bounds,
+    };
     return CanvasTextEditor(
       key: ValueKey("edit-$id-${item?.id ?? ""}"),
       element: element,
+      document: document,
       item: item,
       rect: _toStageRect(box),
       pivot: _toStage(bounds.center),
@@ -1317,8 +1319,8 @@ class CanvasStageState extends State<CanvasStage>
     var inner = element.box.inner(bounds);
     var slot = item?.slot ?? element.slot ?? TextSlot.topLeft;
     var rect = item != null
-        ? textItemRects(element, bounds)[at]
-        : (textBodyRect(element, bounds) ?? inner);
+        ? textItemRects(element, bounds, doc: document)[at]
+        : (textBodyRect(element, bounds, doc: document) ?? inner);
     var pad = item?.box.pad.insets ?? EdgeInsets.zero;
     if (rect == Rect.zero) {
       // Nothing laid out at all: the slot's corner of the box.
@@ -1333,7 +1335,7 @@ class CanvasStageState extends State<CanvasStage>
           0);
     }
     var words = pad.deflateRect(rect);
-    var spec = item?.spec ?? drawnTextSpec(element, bounds);
+    var spec = item?.spec ?? drawnTextSpec(element, bounds, doc: document);
     var room = math.max(1.0, inner.width - pad.left - pad.right);
     var left = switch (slot.across) {
       TextAlignSpec.right => words.right - room,
@@ -1349,7 +1351,7 @@ class CanvasStageState extends State<CanvasStage>
   /// with a minimum to type in, grown about its centre so the text stays put.
   Rect _editorBoxFor(TextElement element) {
     var box = _visualBounds(element);
-    if (element.curve == null) return box;
+    if (element.wordsSetIn(document) != WordsSet.onLine) return box;
 
     var line = element.textSpec.fontSize * element.textSpec.lineHeight;
     var wanted = Size(

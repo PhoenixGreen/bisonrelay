@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
@@ -555,6 +556,56 @@ void main() {
             reason: "line ${_words.substring(line.from, line.to)}");
       }
       expect(out.consumed, lessThan(_words.length));
+    });
+  });
+
+  group("a word too wide for the room beside something", () {
+    // The first word of a run was taken however wide it was, so a long word
+    // beside a picture ran on over the picture, and one wider than the box
+    // past its edge, where a box would have moved it to the next line or,
+    // wider than a line, broken it.
+    const spec = TextSpec(fontSize: 14, align: TextAlignSpec.left);
+
+    test("waits for a line with room for it", () {
+      const room = Rect.fromLTWH(0, 0, 400, 200);
+      const text = "Hi extraordinarily wide words";
+      var out = layoutWrapped(
+          text,
+          spec,
+          room,
+          [const WrapShape(Rect.fromLTWH(60, 0, 340, 60))],
+          const TextWrap(on: true),
+          parts: const []);
+      for (var line in out.lines) {
+        expect(line.words.width, lessThanOrEqualTo(line.box.width + 0.5),
+            reason: "\"${text.substring(line.from, line.to)}\" in its room");
+      }
+      var long = out.lines
+          .firstWhere((l) => text.substring(l.from, l.to).contains("extra"));
+      expect(long.box.top, greaterThanOrEqualTo(60 - 0.5),
+          reason: "below what was in its way");
+      expect(out.consumed, text.length, reason: "every word set");
+    });
+
+    test("and one wider than the box is broken, as a box breaks it", () {
+      const room = Rect.fromLTWH(0, 0, 200, 200);
+      const text = "Supercalifragilisticexpialidocious end";
+      var out = layoutWrapped(
+          text,
+          spec,
+          room,
+          [const WrapShape(Rect.fromLTWH(100, 150, 100, 50))],
+          const TextWrap(on: true),
+          parts: const []);
+      for (var line in out.lines) {
+        expect(line.words.width, lessThanOrEqualTo(line.box.width + 0.5),
+            reason: "\"${text.substring(line.from, line.to)}\" in its room");
+      }
+      var box = layOutWords(text, spec, parts: const [], maxWidth: 200);
+      expect(out.lines.first.to - out.lines.first.from,
+          box.charactersIn(box.lines.first.height + 0.5),
+          reason: "the first line as many letters as a box's first line");
+      expect(out.consumed, text.length, reason: "every letter set");
     });
   });
 

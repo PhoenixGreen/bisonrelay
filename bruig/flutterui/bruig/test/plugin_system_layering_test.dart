@@ -12,11 +12,11 @@ import 'package:flutter_test/flutter_test.dart';
 //
 // Between the features the rule is weaker but still a rule: canvas may import
 // writing_tools, creative_ai may import both, and nothing imports creative_ai
-// or (but creative_ai) canvas. Canvas publishes into the post
-// library -- which is where documents on disk live, and is no plugin's -- so
-// that one edge is real and is allowed. The reverse would mean the writing
-// tools could not be read without knowing what a keyframe is, and would make
-// the pair impossible to separate later.
+// or (but creative_ai) canvas. Canvas types into its texts with the writing
+// tools' field and menu, so that one edge is real and is allowed; the post
+// library behind them it is handed (WritingLibrary), never reaches into. The
+// reverse would mean the writing tools could not be read without knowing
+// what a keyframe is, and would make the pair impossible to separate later.
 //
 // It is asserted here rather than left to review because it is broken by
 // accident, in one line, by anyone reaching for something convenient -- and
@@ -27,8 +27,8 @@ const _root = "lib/plugin_system";
 const _features = ["writing_tools", "link_previews", "canvas", "creative_ai"];
 
 /// _mayImport is which features each feature may reach into; a feature not
-/// listed may reach into none. canvas reaches into the post library (see the
-/// note above). creative_ai sits on top of the two it works in, adding itself
+/// listed may reach into none. canvas reaches into the writing tools' field
+/// (see the note above). creative_ai sits on top of the two it works in, adding itself
 /// through the hooks they offer, and nothing reaches into it -- so turning it
 /// off, or taking it out, leaves them as they were.
 const _mayImport = {
@@ -93,6 +93,27 @@ void main() {
     expect(offenders, isEmpty,
         reason: "canvas may import writing_tools; creative_ai may import "
             "canvas and writing_tools; nothing else crosses:\n"
+            "${offenders.join("\n")}");
+  });
+
+  test("canvas reaches the post library only through what it is handed", () {
+    // A text's document is read, and a canvas published, through the
+    // WritingLibrary the app hands the Canvas; the library's storage comes
+    // in neither by its own path nor through writing_tools.dart's exports.
+    var named = RegExp(r"\b(PostStorage|PostEntry|EmbedStore)\b");
+    var offenders = <String>[];
+    for (var file in _dartFilesIn("$_root/canvas")) {
+      for (var line in file.readAsStringSync().split("\n")) {
+        var code = line.trimLeft();
+        if (code.startsWith("//")) continue;
+        if (code.contains("plugin_system/writing_tools/post_library/") ||
+            named.hasMatch(code)) {
+          offenders.add("${file.path}: ${line.trim()}");
+        }
+      }
+    }
+    expect(offenders, isEmpty,
+        reason: "ask WritingLibrary (canvas/storage/writing_library.dart):\n"
             "${offenders.join("\n")}");
   });
 

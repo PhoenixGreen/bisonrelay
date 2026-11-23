@@ -131,7 +131,7 @@ class WrapShape {
 List<WrapShape> wrapObstacles(
     TextElement e, CanvasDocument? doc, int frame, Rect inner,
     {CanvasImageSource? images}) {
-  if (doc == null || !e.wrap.on) return const [];
+  if (doc == null || e.wordsSetIn(doc) != WordsSet.wrapped) return const [];
 
   var out = <WrapShape>[];
   for (var other in doc.elements) {
@@ -212,7 +212,7 @@ bool _sameChain(TextElement e, CanvasElement other, CanvasDocument doc) {
   bool reaches(TextElement from, String id) {
     var at = from;
     for (var guard = 0; guard < 64; guard++) {
-      if (at.flowTo.isEmpty) return false;
+      if (!at.flowsOnIn(doc)) return false;
       var next = doc.elementById(at.flowTo);
       if (next is! TextElement) return false;
       if (next.id == id) return true;
@@ -264,6 +264,23 @@ List<(double, double)> freeRuns(Rect box, List<WrapShape> blocked, double top,
   ];
   if (runs.isEmpty || side == WrapSide.both) return runs;
   return [side == WrapSide.left ? runs.first : runs.last];
+}
+
+/// wordsSetRound is how [e]'s [text] is set in [inner] on this frame, once
+/// what is in its way is known ([blocked], from wrapObstacles): wrapped only
+/// while something is and there is room round it (wrapFits), else as with
+/// nothing in the way. The painter and the flow ask it alike, so a chain
+/// passes on what the box really drew.
+WordsSet wordsSetRound(TextElement e, CanvasDocument? doc, String text,
+    TextSpec spec, Rect inner, List<WrapShape> blocked,
+    {required List<TextPart> parts}) {
+  var set = e.wordsSetIn(doc);
+  if (set != WordsSet.wrapped) return set;
+  if (blocked.isNotEmpty &&
+      wrapFits(text, spec, inner, blocked, e.wrap, parts: parts)) {
+    return set;
+  }
+  return e.unwrappedSet;
 }
 
 /// wrapFits is whether wrapping round these obstacles leaves anywhere to
@@ -360,7 +377,7 @@ WrappedText layoutWrapped(
               ? null
               : _line(shown, spec, parts, before, scale,
                   pass: WordsPass.soft)));
-      before = _past(before, text.substring(p.from, p.end));
+      before = _past(before, text, p.from, p.end);
     }
     at = line.next;
     y += line.height;
@@ -408,11 +425,14 @@ _SetLine _setLine(
   for (var run in freeRuns(box, blocked, top, top + height, side)) {
     if (at >= text.length) break;
     var width = run.$2 - run.$1;
-    var (end, laid) = _fit(text, at, spec, width, parts, before, scale);
+    // A word is broken only where it has the box's whole width, as a box
+    // breaks only a word wider than its line.
+    var (end, laid) = _fit(text, at, spec, width, parts, before, scale,
+        breaks: width >= box.width - 0.5);
     // Not one word fits in this run; another may be wider.
     if (end <= at) continue;
     placed.add((left: run.$1, width: width, from: at, end: end, laid: laid));
-    before = _past(before, text.substring(at, end));
+    before = _past(before, text, at, end);
     at = end;
 
     // A hard break ends the line whatever room is left beside it.
@@ -439,9 +459,11 @@ double _baselineOf(LaidOutWords line) =>
 
 /// _fit is the longest run of words from [at] that fits in [width], and its
 /// paragraph. Word by word, not bisection: the answer is usually a few
-/// words in, and measurements are cached.
+/// words in, and measurements are cached. A first word wider than [width]
+/// waits for a wider run, or with [breaks] is broken (_broken).
 (int, LaidOutWords) _fit(String text, int at, TextSpec spec, double width,
-    List<TextPart> parts, _Before before, double scale) {
+    List<TextPart> parts, _Before before, double scale,
+    {bool breaks = false}) {
   var end = at;
   var best = at;
   LaidOutWords? bestLine;
@@ -462,12 +484,14 @@ double _baselineOf(LaidOutWords line) =>
 
     var candidate = text.substring(at, next).trimRight();
     var line = _line(candidate, spec, parts, before, scale);
-    if (line.width > width + 0.5 && best > at) break;
+    if (line.width > width + 0.5) {
+      if (best > at || !breaks) break;
+      return _broken(text, at, next, spec, width, parts, before, scale);
+    }
 
     best = next;
     bestLine = line;
     end = next;
-    if (line.width > width + 0.5) break;
   }
 
   // Nothing fits: the run is narrower than the first word. The caller tries
@@ -478,15 +502,43 @@ double _baselineOf(LaidOutWords line) =>
   return (best, bestLine);
 }
 
+/// _broken is as much of the word from [at] to [end] as fits in [width],
+/// and at least its first letter: a word wider than the box broken across
+/// lines, as a box breaks one wider than its line.
+(int, LaidOutWords) _broken(String text, int at, int end, TextSpec spec,
+    double width, List<TextPart> parts, _Before before, double scale) {
+  var cut = at;
+  LaidOutWords? kept;
+  while (cut < end) {
+    // A letter at a time, never between the halves of a surrogate pair.
+    var next = cut + 1;
+    if (next < end && (text.codeUnitAt(cut) & 0xFC00) == 0xD800) next++;
+    var line = _line(text.substring(at, next), spec, parts, before, scale);
+    if (kept != null && line.width > width + 0.5) break;
+    cut = next;
+    kept = line;
+  }
+  return (cut, kept!);
+}
+
 /// _Before is how far into the text a line starts, as parts count it: in
 /// words and in letters.
 typedef _Before = ({int words, int letters});
 
-/// _past is [before] moved on past [slice].
-_Before _past(_Before before, String slice) => (
-      words: before.words + wordsIn(slice),
-      letters: before.letters + lettersIn(slice)
-    );
+/// _past is [before] moved on past [text] from [from] to [end]. A word
+/// broken at [end] is counted once it ends, on the line that ends it.
+_Before _past(_Before before, String text, int from, int end) {
+  var slice = text.substring(from, end);
+  var words = wordsIn(slice);
+  var broken = end < text.length &&
+      end > from &&
+      !isWordSpace(text[end]) &&
+      !isWordSpace(text[end - 1]);
+  return (
+    words: before.words + words - (broken ? 1 : 0),
+    letters: before.letters + lettersIn(slice)
+  );
+}
 
 /// _line lays one line out, with whatever styled runs fall inside it.
 LaidOutWords _line(String text, TextSpec spec, List<TextPart> parts,

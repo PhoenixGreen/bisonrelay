@@ -288,7 +288,7 @@ class _TextLayersListState extends State<TextLayersList> {
     if (item == null) {
       return [
         "Text",
-        e.slot?.label ?? "fills the box",
+        e.bodySlotIn(controller.document)?.label ?? "fills the box",
       ].join(" · ");
     }
     return [

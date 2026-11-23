@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/font_files.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
@@ -65,6 +66,8 @@ void betweenFiles() {
   }
   DrawnStyles.forgetForTest();
   FontFiles.forgetForTest();
+  // The Writing library a test handed the Canvas, over its own folder.
+  WritingLibrary.forgetForTest();
   forgetFfmpegForTest();
   // What a feature registers as the app starts, and a test registers to
   // stand in for that: left behind, the next file's Settings page builds a

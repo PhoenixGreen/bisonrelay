@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
+import 'package:bruig/models/canvas_writing_library.dart';
+import 'package:bruig/plugin_system/canvas/storage/writing_library.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -263,6 +265,9 @@ void main() {
       // so a field added here would be gone a few seconds later.
       var root = Directory.systemTemp.createTempSync("text-field-doc");
       PostStorage.rootOverride = root.path;
+      // The library the app hands the Canvas at start, over that folder.
+      WritingLibrary.use(const PostStorageLibrary());
+      addTearDown(WritingLibrary.forgetForTest);
       addTearDown(() {
         PostStorage.rootOverride = null;
         root.deleteSync(recursive: true);

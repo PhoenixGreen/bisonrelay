@@ -235,6 +235,19 @@ there are none), so a site that leaves them out does not compile. Labels
 with no parts (a chart's title, a cell, a button) use `layoutText` and
 `paintTextInBox`, which are `layOutWords` with none.
 
+**Which way a text's words are set** is decided in one place,
+`TextElement.wordsSetIn` (`model/elements/text_element.dart`), which answers a
+`WordsSet`: on a line, wrapped, in columns, in a box, in that order of
+precedence (a line counts only while the line it names is on the page). A
+text keeps the fields of every arrangement it has been given, so one taken off
+its line gets its columns back; only the answer changes. Beside it, the
+questions that cut across say what rules them out: `fittedIn`, `flowsOnIn`,
+`showsPiecesIn`, `bodySlotIn`, `wordsFromDocument`. The painter, the flow, the
+stage's clicks and handles, the editor, the panel and the EPUB maker ask these
+rather than the fields, and `switch` over the answer with no default. A new
+way of setting words is a case in `WordsSet` and its place in `wordsSetIn`;
+the compiler then names every reader that must say what it does.
+
 **The four ways words are set** share the styled words (`partRuns`, then
 `partStyle` for each run) and the measure; each owns only how lines are
 placed:
@@ -669,6 +682,17 @@ folder:
 
 Writes are made whole or not at all (a `.part` file renamed into place, or
 `writeWhole`), so a crash leaves the old file as it was.
+
+**The Writing library is not the Canvas's.** A text or a Speech device reads
+its words from a Writing document, and a canvas can be published into the
+library as a picture to embed; both go through `WritingLibrary`
+(`storage/writing_library.dart`): list the documents, read one, publish a
+picture, remove one. The app hands the Canvas one at start
+(`WritingLibrary.use` in `main.dart`, with `PostStorageLibrary` in
+`lib/models/canvas_writing_library.dart`, which knows the library's storage);
+with none handed, as in a test that hands none, nothing is read and the
+picker says there is no library. `test/plugin_system_layering_test.dart`
+fails on a Canvas file that reaches into the library's storage itself.
 
 ## Sound and code
 

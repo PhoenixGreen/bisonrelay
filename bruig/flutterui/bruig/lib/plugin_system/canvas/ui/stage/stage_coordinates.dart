@@ -224,7 +224,7 @@ extension StageCoordinates on CanvasStageState {
   bool _boxIsNotTheShape(CanvasElement e) =>
       e is LineElement ||
       e is PathElement ||
-      (e is TextElement && e.curve != null);
+      (e is TextElement && e.wordsSetIn(document) == WordsSet.onLine);
 
   /// _visualBounds is where an element is drawn: outside its rectangle for a
   /// bowed line, a path or text on a line. See visualBoundsOf.

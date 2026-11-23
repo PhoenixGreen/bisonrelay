@@ -188,8 +188,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
   // Text riding a line takes its place and angle from the line, so the
   // fields would move the words off it; without the line, its own box.
   if (e is TextElement &&
-      e.curve != null &&
-      controller.document.elementById(e.curve!.elementId) != null) {
+      e.wordsSetIn(controller.document) == WordsSet.onLine) {
     return CanvasControlGroup(label: e.kind.label, children: [
       const Padding(
         padding: EdgeInsets.only(top: controlLabelHeight, right: 6),
