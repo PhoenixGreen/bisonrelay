@@ -283,6 +283,26 @@ line in `partStyle` (and in `_sizingOf` beside it, if it changes the words'
 size). Every way of setting words, the measures and the editor then have
 it.
 
+### A shape's outline
+
+A shape's outline is worked out in one place, `shapeOutline`
+(`render/paint_util_shapes.dart`): its kind's path in its box, a square or a
+circle drawn in the square in the middle of the box (`shapeBox`). The
+painter fills and strokes it, a loop runs round it, wrapped words go round
+it (`text_wrap.dart`) and the stage presses it (`StageHitTest.contains`).
+The last two lay it on the page as `paintElement` draws it, through the
+element's turn and slant (`BoxFrame.placePath`). A press counts inside the
+outline, filled or not, or within a line's slack of its edge; the selection
+box and its handles stay the box, and a selected shape is moved from
+anywhere in that box, as a bowed line is.
+
+What a kind of shape is (drawn square, has points, has corners given a
+bubble's body, how far in its label is set, which way its front end points)
+is asked of `ShapeKind`, each a switch with no default, so a new kind has to
+answer them all. A speech bubble is drawn inside its box whatever its tail
+does: the body gives up room on the tail's side for the tail or a thought's
+whole trail, and a cloud's lumps reach the body's edge and no further.
+
 ## The editor
 
 `CanvasController` (`ui/canvas_controller.dart`) is the editing session. One

@@ -111,7 +111,7 @@ List<PanelBit> shapeBits(
         summary: [
           e.shape.label,
           if (e.shape.hasPoints) "${e.points} points",
-          if (e.shape.hasCorners && e.corners.all > 0) "rounded",
+          if (e.hasCorners && e.corners.all > 0) "rounded",
         ].join(" · "),
         children: [
           // Shown, not named: each shape is a tile drawn as itself.
@@ -168,7 +168,7 @@ List<PanelBit> shapeBits(
                 ),
               ],
             ),
-          if (e.shape.hasCorners)
+          if (e.hasCorners)
             CanvasControlGroup(
               label: "Corners",
               help: "How round its corners are: one number for all four, or "

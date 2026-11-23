@@ -347,6 +347,33 @@ void main() {
     expect((await _pixelAt(document, 50, 38)).sublist(0, 3), [0, 0, 0]);
   });
 
+  test("a cross is outlined round its edge and not through its middle",
+      () async {
+    // A plus is one outline of twelve corners. Two bars laid over each other
+    // fill the same, but outlined, each bar's own edges ran across the
+    // middle where the two meet.
+    var cross = ShapeElement(
+      const ElementBase(id: "s", x: 0, y: 0, width: 100, height: 100),
+      shape: ShapeKind.cross,
+      fill: const Color(0xFF0000FF),
+      strokeWidth: 4,
+      strokeColor: const Color(0xFFFF0000),
+    );
+    var document = CanvasDocument(
+      size: const CanvasSize(ratio: CanvasRatio.square, width: 100),
+      elements: [cross],
+    );
+    // The bars are 42 across, so their edges are at 29 and 71: a point just
+    // inside the middle square, on the line where an edge would cross it.
+    expect((await _pixelAt(document, 50, 29)).sublist(0, 3), [0, 0, 255],
+        reason: "the middle is filled, with no edge drawn across it");
+    expect((await _pixelAt(document, 29, 50)).sublist(0, 3), [0, 0, 255]);
+    expect((await _pixelAt(document, 10, 29)).sublist(0, 3), [255, 0, 0],
+        reason: "while the arm's own edge is outlined");
+    var outline = shapeOutline(cross, cross.bounds);
+    expect(outline.computeMetrics().length, 1, reason: "one closed outline");
+  });
+
   test("a hidden element draws nothing", () async {
     var document = CanvasDocument(
       size: const CanvasSize(ratio: CanvasRatio.square, width: 40),
@@ -969,7 +996,7 @@ void main() {
       // The reported fault. Filled, two sub-paths merge; *stroked*, each draws
       // its own boundary, so a line ran across the join and the tail read as a
       // separate shape stuck on the side.
-      var path = bubblePath(box, spec, 0);
+      var path = bubblePath(box, spec, const Corners());
       expect(path.computeMetrics().length, 1,
           reason: "one closed contour means one boundary to stroke");
     });
@@ -977,7 +1004,8 @@ void main() {
     test("a thought tail is deliberately several contours", () {
       // It is a trail of separate circles; unioning them into the body would
       // weld the lot into a sausage.
-      var path = bubblePath(box, spec.copyWith(tail: BubbleTail.thought), 0);
+      var path = bubblePath(
+          box, spec.copyWith(tail: BubbleTail.thought), const Corners());
       expect(path.computeMetrics().length, greaterThan(1));
     });
 
@@ -985,7 +1013,8 @@ void main() {
       // It used to be nailed to the bottom-left corner.
       Rect tailBox(double angle) {
         var whole =
-            bubblePath(box, spec.copyWith(tailAngle: angle), 0).getBounds();
+            bubblePath(box, spec.copyWith(tailAngle: angle), const Corners())
+                .getBounds();
         return whole;
       }
 
@@ -1028,15 +1057,106 @@ void main() {
       expect(bubbleBodyRect(box, longer).width,
           lessThan(bubbleBodyRect(box, normal).width),
           reason: "the body gives way");
-      expect(
-          bubblePath(box, longer, 0).getBounds().right, closeTo(box.right, 1),
+      expect(bubblePath(box, longer, const Corners()).getBounds().right,
+          closeTo(box.right, 1),
           reason: "and the tip still finishes at the edge of the box");
+    });
+
+    test("the whole bubble stays inside its box whatever the tail does", () {
+      // What keeps the selection box, the press and the words honest: the
+      // body gives up room on the tail's side, and a thought's trail and a
+      // cloud's lumps are fitted inside what is left, never drawn past the
+      // edge of the box. Out to the most a saved bubble can hold. Measured
+      // along the outline itself: a curve's bounds as a path keeps them
+      // count its control points, which are not drawn.
+      Rect drawnBounds(ui.Path path, Rect box) {
+        var loose = path.getBounds();
+        if (box.contains(loose.topLeft) && box.contains(loose.bottomRight)) {
+          return loose;
+        }
+        Rect? out;
+        for (var metric in path.computeMetrics()) {
+          for (var d = 0.0; d <= metric.length; d += 0.25) {
+            var at = metric.getTangentForOffset(d)!.position;
+            var dot = Rect.fromLTWH(at.dx, at.dy, 0, 0);
+            out = out == null ? dot : out.expandToInclude(dot);
+          }
+        }
+        return out!;
+      }
+
+      const boxes = [
+        Rect.fromLTWH(0, 0, 200, 120),
+        Rect.fromLTWH(10, 20, 90, 160),
+      ];
+      for (var box in boxes) {
+        for (var body in BubbleBody.values) {
+          for (var tail in BubbleTail.values) {
+            for (var angle in [-30.0, for (var i = 0; i < 16; i++) i * 22.5]) {
+              for (var length in [0.05, 0.45, 1.2, 2.0]) {
+                for (var width in [0.05, 1.0, 2.0]) {
+                  for (var curl in [0.5, -1.2, 15.0]) {
+                    if (curl != 0.5 && tail != BubbleTail.curved) continue;
+                    var it = SpeechBubbleSpec(
+                        body: body,
+                        tail: tail,
+                        tailAngle: angle,
+                        tailLength: length,
+                        tailWidth: width,
+                        curl: curl);
+                    var drawn =
+                        drawnBounds(bubblePath(box, it, const Corners()), box);
+                    var room = box.inflate(0.5);
+                    expect(
+                        room.contains(drawn.topLeft) &&
+                            room.contains(drawn.bottomRight),
+                        isTrue,
+                        reason: "${body.name} ${tail.name} at $angle, "
+                            "length $length, width $width, curl $curl "
+                            "in $box: $drawn");
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    test("a rounded body rounds each corner as it is given", () async {
+      // Split, the four corners are the bubble's own: one given none is
+      // square, and one given more is rounder.
+      var bubble = ShapeElement(
+        const ElementBase(id: "s", x: 0, y: 0, width: 100, height: 100),
+        shape: ShapeKind.speechBubble,
+        fill: const Color(0xFFFF0000),
+        bubble: const SpeechBubbleSpec(tail: BubbleTail.none),
+        radTL: 45,
+        radTR: 0,
+      );
+      var document = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.square, width: 100),
+        background: const CanvasBackground(
+          spec: ProceduralSpec(
+              style: ProceduralStyle.plain,
+              background: Color(0xFF000000),
+              vignette: 0),
+        ),
+        elements: [bubble],
+      );
+      expect((await _pixelAt(document, 8, 8)).sublist(0, 3), [0, 0, 0],
+          reason: "the top left given a large radius is cut well in");
+      expect((await _pixelAt(document, 97, 2)).sublist(0, 3), [255, 0, 0],
+          reason: "the top right given none is square");
+      expect((await _pixelAt(document, 2, 97)).sublist(0, 3), [0, 0, 0],
+          reason: "the two not given their own keep the bubble's rounding");
     });
 
     test("every body and tail builds a usable path", () {
       for (var body in BubbleBody.values) {
         for (var tail in BubbleTail.values) {
-          var path = bubblePath(box, spec.copyWith(body: body, tail: tail), 0);
+          var path = bubblePath(
+              box, spec.copyWith(body: body, tail: tail), const Corners());
           expect(path.getBounds().isEmpty, isFalse,
               reason: "${body.name} with ${tail.name}");
         }

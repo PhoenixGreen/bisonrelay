@@ -1,7 +1,7 @@
 import 'dart:math' as math;
-import 'dart:typed_data' show Float64List;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
@@ -47,22 +47,8 @@ ui.Path overlayPath(SceneTransition over, Rect page, double t) {
 
 /// _turned turns a path about the page's middle, for arrangements set at an
 /// angle.
-ui.Path _turned(ui.Path path, Rect page, double degrees) {
-  if (degrees == 0) return path;
-  var r = degrees * math.pi / 180;
-  var cos = math.cos(r);
-  var sin = math.sin(r);
-  var c = page.center;
-  return path.transform(Float64List.fromList([
-    cos, sin, 0, 0, //
-    -sin, cos, 0, 0, //
-    0, 0, 1, 0, //
-    c.dx - cos * c.dx + sin * c.dy,
-    c.dy - sin * c.dx - cos * c.dy,
-    0,
-    1,
-  ]));
-}
+ui.Path _turned(ui.Path path, Rect page, double degrees) =>
+    BoxFrame(degrees, 0, 0).placePath(path, page.center);
 
 /// _closed fills in the last of the page as the cover completes: a cover of
 /// pieces has gaps by design, but a gap when the scenes change shows the cut.
@@ -215,37 +201,22 @@ ui.Path _shapes(SceneTransition over, Rect page, double grown, bool going) {
   return _closed(_turned(path, page, over.angle), page, grown);
 }
 
-/// _pointed turns an arrow, chevron or triangle to face the way it travels,
-/// about its own middle so a corner shape stays in the corner.
+/// _pointed turns a shape with a front end (ShapeKind.facing) to face the
+/// way it travels, about its own middle so a corner shape stays in the
+/// corner.
 ui.Path _pointed(
     ui.Path path, ShapeKind shape, Rect box, SceneTransitionWay way) {
-  if (shape != ShapeKind.arrow &&
-      shape != ShapeKind.chevron &&
-      shape != ShapeKind.triangle) {
-    return path;
-  }
-  // A triangle is drawn pointing up, the other two right.
-  var facing = shape == ShapeKind.triangle ? -math.pi / 2 : 0.0;
+  var facing = shape.facing;
+  if (facing == null) return path;
   var wanted = switch (way) {
     SceneTransitionWay.inPlace || SceneTransitionWay.right => 0.0,
-    SceneTransitionWay.left => math.pi,
-    SceneTransitionWay.down => math.pi / 2,
-    SceneTransitionWay.up => -math.pi / 2,
+    SceneTransitionWay.left => 180.0,
+    SceneTransitionWay.down => 90.0,
+    SceneTransitionWay.up => -90.0,
   };
-  var r = wanted - facing;
-  if (r == 0) return path;
-  var cos = math.cos(r);
-  var sin = math.sin(r);
-  var c = box.center;
-  return path.transform(Float64List.fromList([
-    cos, sin, 0, 0, //
-    -sin, cos, 0, 0, //
-    0, 0, 1, 0, //
-    c.dx - cos * c.dx + sin * c.dy,
-    c.dy - sin * c.dx - cos * c.dy,
-    0,
-    1,
-  ]));
+  var turn = wanted - facing;
+  if (turn == 0) return path;
+  return BoxFrame(turn, 0, 0).placePath(path, box.center);
 }
 
 /// _clock is a sector sweeping round like a hand.
@@ -745,8 +716,11 @@ ui.Path _burst(SceneTransition over, Rect page, double t) {
   if (leaving > 0) return path;
 
   // The star in the middle they all come out of.
-  path = ui.Path.combine(ui.PathOperation.union, path,
-      _star(centre, reach * 0.42, reach * 0.24, math.max(5, rays)));
+  path = ui.Path.combine(
+      ui.PathOperation.union,
+      path,
+      starPath(
+          centre, reach * 0.42, reach * 0.42, math.max(5, rays), 0.24 / 0.42));
 
   // A bigger star closes the last of the cover: a handful of wedges always
   // leave page between them, and a gap at the change shows the cut.
@@ -755,8 +729,8 @@ ui.Path _burst(SceneTransition over, Rect page, double t) {
     path = ui.Path.combine(
         ui.PathOperation.union,
         path,
-        _star(centre, reach * 1.3 * last, reach * 1.05 * last,
-            math.max(5, rays)));
+        starPath(centre, reach * 1.3 * last, reach * 1.3 * last,
+            math.max(5, rays), 1.05 / 1.3));
   }
   return path;
 }
@@ -793,16 +767,4 @@ ui.Path _rays(SceneTransition over, Rect page, double t) {
   }
   return ui.Path.combine(
       ui.PathOperation.difference, ui.Path()..addRect(page.inflate(1)), gaps);
-}
-
-/// _star is a spiked outline: [points] long spikes with short ones between.
-ui.Path _star(Offset centre, double out, double into, int points) {
-  var path = ui.Path();
-  for (var i = 0; i < points * 2; i++) {
-    var angle = i / (points * 2) * 2 * math.pi - math.pi / 2;
-    var away = i.isEven ? out : into;
-    var p = centre + Offset(math.cos(angle) * away, math.sin(angle) * away);
-    i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-  }
-  return path..close();
 }

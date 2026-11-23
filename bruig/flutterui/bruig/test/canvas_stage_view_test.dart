@@ -2389,6 +2389,54 @@ void main() {
     });
   });
 
+  group("selecting a shape", () {
+    /// triangleOver is a triangle, with a rectangle behind it or not.
+    CanvasController triangleOver({required bool behind}) {
+      var document = const CanvasDocument();
+      if (behind) {
+        document = document.addElement(ShapeElement(
+            const ElementBase(id: "b", x: 100, y: 100, width: 800, height: 600),
+            fill: const Color(0xFF2244CC)));
+      }
+      document = document.addElement(ShapeElement(
+          const ElementBase(id: "t", x: 300, y: 200, width: 400, height: 300),
+          shape: ShapeKind.triangle,
+          fill: const Color(0xFFCC2200)));
+      return CanvasController(document);
+    }
+
+    // Beside the triangle's left side, inside its box.
+    const corner = Offset(330, 230);
+
+    testWidgets("a press in a triangle's empty corner takes what is behind",
+        (tester) async {
+      var controller = triangleOver(behind: true);
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.tapAt(stage.pageRect.topLeft + corner * scale);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"b"});
+    });
+
+    testWidgets("but a selected triangle is moved from anywhere in its box",
+        (tester) async {
+      // Its selection box is still its box, as a bowed line's is.
+      var controller = triangleOver(behind: false);
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / controller.document.size.width;
+      await tester.dragFrom(
+          stage.pageRect.topLeft + corner * scale, const Offset(40, 20));
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"t"});
+      expect(controller.document.elementById("t")!.x,
+          closeTo(300 + 40 / scale, 1),
+          reason: "it followed the pointer");
+    });
+  });
+
   group("the selection box follows what is drawn", () {
     /// bowed is a line curving well outside its own rectangle.
     (CanvasController, LineElement) bowed() {

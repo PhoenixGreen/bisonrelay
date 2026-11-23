@@ -10,10 +10,53 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+
+/// _KeptOutline is a shape's outline in a box, and its edge walked into
+/// points for one reach, kept for the next ask about the same shape in the
+/// same box (_outlineOf): a pointer moving over one shape asks at every
+/// move, and a cloud's outline is a dozen unions.
+class _KeptOutline {
+  final ShapeElement shape;
+  final Rect box;
+  final Path outline;
+  double? _reach;
+  List<List<Offset>> _edges = const [];
+
+  _KeptOutline(this.shape, this.box) : outline = shapeOutline(shape, box);
+
+  /// edges is the outline's edge as runs of points, in steps short beside
+  /// [reach] so a corner is not stepped over, and never more than a few
+  /// thousand of them.
+  List<List<Offset>> edges(double reach) {
+    if (_reach == reach) return _edges;
+    _reach = reach;
+    return _edges = [
+      for (var metric in outline.computeMetrics())
+        [
+          for (var d = 0.0;
+              d < metric.length;
+              d += math.max(reach / 4, metric.length / 2000))
+            metric.getTangentForOffset(d)!.position,
+          metric.getTangentForOffset(metric.length)!.position,
+        ],
+    ];
+  }
+}
+
+_KeptOutline? _lastOutline;
+
+/// _outlineOf is [e]'s outline in [box], the last one kept if it is the
+/// same shape in the same box.
+_KeptOutline _outlineOf(ShapeElement e, Rect box) {
+  var last = _lastOutline;
+  if (last != null && identical(last.shape, e) && last.box == box) return last;
+  return _lastOutline = _KeptOutline(e, box);
+}
 
 /// StageHitTest answers "what is at this point of the document, now": where
 /// each element is drawn at this frame, and which is under a point. Made
@@ -121,9 +164,13 @@ class StageHitTest {
     if (!shape.upright) local = box.center + shape.invert(at - box.center);
     if (!box.contains(local)) return false;
 
-    if (e is ShapeElement && e.shape == ShapeKind.circle) {
-      var r = box.shortestSide / 2;
-      return (local - box.center).distance <= r;
+    // A shape is pressed inside its outline, filled or not, or near enough
+    // its edge to pick a thin one; its box's empty corners are left to
+    // what is behind it.
+    if (e is ShapeElement) {
+      var kept = _outlineOf(e, box);
+      return kept.outline.contains(local) ||
+          _nearOutline(kept, local, _strokeReach(e.strokeWidth));
     }
     return true;
   }
@@ -172,6 +219,12 @@ class StageHitTest {
   /// _strokeReach is how near a line, in document units, counts as on it.
   double _strokeReach(double strokeWidth) =>
       math.max(strokeWidth / 2, 0) + strokeHitSlop / scale;
+
+  /// _nearOutline is whether [point] is within [reach] of [kept]'s edge.
+  bool _nearOutline(_KeptOutline kept, Offset point, double reach) {
+    if (!kept.outline.getBounds().inflate(reach).contains(point)) return false;
+    return kept.edges(reach).any((run) => _nearPolyline(run, point, reach));
+  }
 
   bool _nearPolyline(List<Offset> points, Offset point, double reach) {
     for (var i = 1; i < points.length; i++) {

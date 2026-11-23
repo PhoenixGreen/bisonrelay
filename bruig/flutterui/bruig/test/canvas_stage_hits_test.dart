@@ -65,6 +65,62 @@ void main() {
     expect(hit.contains(ring, const Offset(104, 104)), isFalse);
   });
 
+  group("a shape is pressed by its outline, not its box", () {
+    // A press in the empty part of a shape's box goes to what is behind
+    // it. Only the selection box and its handles are the box.
+    test("not in a triangle's empty corner", () {
+      var behind = _shape("behind", 0, 0, 400, 300);
+      var triangle = _shape("a", 100, 100, 200, 100, kind: ShapeKind.triangle);
+      var hit = _hits([behind, triangle]);
+      expect(hit.contains(triangle, const Offset(200, 180)), isTrue);
+      expect(hit.contains(triangle, const Offset(110, 110)), isFalse);
+      expect(hit.topmost(const Offset(110, 110))?.id, "behind",
+          reason: "the press goes through to what is behind");
+    });
+
+    test("not between a star's points", () {
+      var star = _shape("a", 100, 100, 200, 200, kind: ShapeKind.star);
+      var hit = _hits([star]);
+      expect(hit.contains(star, const Offset(200, 200)), isTrue);
+      expect(hit.contains(star, const Offset(250, 120)), isFalse);
+    });
+
+    test("on a thin arm, with the slack a line has", () {
+      // A star cut almost to its middle: its points are slivers, still
+      // there to be picked a little way off.
+      var star = _shape("a", 100, 100, 200, 200, kind: ShapeKind.star)
+          .copyWith(innerRatio: 0.05);
+      var hit = _hits([star]);
+      expect(hit.contains(star, const Offset(204, 130)), isTrue);
+      expect(hit.contains(star, const Offset(230, 130)), isFalse);
+    });
+
+    test("on a bubble's tail and not beside it", () {
+      var bubble = _shape("a", 100, 100, 200, 120, kind: ShapeKind.speechBubble)
+          .copyWith(bubble: const SpeechBubbleSpec(tailAngle: 90));
+      var hit = _hits([bubble]);
+      expect(hit.contains(bubble, const Offset(200, 214)), isTrue,
+          reason: "near the tail's tip");
+      expect(hit.contains(bubble, const Offset(120, 214)), isFalse,
+          reason: "in the box beside the tail");
+    });
+
+    test("slanted, as it is drawn", () {
+      // Leaning right at the bottom: the box's top right corner is off it.
+      var slanted = _shape("a", 100, 100, 200, 100).withBase(skewX: 30);
+      var hit = _hits([slanted]);
+      expect(hit.contains(slanted, const Offset(290, 104)), isFalse);
+      expect(hit.contains(slanted, const Offset(320, 196)), isTrue,
+          reason: "past the box, where the slant carries it");
+      var triangle = _shape("t", 100, 100, 200, 100, kind: ShapeKind.triangle)
+          .withBase(skewX: 30);
+      var tilted = _hits([triangle]);
+      expect(tilted.contains(triangle, const Offset(130, 196)), isTrue);
+      expect(tilted.contains(triangle, const Offset(140, 130)), isFalse,
+          reason: "beside the slanted triangle's left side");
+    });
+  });
+
   test("a line is hit near its stroke, and further off at a smaller scale", () {
     var line = const LineElement(
         ElementBase(id: "l", x: 100, y: 200, width: 400, height: 6),

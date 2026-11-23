@@ -175,18 +175,8 @@ Offset _quadratic(Offset a, Offset control, Offset b, double t) {
 
 void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
     [CanvasImageSource? images]) {
-  var rect = bounds;
-  if (e.shape.isRegular) {
-    var side = rect.shortestSide;
-    rect = Rect.fromCenter(center: rect.center, width: side, height: side);
-  }
-
-  var path = shapePath(e.shape, rect,
-      points: e.points,
-      inner: e.innerRatio,
-      cornerRadius: e.cornerRadius,
-      corners: e.corners,
-      bubble: e.bubble);
+  var rect = shapeBox(e, bounds);
+  var path = shapeOutline(e, bounds);
 
   // Across the shape's own bounds, so a gradient runs the shape's length.
   var area = path.getBounds();
@@ -213,38 +203,23 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
             area));
   }
 
+  // As typed: the layout puts the words in their case.
   if (e.text.isNotEmpty) {
-    paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec,
-        labelRoom(e, rect));
+    paintTextInBox(canvas, e.text, e.textSpec, labelRoom(e, rect));
   }
 }
 
-/// labelRoom is where a shape's label is set: its padding, or else the
-/// shape's own crude inset (not the inscribed rectangle of an arbitrary
-/// path), enough to keep a label in a circle or triangle off the edge.
+/// labelRoom is where a shape's label is set in [rect], the box its outline
+/// is drawn in (shapeBox): its padding, or else its kind's own inset
+/// (ShapeKind.labelInsetWith, labelDrop).
 Rect labelRoom(ShapeElement e, Rect rect) {
   // A bubble's words go in its body: the box less whatever the tail took.
-  if (e.shape == ShapeKind.speechBubble) {
-    var body = bubbleBodyRect(rect, e.bubble);
-    if (e.padded) return e.pad.inner(body);
-    var margin = e.bubble.body == BubbleBody.burst ? 0.22 : 0.1;
-    return body.deflate(body.shortestSide * margin);
-  }
-  if (e.padded) return e.pad.inner(rect);
-
-  var inset = switch (e.shape) {
-    ShapeKind.circle || ShapeKind.ellipse => 0.15,
-    ShapeKind.triangle => 0.24,
-    ShapeKind.diamond || ShapeKind.star => 0.26,
-    ShapeKind.pentagon || ShapeKind.hexagon => 0.16,
-    _ => 0.06,
-  };
-  var box = rect.deflate(rect.shortestSide * inset);
-  // A triangle's room is not centred in its box: the top is a point.
-  if (e.shape == ShapeKind.triangle) {
-    box = box.translate(0, rect.height * 0.1);
-  }
-  return box;
+  var room =
+      e.shape == ShapeKind.speechBubble ? bubbleBodyRect(rect, e.bubble) : rect;
+  if (e.padded) return e.pad.inner(room);
+  var box = room.deflate(room.shortestSide * e.labelInset);
+  var drop = e.shape.labelDrop;
+  return drop == 0 ? box : box.translate(0, rect.height * drop);
 }
 
 /// lineControlPoint is the control point of a bowed line's quadratic, in its
@@ -403,7 +378,8 @@ void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
   }
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
-  paintTextInBox(canvas, spec.textCase.apply(e.label), spec, inner, clip: true);
+  // As typed: the layout puts the words in their case.
+  paintTextInBox(canvas, e.label, spec, inner, clip: true);
 }
 
 /// _paintPath draws a bezier curve. A guide path (PathElement.guide) is

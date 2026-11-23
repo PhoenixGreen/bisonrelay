@@ -166,7 +166,8 @@ List<_State> _shapeStates() {
   }
 
   // Corners: one radius for all four, and four of their own.
-  for (var kind in ShapeKind.values.where((k) => k.hasCorners)) {
+  for (var kind
+      in ShapeKind.values.where((k) => k.hasCornersWith(BubbleBody.rounded))) {
     if (kind == ShapeKind.speechBubble) continue;
     for (var (boxName, box) in _boxes) {
       out.add(_state("shape-${kind.name}-$boxName-corners-even",

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data' show Float64List;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -999,6 +1000,22 @@ class BoxFrame {
           math.tan(skewX * math.pi / 180), math.tan(skewY * math.pi / 180));
     }
     canvas.translate(-centre.dx, -centre.dy);
+  }
+
+  /// placePath is [path], drawn in box space, laid out this way about
+  /// [centre] as [applyTo] lays out the canvas: an outline that must land
+  /// where the element is drawn, for words to go round or a press to find.
+  Path placePath(Path path, Offset centre) {
+    if (upright) return path;
+    return path.transform(Float64List.fromList([
+      a, c, 0, 0, //
+      b, d, 0, 0, //
+      0, 0, 1, 0, //
+      centre.dx - a * centre.dx - b * centre.dy,
+      centre.dy - c * centre.dx - d * centre.dy,
+      0,
+      1,
+    ]));
   }
 
   /// corners is [box] laid out this way about its middle.

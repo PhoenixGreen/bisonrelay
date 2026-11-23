@@ -210,17 +210,7 @@ ElementAnimation? _animationOf(CanvasElement element) => switch (element) {
 Path _loopOutline(CanvasElement element, Rect bounds, int frame) {
   switch (element) {
     case ShapeElement e:
-      var rect = bounds;
-      if (e.shape.isRegular) {
-        var side = rect.shortestSide;
-        rect = Rect.fromCenter(center: rect.center, width: side, height: side);
-      }
-      return shapePath(e.shape, rect,
-          points: e.points,
-          inner: e.innerRatio,
-          cornerRadius: e.cornerRadius,
-          corners: e.corners,
-          bubble: e.bubble);
+      return shapeOutline(e, bounds);
     case VectorElement e when e.shapes != null:
       var p = e.placement(bounds, e.viewBox);
       var matrix = Float64List.fromList([

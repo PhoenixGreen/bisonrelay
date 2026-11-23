@@ -260,10 +260,12 @@ void main() {
 
     test("and only the shapes with corners are offered them", () {
       // A field that does nothing is worse than no field.
-      expect(ShapeKind.rectangle.hasCorners, isTrue);
-      expect(ShapeKind.speechBubble.hasCorners, isTrue);
-      expect(ShapeKind.circle.hasCorners, isFalse);
-      expect(ShapeKind.star.hasCorners, isFalse);
+      bool cornered(ShapeKind kind) =>
+          ShapeElement(const ElementBase(id: "s"), shape: kind).hasCorners;
+      expect(cornered(ShapeKind.rectangle), isTrue);
+      expect(cornered(ShapeKind.speechBubble), isTrue);
+      expect(cornered(ShapeKind.circle), isFalse);
+      expect(cornered(ShapeKind.star), isFalse);
     });
 
     test("the label's room is the shape's own until it is set", () {

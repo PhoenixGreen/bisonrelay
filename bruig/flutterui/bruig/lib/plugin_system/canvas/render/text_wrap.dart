@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data' show Float64List;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -145,12 +144,18 @@ List<WrapShape> wrapObstacles(
 
     var at = other.boundsAt(frame);
     var box = at.inflate(e.wrap.gap);
+    var outline = _outlineOf(other, at);
+    // A turned or slanted outline reaches past the box it was given, and
+    // the words go round all of it.
+    if (outline != null) {
+      box = box.expandToInclude(outline.getBounds().inflate(e.wrap.gap));
+    }
     if (!box.overlaps(inner)) continue;
     if (other is ImageElement) {
       out.add(_pictureShape(other, at, box, e.wrap.gap, images));
       continue;
     }
-    out.add(WrapShape(box, path: _outlineOf(other, at), gap: e.wrap.gap));
+    out.add(WrapShape(box, path: outline, gap: e.wrap.gap));
   }
   return out;
 }
@@ -179,29 +184,13 @@ WrapShape _pictureShape(
 }
 
 /// _outlineOf is an element's own shape in document space, or null where
-/// its shape is its box. Pictures are handled by _pictureShape.
+/// its shape is its box: a shape's outline (shapeOutline) turned and
+/// slanted about its middle as paintElement draws it at rest. Pictures are
+/// handled by _pictureShape.
 Path? _outlineOf(CanvasElement e, Rect at) {
   if (e is! ShapeElement) return null;
-  var path = shapePath(e.shape, at,
-      points: e.points,
-      cornerRadius: e.cornerRadius,
-      corners: e.corners,
-      bubble: e.bubble);
-  if (e.rotationRadians == 0) return path;
-
-  // Turned about its own centre, as it is drawn.
-  var centre = at.center;
-  var cos = math.cos(e.rotationRadians);
-  var sin = math.sin(e.rotationRadians);
-  return path.transform(Float64List.fromList([
-    cos, sin, 0, 0, //
-    -sin, cos, 0, 0, //
-    0, 0, 1, 0, //
-    centre.dx - cos * centre.dx + sin * centre.dy,
-    centre.dy - sin * centre.dx - cos * centre.dy,
-    0,
-    1,
-  ]));
+  return BoxFrame(e.rotation, e.base.skewX, e.base.skewY)
+      .placePath(shapeOutline(e, at), at.center);
 }
 
 /// _sameChain is whether [other] shares its words with [e], in either

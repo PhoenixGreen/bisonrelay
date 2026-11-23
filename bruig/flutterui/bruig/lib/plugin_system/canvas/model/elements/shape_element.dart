@@ -32,18 +32,67 @@ enum ShapeKind {
         orElse: () => ShapeKind.rectangle,
       );
 
-  /// isRegular means the shape only makes sense in a square box, so the
-  /// resize handles keep the aspect.
-  bool get isRegular => this == ShapeKind.square || this == ShapeKind.circle;
+  // What each kind is, asked by whatever draws, measures or offers it. Each
+  // is a switch with no default, so a new kind has to answer every one.
+
+  /// isRegular is whether the shape is drawn square: in the square in the
+  /// middle of its box, whatever shape the box is (shapeBox).
+  bool get isRegular => switch (this) {
+        square || circle => true,
+        rectangle || ellipse || triangle || diamond || pentagon => false,
+        hexagon || star || arrow || chevron || cross || speechBubble => false,
+      };
 
   /// hasPoints is whether the point count control applies.
-  bool get hasPoints => this == ShapeKind.star;
+  bool get hasPoints => switch (this) {
+        star => true,
+        rectangle || square || ellipse || circle || triangle => false,
+        diamond || pentagon || hexagon || arrow || chevron => false,
+        cross || speechBubble => false,
+      };
 
-  /// hasCorners is whether rounding the corners means anything.
-  bool get hasCorners =>
-      this == ShapeKind.rectangle ||
-      this == ShapeKind.square ||
-      this == ShapeKind.speechBubble;
+  /// hasCornersWith is whether rounding the corners means anything for this
+  /// kind, given the [body] a speech bubble would have: only a rounded body
+  /// has corners to round.
+  bool hasCornersWith(BubbleBody body) => switch (this) {
+        rectangle || square => true,
+        speechBubble => body == BubbleBody.rounded,
+        ellipse || circle || triangle || diamond || pentagon => false,
+        hexagon || star || arrow || chevron || cross => false,
+      };
+
+  /// labelInsetWith is how far in from the edge of its room a label is set
+  /// when no padding is asked for, as a share of the room's shorter side: a
+  /// crude inset rather than the rectangle inscribed in the outline, enough
+  /// to keep words in a circle or a triangle off the edge. A speech bubble's
+  /// room is its body, and depends on that [body].
+  double labelInsetWith(BubbleBody body) => switch (this) {
+        rectangle || square || arrow || chevron || cross => 0.06,
+        circle || ellipse => 0.15,
+        triangle => 0.24,
+        diamond || star => 0.26,
+        pentagon || hexagon => 0.16,
+        speechBubble => body == BubbleBody.burst ? 0.22 : 0.1,
+      };
+
+  /// labelDrop is how far a label's room is moved down from the middle, as
+  /// a share of the box's height: a triangle's top is a point.
+  double get labelDrop => switch (this) {
+        triangle => 0.1,
+        rectangle || square || ellipse || circle || diamond => 0,
+        pentagon || hexagon || star || arrow || chevron => 0,
+        cross || speechBubble => 0,
+      };
+
+  /// facing is the way the shape's front end points as drawn, in degrees
+  /// clockwise from the right, or null for a shape with no front end: what
+  /// a shape turns by to point the way it is going.
+  double? get facing => switch (this) {
+        arrow || chevron => 0,
+        triangle => -90,
+        rectangle || square || ellipse || circle || diamond => null,
+        pentagon || hexagon || star || cross || speechBubble => null,
+      };
 }
 
 /// minStarPoints, maxStarPoints, minStarDepth and maxStarDepth are the
@@ -245,6 +294,14 @@ class ShapeElement extends CanvasElement {
   /// corners is the four radii, [cornerRadius] standing in for unset ones.
   Corners get corners =>
       Corners(all: cornerRadius, tl: radTL, tr: radTR, br: radBR, bl: radBL);
+
+  /// hasCorners is whether this shape's corners can be rounded: its kind's
+  /// answer for its own bubble's body.
+  bool get hasCorners => shape.hasCornersWith(bubble.body);
+
+  /// labelInset is how far in its label is set while no padding is asked
+  /// for: its kind's answer for its own bubble's body.
+  double get labelInset => shape.labelInsetWith(bubble.body);
 
   /// pad is the room kept for the label on each side, or all zeroes while
   /// the shape decides for itself.

@@ -386,6 +386,23 @@ void main() {
       expect(find.text("Tail"), findsNothing);
     });
 
+    testWidgets("corners are offered only where the outline has corners",
+        (tester) async {
+      // A field that does nothing is worse than no field: an oval, a cloud
+      // or a burst has no corners to round.
+      for (var body in BubbleBody.values) {
+        await panel(
+            tester,
+            shapeOf(ShapeKind.speechBubble)
+                .copyWith(bubble: SpeechBubbleSpec(body: body)));
+        expect(find.byKey(const ValueKey("shapeRadiusLink")),
+            body == BubbleBody.rounded ? findsOneWidget : findsNothing,
+            reason: "a ${body.name} bubble");
+      }
+      await panel(tester, shapeOf(ShapeKind.rectangle));
+      expect(find.byKey(const ValueKey("shapeRadiusLink")), findsOneWidget);
+    });
+
     testWidgets("the label's type appears only when there is a label",
         (tester) async {
       await panel(tester, shapeOf(ShapeKind.star));

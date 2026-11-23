@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -273,6 +274,80 @@ void main() {
           freeRuns(text.bounds, blocked, y, y + 19, WrapSide.both).first.$2;
       expect(roomAt(40), closeTo(roomAt(150), 1),
           reason: "a rectangle takes the same room out of every line");
+    });
+  });
+
+  group("a shape is gone round as it is drawn", () {
+    // The words go round the outline the shape is drawn with, laid on the
+    // page as it is drawn, turn and slant and all: anything else leaves
+    // words over the shape or a gap where there is none.
+    WrapShape around(ShapeElement shape) {
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 800, height: 400),
+        text: _words,
+        wrap: const TextWrap(on: true, gap: 8),
+      );
+      var doc = CanvasDocument(elements: [text, shape]);
+      return wrapObstacles(text, doc, 0, text.bounds).single;
+    }
+
+    const oblong = ElementBase(id: "s", x: 200, y: 40, width: 400, height: 200);
+
+    void expectRect(Rect actual, Rect expected) {
+      expect(actual.left, closeTo(expected.left, 0.01));
+      expect(actual.top, closeTo(expected.top, 0.01));
+      expect(actual.right, closeTo(expected.right, 0.01));
+      expect(actual.bottom, closeTo(expected.bottom, 0.01));
+    }
+
+    test("a circle in an oblong box, as its disc", () {
+      // A circle is drawn round in the middle of whatever box it has.
+      var it = around(const ShapeElement(oblong, shape: ShapeKind.circle));
+      expectRect(it.path!.getBounds(), const Rect.fromLTRB(300, 40, 500, 240));
+      expect(it.path!.contains(const Offset(250, 140)), isFalse,
+          reason: "the box's end beside the disc is room for words");
+    });
+
+    test("a square in an oblong box, as its square", () {
+      var it = around(const ShapeElement(oblong, shape: ShapeKind.square));
+      expectRect(it.path!.getBounds(), const Rect.fromLTRB(300, 40, 500, 240));
+    });
+
+    test("a star at its own depth", () {
+      // Between two points, deeper than the default star's cut.
+      var star = ShapeElement(
+          const ElementBase(id: "s", x: 200, y: 40, width: 200, height: 200),
+          shape: ShapeKind.star,
+          innerRatio: 0.7);
+      var it = around(star);
+      var between = -math.pi / 2 + math.pi / 5;
+      var point =
+          const Offset(300, 140) + Offset.fromDirection(between, 100 * 0.6);
+      expect(it.path!.contains(point), isTrue,
+          reason: "a shallow star fills what a deep one cuts away");
+    });
+
+    test("a slanted shape, slanted", () {
+      // Leaning right at the bottom: its lower right corner is past the
+      // box's edge, and its upper right corner short of it.
+      var slanted = const ShapeElement(oblong).withBase(skewX: 20);
+      var it = around(slanted as ShapeElement);
+      var lean = math.tan(20 * math.pi / 180) * 100;
+      expect(it.path!.contains(Offset(600 + lean - 4, 236)), isTrue);
+      expect(it.path!.contains(Offset(600 - lean + 4, 44)), isFalse);
+      var span = it.spanIn(226, 238)!;
+      expect(span.$2, greaterThan(600 + lean * 0.75 + 8),
+          reason: "the words keep clear of the corner past the box");
+    });
+
+    test("a turned shape's corner past its box is gone round", () {
+      // Turned, a corner reaches above the box it was given: the words on a
+      // line beside that corner go round it too.
+      var turned = const ShapeElement(oblong).withBase(rotation: 30);
+      var it = around(turned as ShapeElement);
+      expect(it.bounds.top, lessThan(oblong.y - 8));
+      expect(it.spanIn(10, 30), isNotNull,
+          reason: "a line above the box, beside the turned corner");
     });
   });
 

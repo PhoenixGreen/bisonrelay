@@ -220,10 +220,12 @@ extension StageCoordinates on CanvasStageState {
           live: controller.liveMotion, instance: i);
 
   /// _boxIsNotTheShape marks elements whose selection box is bigger than what
-  /// the pointer can land on: see _onPointerDown.
+  /// the pointer can land on: see _onPointerDown. A shape is pressed by its
+  /// outline (StageHitTest.contains), which leaves its box's corners empty.
   bool _boxIsNotTheShape(CanvasElement e) =>
       e is LineElement ||
       e is PathElement ||
+      e is ShapeElement ||
       (e is TextElement && e.wordsSetIn(document) == WordsSet.onLine);
 
   /// _visualBounds is where an element is drawn: outside its rectangle for a
