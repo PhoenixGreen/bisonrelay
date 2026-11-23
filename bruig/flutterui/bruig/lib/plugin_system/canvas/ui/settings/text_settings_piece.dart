@@ -71,6 +71,27 @@ Widget _pieceQuick(
   ]);
 }
 
+/// _piecePanel is picked piece [item]'s settings, at [at] in [e]: the
+/// text's [layers] over the piece's own quick strip and five sections, in
+/// the frame every element's panel is drawn in. Not the element's panel:
+/// a piece has no place, docking, stage, cue or presets of its own.
+Widget _piecePanel(
+        BuildContext context,
+        CanvasController controller,
+        TextElement e,
+        int at,
+        TextItem item,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit,
+        {required Widget layers}) =>
+    panelFrame(
+        parts: layers,
+        quick:
+            _pieceQuick(context, controller, e, at, item, write, begin, commit),
+        sections: _pieceSections(
+            context, controller, e, at, item, write, begin, commit));
+
 List<Widget> _pieceSections(
     BuildContext context,
     CanvasController controller,
@@ -254,15 +275,7 @@ List<Widget> _pieceSections(
                   grow: false,
                   onPressed: item.locked
                       ? null
-                      : () {
-                          w.now(withPieceLooks(
-                              e.copyWith(items: [
-                                for (var (i, it) in e.items.indexed)
-                                  if (i != at) it,
-                              ]),
-                              item.id));
-                          controller.pickTextLayer(e.id, null);
-                        },
+                      : () => controller.removeTextPiece(e.id, item.id),
                 ),
               ]),
         ]),

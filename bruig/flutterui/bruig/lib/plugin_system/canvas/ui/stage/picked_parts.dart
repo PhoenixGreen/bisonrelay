@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 
 // picked_parts.dart is the parts picked inside one selected element (warp
@@ -84,15 +83,7 @@ void removePickedPiece(CanvasController c) {
   var piece = pickedPiece(c);
   if (piece == null) return;
   var (e, i) = piece;
-  c.beginInteraction();
-  c.replaceElement(withPieceLooks(
-      e.copyWith(items: [
-        for (var (n, it) in e.items.indexed)
-          if (n != i) it,
-      ]),
-      e.items[i].id));
-  c.endInteraction();
-  c.pickTextLayer(e.id, null);
+  c.removeTextPiece(e.id, e.items[i].id);
 }
 
 /// chosenLayout is the one selected Layout, unlocked, or null.

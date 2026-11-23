@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
@@ -9,7 +10,9 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 // its words' and each piece's) into looks on those layers (see
 // MotionDevice.layer), so each lives in one place: the Chain, which the
 // panel shows too and can animate. Read as a text is read, so an old
-// canvas, a pasted text and a saved design all come in with looks.
+// canvas, a pasted text and a saved design all come in with looks. A piece
+// taken out or copied takes its looks with it (withoutPiece,
+// withPieceCopied).
 
 /// textLayerChoices is what of [e] a look can be laid on, each a layer
 /// (MotionDevice.layer) and its name: all of it, its own words, and each
@@ -111,11 +114,33 @@ TextElement textLooksLifted(TextElement e) {
       as TextElement;
 }
 
-/// withPieceLooks is [e] after piece [id] was removed or copied: its looks
+/// withoutPiece is [e] with piece [id] taken out, and the looks laid on it
+/// with it.
+TextElement withoutPiece(TextElement e, String id) => _withPieceLooks(
+    e.copyWith(items: [
+      for (var item in e.items)
+        if (item.id != id) item,
+    ]),
+    id);
+
+/// withPieceCopied is [e] with piece [id] copied just after it, under
+/// [copyId], and the looks laid on it copied onto the copy; [e] itself if
+/// it has no such piece. The copy is the piece in all but its id: the
+/// editor holds a piece by id, so two with one id would be one.
+TextElement withPieceCopied(TextElement e, String id,
+    {required String copyId}) {
+  var at = e.items.indexWhere((item) => item.id == id);
+  if (at < 0) return e;
+  var copy = TextItem.fromJson({...e.items[at].toJson(), "id": copyId});
+  var items = [...e.items]..insert(at + 1, copy);
+  return _withPieceLooks(e.copyWith(items: items), id, copiedTo: copyId);
+}
+
+/// _withPieceLooks is [e] after piece [id] was removed or copied: its looks
 /// taken off with it, or, given [copiedTo], laid on the copy too, each look
 /// after the one it copies and with an id of its own. A piece's looks are
 /// keyed by its id, so they do not follow it unasked.
-TextElement withPieceLooks(TextElement e, String id, {String? copiedTo}) {
+TextElement _withPieceLooks(TextElement e, String id, {String? copiedTo}) {
   var devices = e.base.motion.devices;
   if (!devices.any((d) => d.layer == id)) return e;
   var next = [

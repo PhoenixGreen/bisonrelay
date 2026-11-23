@@ -1,8 +1,10 @@
 part of '../canvas_controller.dart';
 
 // Part of CanvasController: replacing a colour everywhere, the document's
-// named text styles (counters' among them), and the piece picked in a text's
-// Layers. Its state is _TextState, at the end of this file.
+// named text styles (counters' among them), and a text's pieces: the one
+// picked in its Layers, and one taken out or copied, the same from the
+// Layers, the piece's own panel and the stage. Its state is _TextState, at
+// the end of this file.
 
 extension CanvasTextStyles on CanvasController {
   /// replaceColour makes every use of [from] in the document [to], as one
@@ -35,6 +37,38 @@ extension CanvasTextStyles on CanvasController {
       _texts.pieces[elementId] = itemId;
     }
     notifyListeners();
+  }
+
+  /// removeTextPiece takes piece [itemId] out of text element [elementId],
+  /// with the looks laid on it, as one undo step, and picks the text's own
+  /// words in its Layers.
+  void removeTextPiece(String elementId, String itemId) {
+    if (_document.elementById(elementId) case TextElement e) {
+      _changeText(withoutPiece(e, itemId));
+    }
+    pickTextLayer(elementId, null);
+  }
+
+  /// duplicateTextPiece copies piece [itemId] of text element [elementId]
+  /// just after it, with the looks laid on it, as one undo step, and picks
+  /// the copy in the text's Layers.
+  void duplicateTextPiece(String elementId, String itemId) {
+    if (_document.elementById(elementId) case TextElement e) {
+      var copyId = newElementId();
+      var next = withPieceCopied(e, itemId, copyId: copyId);
+      if (identical(next, e)) return;
+      _changeText(next);
+      pickTextLayer(elementId, copyId);
+    }
+  }
+
+  /// _changeText puts [next] in place of the text it was made from as one
+  /// undo step, as the panel writes a change: within a step already open
+  /// (typing not yet let go of), it is part of that one.
+  void _changeText(TextElement next) {
+    beginInteraction();
+    replaceElement(next, transient: true);
+    endInteraction();
   }
 
   List<NamedTextStyle> get textStyles => _document.textStyles;

@@ -66,9 +66,22 @@ Widget shapePanel(BuildContext context, CanvasController controller,
 Seven kinds still hand the frame whole sections of their own (a team, a 3D
 character, a sprite, a tile map, a camera, a 3D object, a background). Those
 are placed by name through `_placed` in `ui/element_settings.dart`. New
-panels use `PanelBit`s. Text builds the same frame by hand
-(`text_settings.dart`) because its panel carries more; pictures go through
-`elementPanel` (`image_sections.dart`).
+panels use `PanelBit`s. Pictures go through `elementPanel`
+(`image_sections.dart`), and so does text (`text_settings.dart`), which
+uses the two things below that only it needs so far.
+
+- **Looks on layers.** A text's looks are on its layers: all of it, and its
+  own words. `looks: PanelLooks(groups:, said:)` puts its own groups of
+  looks at the end of Look in place of the frame's one, and names those
+  switched on in the heading.
+- **After the frame's own.** A `PanelBit` with `last: true` goes after what
+  the frame puts in its section, and its word after the frame's in the
+  heading: a text's named style comes after the presets in More.
+
+A piece picked in a text's Layers is not the element, so it has no place,
+docking, stage, cue or presets: its few sections are drawn in the frame's
+shell, `panelFrame`, with the text's Layers over them, rather than by
+`elementPanel`.
 
 ## Changing the element
 

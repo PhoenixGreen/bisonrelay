@@ -101,7 +101,7 @@ List<Widget> elementSettings(
         textPanel(
             context, controller, element as TextElement, write, begin, commit)
       ],
-    // Elements with a panel of their own, in the Text panel's shape.
+    // Elements with a panel of their own, built by elementPanel.
     ElementKind.shape => [
         shapePanel(
             context, controller, element as ShapeElement, write, begin, commit)

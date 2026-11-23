@@ -117,10 +117,7 @@ extension StageRelease on CanvasStageState {
     // Every mode that opened an interaction closes it here: beginInteraction
     // only takes the document if none is held, so one left open would merge
     // into the next gesture's undo step.
-    if (_mode == _DragMode.pieceMove ||
-        _mode == _DragMode.pieceSize ||
-        _mode == _DragMode.pieceTurn ||
-        _mode == _DragMode.layoutCut ||
+    if (_mode == _DragMode.layoutCut ||
         _mode == _DragMode.layoutCutTurn ||
         _mode == _DragMode.layoutCutGutter ||
         _mode == _DragMode.layoutTrack ||

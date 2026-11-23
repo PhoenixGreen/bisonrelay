@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
-import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
@@ -21,12 +20,9 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/layout_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 part 'text_settings_piece.dart';
@@ -35,8 +31,9 @@ part 'text_settings_parts.dart';
 
 // text_settings.dart is a text element's settings.
 
-/// textPanel is a text element's settings: layers, quick strip, then the
-/// five sections; a picked piece has its own five.
+/// textPanel is a text element's settings: its layers over the panel every
+/// element shares, filled with the text's own bits (see elementPanel); a
+/// picked piece has a small panel of its own in the same frame instead.
 Widget textPanel(
     BuildContext context,
     CanvasController controller,
@@ -45,25 +42,36 @@ Widget textPanel(
     VoidCallback begin,
     VoidCallback commit) {
   var w = _TextWrites(e, write, begin, commit);
-  var layer = controller.textLayer(e);
-  var at = layer == null ? -1 : e.items.indexOf(layer);
-  // At CanvasDense's measure.
-  return CanvasDense(
-      child: CanvasSections(
-    key: const ValueKey("elementSections"),
-    parts: TextLayersList(
-        key: const ValueKey("textLayersList"),
-        controller: controller,
-        element: e,
-        onChanged: w.now),
-    quick: layer == null
-        ? _bodyQuick(controller, e, write, begin, commit)
-        : _pieceQuick(context, controller, e, at, layer, write, begin, commit),
-    children: layer == null
-        ? _bodySections(context, controller, e, write, begin, commit)
-        : _pieceSections(
-            context, controller, e, at, layer, write, begin, commit),
-  ));
+  var layers = TextLayersList(
+      key: const ValueKey("textLayersList"),
+      controller: controller,
+      element: e,
+      onChanged: w.now);
+  if (controller.textLayer(e) case var layer?) {
+    return _piecePanel(context, controller, e, e.items.indexOf(layer), layer,
+        write, begin, commit,
+        layers: layers);
+  }
+  return elementPanel(context, controller, e, write, begin, commit,
+      parts: layers,
+      quick: _bodyQuick(controller, e, write, begin, commit),
+      // A look on all of it and one on its words, each a layer of its own.
+      looks: PanelLooks(
+          said: _looksSaid(e, {"", MotionDevice.bodyLayer}),
+          groups: [
+            LooksGroup(
+                key: const ValueKey("textLooksAll"),
+                controller: controller,
+                element: e,
+                title: "Looks on the whole text"),
+            LooksGroup(
+                key: const ValueKey("textLooksWords"),
+                controller: controller,
+                element: e,
+                layer: MotionDevice.bodyLayer,
+                title: "Looks on the words"),
+          ]),
+      bits: _bodyBits(context, controller, e, write, begin, commit));
 }
 
 /// _TextWrites is how the text panel writes [e]: [now] as one undo step,
@@ -159,7 +167,9 @@ String _looksSaid(TextElement e, Set<String> layers) {
   return names.isEmpty ? "" : names.join(", ");
 }
 
-List<Widget> _bodySections(
+/// _bodyBits are what the text's own words put in each section of the
+/// panel, past what every element has there.
+List<PanelBit> _bodyBits(
     BuildContext context,
     CanvasController controller,
     TextElement e,
@@ -171,10 +181,7 @@ List<Widget> _bodySections(
   var spec = e.textSpec;
   var words = e.displayText.replaceAll("\n", " ");
   return [
-    section(e, "content",
-        glyph: SectionGlyph.content,
-        icon: Icons.notes,
-        title: "Content",
+    PanelBit(PanelSection.content,
         summary: [
           "\u201c${words.length > 28 ? "${words.substring(0, 28)}…" : words}\u201d",
           if (e.autoSize) "fitted to the box",
@@ -234,101 +241,68 @@ List<Widget> _bodySections(
                 typeJustify(t),
               ]),
         ]),
-    section(e, "look",
-        glyph: SectionGlyph.look,
-        icon: Icons.palette_outlined,
-        title: "Look",
+    PanelBit(PanelSection.look, summary: typeSummary(spec), children: [
+      CanvasControlGroup(
+          key: const ValueKey("textLetters"),
+          label: "Letters",
+          rule: false,
+          children: [
+            ...typeLetters(t,
+                underline: false,
+                vertical: false,
+                justify: false,
+                textCase: false),
+            const CanvasLineBreak(),
+            // What the letters are painted with: their colour (in the
+            // strip above), a picture or a pattern.
+            CanvasDropdown<TextFillKind>(
+              key: const ValueKey("textFillKind"),
+              label: "Painted with",
+              value: spec.fill.kind,
+              width: 118,
+              options: [for (var k in TextFillKind.values) (k, k.label)],
+              onChanged: (v) =>
+                  t.now(spec.copyWith(fill: spec.fill.copyWith(kind: v))),
+            ),
+            if (spec.fill.kind != TextFillKind.color)
+              ...fillBits(context, spec.fill,
+                  (f) => t.onChanged(spec.copyWith(fill: f)), begin, commit),
+          ]),
+      CanvasControlGroup(
+          key: const ValueKey("textMarks"),
+          label: "Marks",
+          rule: false,
+          children: [
+            ..._markBits(
+              highlight: e.highlight,
+              underline: e.underline,
+              textColor: e.textSpec.color,
+              keyPrefix: "text",
+              setHighlight: (h) => w.now(h == null
+                  ? e.copyWith(clearHighlight: true)
+                  : e.copyWith(highlight: h)),
+              setUnderline: (u) => w.now(u == null
+                  ? e.copyWith(clearUnderline: true)
+                  : e.copyWith(underline: u)),
+              liveHighlight: (h) => w.live(e.copyWith(highlight: h)),
+              liveUnderline: (u) => w.live(e.copyWith(underline: u)),
+              done: commit,
+            ),
+          ]),
+      boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+          label: "Box behind the words",
+          remember: "text",
+          rule: false,
+          fill: true,
+          context: context,
+          compact: true),
+    ]),
+    PanelBit(PanelSection.layout,
         summary: [
-          typeSummary(spec),
-          if (_looksSaid(e, {"", MotionDevice.bodyLayer}) case var l
-              when l.isNotEmpty)
-            l,
-        ].join(" · "),
-        initiallyOpen: true,
-        children: [
-          CanvasControlGroup(
-              key: const ValueKey("textLetters"),
-              label: "Letters",
-              rule: false,
-              children: [
-                ...typeLetters(t,
-                    underline: false,
-                    vertical: false,
-                    justify: false,
-                    textCase: false),
-                const CanvasLineBreak(),
-                // What the letters are painted with: their colour (in the
-                // strip above), a picture or a pattern.
-                CanvasDropdown<TextFillKind>(
-                  key: const ValueKey("textFillKind"),
-                  label: "Painted with",
-                  value: spec.fill.kind,
-                  width: 118,
-                  options: [for (var k in TextFillKind.values) (k, k.label)],
-                  onChanged: (v) =>
-                      t.now(spec.copyWith(fill: spec.fill.copyWith(kind: v))),
-                ),
-                if (spec.fill.kind != TextFillKind.color)
-                  ...fillBits(
-                      context,
-                      spec.fill,
-                      (f) => t.onChanged(spec.copyWith(fill: f)),
-                      begin,
-                      commit),
-              ]),
-          CanvasControlGroup(
-              key: const ValueKey("textMarks"),
-              label: "Marks",
-              rule: false,
-              children: [
-                ..._markBits(
-                  highlight: e.highlight,
-                  underline: e.underline,
-                  textColor: e.textSpec.color,
-                  keyPrefix: "text",
-                  setHighlight: (h) => w.now(h == null
-                      ? e.copyWith(clearHighlight: true)
-                      : e.copyWith(highlight: h)),
-                  setUnderline: (u) => w.now(u == null
-                      ? e.copyWith(clearUnderline: true)
-                      : e.copyWith(underline: u)),
-                  liveHighlight: (h) => w.live(e.copyWith(highlight: h)),
-                  liveUnderline: (u) => w.live(e.copyWith(underline: u)),
-                  done: commit,
-                ),
-              ]),
-          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-              label: "Box behind the words",
-              remember: "text",
-              rule: false,
-              fill: true,
-              context: context,
-              compact: true),
-          LooksGroup(
-              key: const ValueKey("textLooksAll"),
-              controller: controller,
-              element: e,
-              title: "Looks on the whole text"),
-          LooksGroup(
-              key: const ValueKey("textLooksWords"),
-              controller: controller,
-              element: e,
-              layer: MotionDevice.bodyLayer,
-              title: "Looks on the words"),
-        ]),
-    section(e, "layout",
-        glyph: SectionGlyph.layout,
-        icon: Icons.open_with,
-        title: "Layout",
-        summary: [
-          positionSummary(e),
           if (e.columns.count > 1) "${e.columns.count} columns",
           if (e.curve != null) "on a line",
         ].join(" · "),
         children: [
-          positionGroup(controller, e, write, begin, commit),
-          // Docked in a Layout's cell, where the page has one.
-          if (dockGroup(controller, e) case var dock?) dock,
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),
@@ -489,66 +463,52 @@ List<Widget> _bodySections(
             ],
           ),
         ]),
-    ...stageSpotSettings(controller, e, write, begin, commit),
-    section(e, "motion",
-        glyph: SectionGlyph.motion,
-        icon: Icons.animation,
-        title: "Motion",
-        summary: motionSaid(e),
-        children: [
-          MotionSummary(controller: controller, element: e),
-          // Its arrival and way out, chosen here as in its Chain (see
-          // OwnStyle).
-          CanvasControlGroup(
-              key: const ValueKey("textMotionPick"),
-              label: "Arrival and leaving",
-              hideCaption: true,
-              rule: false,
-              children: [
-                // Each in two, as in the Chain: its family, then which.
-                panelRow([
-                  for (var w in canvasPresetPair<TextAnimationPreset>(
-                      key: "textArrival",
-                      familyLabel: "Arrival",
-                      pair: PresetPair(textPresetOptions(), e.animation.preset,
-                          TextAnimationPreset.none),
-                      onChanged: (v) => controller.applyTextAnimation(e, v)))
-                    cell(w),
-                ]),
-                panelRow([
-                  for (var w in canvasPresetPair<TextAnimationPreset>(
-                      key: "textLeaving",
-                      familyLabel: "Leaving",
-                      pair: PresetPair(textPresetOptions(), e.animation.exit,
-                          TextAnimationPreset.none),
-                      onChanged: (v) => controller.applyTextExit(e, v)))
-                    cell(w),
-                ]),
-              ]),
-          if (controller.cues.isNotEmpty) elementCueCard(controller, e),
-        ]),
-    section(e, "more",
-        glyph: SectionGlyph.more,
-        icon: Icons.more_horiz,
-        title: "More",
+    PanelBit(PanelSection.motion, children: [
+      // Its arrival and way out, its own text presets, chosen here as in
+      // its Chain (see OwnStyle).
+      CanvasControlGroup(
+          key: const ValueKey("textMotionPick"),
+          label: "Arrival and leaving",
+          hideCaption: true,
+          rule: false,
+          children: [
+            // Each in two, as in the Chain: its family, then which.
+            panelRow([
+              for (var w in canvasPresetPair<TextAnimationPreset>(
+                  key: "textArrival",
+                  familyLabel: "Arrival",
+                  pair: PresetPair(textPresetOptions(), e.animation.preset,
+                      TextAnimationPreset.none),
+                  onChanged: (v) => controller.applyTextAnimation(e, v)))
+                cell(w),
+            ]),
+            panelRow([
+              for (var w in canvasPresetPair<TextAnimationPreset>(
+                  key: "textLeaving",
+                  familyLabel: "Leaving",
+                  pair: PresetPair(textPresetOptions(), e.animation.exit,
+                      TextAnimationPreset.none),
+                  onChanged: (v) => controller.applyTextExit(e, v)))
+                cell(w),
+            ]),
+          ]),
+    ]),
+    PanelBit(PanelSection.more,
         summary: [
           if (e.document.on && e.document.markdown) "Markdown",
           e.parts.isEmpty
               ? "Parts of the text"
               : "${e.parts.length} part${e.parts.length == 1 ? "" : "s"}",
-          "presets",
-          "styles",
         ].join(", "),
         children: [
           if (e.document.on && e.document.markdown)
             _markdownSection(controller, e, write, begin, commit),
           _partsSection(e, write, begin, commit),
-          CanvasControlGroup(
-              key: const ValueKey("textPresets"),
-              label: "Presets",
-              rule: false,
-              children: [presetsSection(controller, e)]),
-          _textStyleCard(controller, e),
         ]),
+    // Its named style, after the presets every element has.
+    PanelBit(PanelSection.more,
+        summary: "styles",
+        last: true,
+        children: [_textStyleCard(controller, e)]),
   ];
 }

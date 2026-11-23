@@ -517,8 +517,11 @@ key held, knob turned, screen dragged and cable carried in
 `stage_synth_controls.dart`; a Code panel's playbar scrubbed, divider
 dragged and tab carried, and a press left to a live preview, in
 `stage_code_controls.dart`; a counter's loose piece in
-`stage_element_controls.dart`; a team's player in `stage_team_players.dart`;
-the retouching stroke in `stage_retouch.dart`; a 3D stage's camera orbited
+`stage_element_controls.dart`; a text's picture piece moved, sized or
+turned by its own box in `stage_text_pieces.dart` (three cases of one sealed
+`_PieceDrag`, sharing the piece and its middle as the press found them); a
+team's player in `stage_team_players.dart`; the retouching stroke in
+`stage_retouch.dart`; a 3D stage's camera orbited
 or panned, parallax scenery panned and the gizmo dragged in
 `stage_3d_view.dart`. A chart's label, a table's column rule, the held
 marker's note, a reused element's copies moved, sized or turned, and a
@@ -529,7 +532,7 @@ Not every kind is a case yet. The rest still run through the State's
 stepped in the `switch` in `stage_drag.dart`, and ended by the branches
 and the hand-kept lists of modes in `stage_release.dart`, which close
 their undo steps. These are the vector tools, the picture tools and warp,
-a text element's picture pieces, and Layouts, in their own parts. So both
+and Layouts, in their own parts. So both
 exist for now: a press sets one or the other, never both. A press that
 opens a Run panel's preview live is neither: `_liveTapPending` replays its
 tap into the app on release.

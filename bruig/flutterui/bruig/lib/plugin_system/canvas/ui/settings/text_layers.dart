@@ -2,9 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -68,33 +66,15 @@ class _TextLayersListState extends State<TextLayersList> {
 
   void _pick(TextItem? item) => controller.pickTextLayer(e.id, item?.id);
 
-  int _indexOf(TextItem item) => e.items.indexWhere((i) => i.id == item.id);
-
   void _change(TextItem item, TextItem Function(TextItem) edit) =>
       widget.onChanged(e.copyWith(items: [
         for (var i in e.items) i.id == item.id ? edit(i) : i,
       ]));
 
-  void _remove(TextItem item) {
-    _pick(null);
-    widget.onChanged(withPieceLooks(
-        e.copyWith(items: [
-          for (var i in e.items)
-            if (i.id != item.id) i,
-        ]),
-        item.id));
-  }
+  void _remove(TextItem item) => controller.removeTextPiece(e.id, item.id);
 
-  void _duplicate(TextItem item) {
-    var at = _indexOf(item);
-    // A copy under a new id: the canvas editor holds a piece by id, so two
-    // with one id would be one.
-    var copy = TextItem.fromJson({...item.toJson(), "id": newElementId()});
-    var items = [...e.items]..insert(at + 1, copy);
-    widget.onChanged(
-        withPieceLooks(e.copyWith(items: items), item.id, copiedTo: copy.id));
-    _pick(copy);
-  }
+  void _duplicate(TextItem item) =>
+      controller.duplicateTextPiece(e.id, item.id);
 
   void _move(int from, int to) {
     if (from == to || to < 0 || to >= e.items.length) return;

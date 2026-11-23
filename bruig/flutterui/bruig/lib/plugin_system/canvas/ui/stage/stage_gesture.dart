@@ -6,13 +6,13 @@ part of 'canvas_stage.dart';
 // the clicks a gesture carries, and the cases with no better home. Cases
 // that belong with their subject sit in its part: a synth module's
 // (stage_synth_controls.dart), a Code panel's (stage_code_controls.dart), a
-// counter's piece (stage_element_controls.dart), a team's player
-// (stage_team_players.dart), the retouching stroke (stage_retouch.dart), a
-// 3D stage's camera, parallax scenery's and the gizmo
-// (stage_3d_view.dart). The kinds not yet made cases still run through
-// _DragMode, in the switch in stage_drag.dart and the branches in
-// stage_release.dart. Part of CanvasStageState: its fields, lifecycle and
-// build are in canvas_stage.dart.
+// counter's piece (stage_element_controls.dart), a text's picture piece
+// (stage_text_pieces.dart), a team's player (stage_team_players.dart), the
+// retouching stroke (stage_retouch.dart), a 3D stage's camera, parallax
+// scenery's and the gizmo (stage_3d_view.dart). The kinds not yet made
+// cases still run through _DragMode, in the switch in stage_drag.dart and
+// the branches in stage_release.dart. Part of CanvasStageState: its fields,
+// lifecycle and build are in canvas_stage.dart.
 
 /// StageGesture is what the pointer is doing on the stage, from the press
 /// that began it to its release or cancel. Each kind is a case that holds

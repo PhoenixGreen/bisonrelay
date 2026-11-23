@@ -20,7 +20,9 @@ import 'package:flutter/material.dart';
 // element_panel.dart is the panel every element's settings share: a quick
 // strip, then Content, Look, Layout, Motion and More, in that order, empty
 // ones dropped. Elements place settings with PanelBits; the panel adds
-// position, looks, arrival and leaving, and presets.
+// position, looks, arrival and leaving, and presets. panelFrame is the
+// shell it is drawn in, which a panel that is not an element's own
+// sections (a text's picked piece) fills itself.
 
 /// PanelSection is a panel section. Motion's bits go under arrival and
 /// leaving: what an element adds to coming in (a table's rows in turn).
@@ -32,7 +34,24 @@ class PanelBit {
   final PanelSection into;
   final String summary;
   final List<Widget> children;
-  const PanelBit(this.into, {this.summary = "", required this.children});
+
+  /// last is whether it goes after what the panel itself puts in the
+  /// section, its word after the panel's in the heading: a text's named
+  /// style, after the presets.
+  final bool last;
+
+  const PanelBit(this.into,
+      {this.summary = "", this.last = false, required this.children});
+}
+
+/// PanelLooks is the looks an element shows at the end of its Look in
+/// place of the one group of looks on all of it that the panel adds: an
+/// element drawn in layers has a group for each (a text's whole and its
+/// words). [said] is the names of those switched on, for the heading.
+class PanelLooks {
+  final List<Widget> groups;
+  final String said;
+  const PanelLooks({required this.groups, required this.said});
 }
 
 /// sectionContents is an older panel section's contents, laid straight
@@ -65,10 +84,24 @@ String motionSaid(CanvasElement e) {
   ].join(", ").replaceFirstMapped(RegExp(r"^."), (m) => m[0]!.toUpperCase());
 }
 
+/// panelFrame is the shell every element's panel is drawn in, at
+/// CanvasDense's measure: [quick] and [parts] over [sections].
+Widget panelFrame(
+        {Widget? quick, Widget? parts, required List<Widget> sections}) =>
+    CanvasDense(
+      child: CanvasSections(
+        key: const ValueKey("elementSections"),
+        quick: quick,
+        parts: parts,
+        children: sections,
+      ),
+    );
+
 /// elementPanel is [e]'s settings: [quick] over sections holding [bits]
 /// plus what every element has. [contentOpen] opens Content (a path's
 /// points); [parts] goes over everything (a picture's layers); [position]
-/// replaces Layout's position group (a picture's tools).
+/// replaces Layout's position group (a picture's tools); [looks] replaces
+/// Look's group of looks (a text's, one for each of its layers).
 Widget elementPanel(
   BuildContext context,
   CanvasController controller,
@@ -81,159 +114,173 @@ Widget elementPanel(
   bool contentOpen = false,
   Widget? parts,
   Widget? position,
+  PanelLooks? looks,
 }) {
-  List<Widget> into(PanelSection s) => [
+  List<Widget> into(PanelSection s, {bool last = false}) => [
         for (var b in bits)
-          if (b.into == s) ...b.children,
+          if (b.into == s && b.last == last) ...b.children,
       ];
-  String said(PanelSection s) => [
+  String said(PanelSection s, {bool last = false}) => [
         for (var b in bits)
-          if (b.into == s && b.summary.isNotEmpty) b.summary,
+          if (b.into == s && b.last == last && b.summary.isNotEmpty) b.summary,
       ].join(" · ");
   var kind = elementKindKey(e);
-  var content = into(PanelSection.content);
-  var looks = looksSaid(e);
+  var content = [
+    ...into(PanelSection.content),
+    ...into(PanelSection.content, last: true),
+  ];
+  var looksNamed = looks?.said ?? looksSaid(e);
   var animates = CanvasController.animates(e);
-  return CanvasDense(
-    child: CanvasSections(
-      key: const ValueKey("elementSections"),
-      quick: quick,
-      parts: parts,
-      children: [
-        if (content.isNotEmpty)
-          section(e, "content",
-              glyph: SectionGlyph.content,
-              icon: Icons.notes,
-              title: "Content",
-              summary: said(PanelSection.content),
-              initiallyOpen: contentOpen,
-              children: content),
-        section(e, "look",
-            glyph: SectionGlyph.look,
-            icon: Icons.palette_outlined,
-            title: "Look",
+  return panelFrame(
+    quick: quick,
+    parts: parts,
+    sections: [
+      if (content.isNotEmpty)
+        section(e, "content",
+            glyph: SectionGlyph.content,
+            icon: Icons.notes,
+            title: "Content",
             summary: [
-              said(PanelSection.look),
-              if (looks.isNotEmpty) looks,
+              said(PanelSection.content),
+              said(PanelSection.content, last: true),
             ].where((s) => s.isNotEmpty).join(" · "),
-            initiallyOpen: true,
-            children: [
-              ...into(PanelSection.look),
-              LooksGroup(
-                  key: ValueKey("${kind}Looks"),
-                  controller: controller,
-                  element: e,
-                  title: "Looks"),
-            ]),
-        section(e, "layout",
-            glyph: SectionGlyph.layout,
-            icon: Icons.open_with,
-            title: "Layout",
-            summary: [positionSummary(e), said(PanelSection.layout)]
-                .where((s) => s.isNotEmpty)
-                .join(" · "),
-            children: [
-              position ?? positionGroup(controller, e, write, begin, commit),
-              // Docked in a Layout's cell, where the page has one.
-              if (dockGroup(controller, e) case var dock?) dock,
-              ...into(PanelSection.layout),
-            ]),
-        ...stageSpotSettings(controller, e, write, begin, commit),
-        section(e, "motion",
-            glyph: SectionGlyph.motion,
-            icon: Icons.animation,
-            title: "Motion",
-            summary: [motionSaid(e), said(PanelSection.motion)]
-                .where((s) => s.isNotEmpty)
-                .join(" · "),
-            children: [
-              MotionSummary(controller: controller, element: e),
-              // Its arrival and way out, each a family and a choice, as in
-              // its Chain.
-              if (animates)
-                CanvasControlGroup(
-                    key: ValueKey("${kind}MotionPick"),
-                    label: "Arrival and leaving",
-                    hideCaption: true,
-                    rule: false,
-                    children: [
-                      panelRow([
-                        for (var w in canvasPresetPair<ElementAnimationPreset>(
-                            key: "${kind}Arrival",
-                            familyLabel: "Arrival",
-                            pair: PresetPair(
-                                elementPresetOptions(),
-                                CanvasController.elementAnimationOf(e).preset,
-                                ElementAnimationPreset.none),
-                            onChanged: (v) =>
-                                controller.applyElementAnimation(e, v)))
-                          cell(w),
-                      ]),
-                      panelRow([
-                        for (var w in canvasPresetPair<ElementAnimationPreset>(
-                            key: "${kind}Leaving",
-                            familyLabel: "Leaving",
-                            pair: PresetPair(
-                                elementPresetOptions(),
-                                CanvasController.elementAnimationOf(e).exit,
-                                ElementAnimationPreset.none),
-                            onChanged: (v) =>
-                                controller.applyElementExit(e, v)))
-                          cell(w),
-                      ]),
-                    ]),
-              // A chart's are its own few, one list each (see OwnStyle).
-              if (e is ChartElement)
-                CanvasControlGroup(
-                    key: const ValueKey("chartMotionPick"),
-                    label: "Arrival and leaving",
-                    hideCaption: true,
-                    rule: false,
-                    children: [
-                      panelRow([
-                        for (var (leaving, label) in const [
-                          (false, "Arrival"),
-                          (true, "Leaving"),
-                        ])
-                          cell(CanvasDropdown<ChartAnimationPreset>(
-                            key: ValueKey(
-                                leaving ? "chartLeaving" : "chartArrival"),
-                            label: label,
-                            value:
-                                leaving ? e.animation.exit : e.animation.preset,
-                            options: [
-                              (ChartAnimationPreset.none, "None"),
-                              for (var (name, label) in OwnStyle(e).presets())
-                                (
-                                  ChartAnimationPreset.values.byName(name),
-                                  label
-                                ),
-                            ],
-                            onChanged: (p) => leaving
-                                ? controller.applyChartExit(e, p)
-                                : controller.applyChartAnimation(e, p),
-                          )),
-                      ]),
-                    ]),
-              ...into(PanelSection.motion),
-              if (controller.cues.isNotEmpty) elementCueCard(controller, e),
-            ]),
-        section(e, "more",
-            glyph: SectionGlyph.more,
-            icon: Icons.more_horiz,
-            title: "More",
-            summary: [said(PanelSection.more), "presets"]
-                .where((s) => s.isNotEmpty)
-                .join(", "),
-            children: [
-              ...into(PanelSection.more),
+            initiallyOpen: contentOpen,
+            children: content),
+      section(e, "look",
+          glyph: SectionGlyph.look,
+          icon: Icons.palette_outlined,
+          title: "Look",
+          summary: [
+            said(PanelSection.look),
+            looksNamed,
+            said(PanelSection.look, last: true),
+          ].where((s) => s.isNotEmpty).join(" · "),
+          initiallyOpen: true,
+          children: [
+            ...into(PanelSection.look),
+            ...looks?.groups ??
+                [
+                  LooksGroup(
+                      key: ValueKey("${kind}Looks"),
+                      controller: controller,
+                      element: e,
+                      title: "Looks"),
+                ],
+            ...into(PanelSection.look, last: true),
+          ]),
+      section(e, "layout",
+          glyph: SectionGlyph.layout,
+          icon: Icons.open_with,
+          title: "Layout",
+          summary: [
+            positionSummary(e),
+            said(PanelSection.layout),
+            said(PanelSection.layout, last: true),
+          ].where((s) => s.isNotEmpty).join(" · "),
+          children: [
+            position ?? positionGroup(controller, e, write, begin, commit),
+            // Docked in a Layout's cell, where the page has one.
+            if (dockGroup(controller, e) case var dock?) dock,
+            ...into(PanelSection.layout),
+            ...into(PanelSection.layout, last: true),
+          ]),
+      ...stageSpotSettings(controller, e, write, begin, commit),
+      section(e, "motion",
+          glyph: SectionGlyph.motion,
+          icon: Icons.animation,
+          title: "Motion",
+          summary: [
+            motionSaid(e),
+            said(PanelSection.motion),
+            said(PanelSection.motion, last: true),
+          ].where((s) => s.isNotEmpty).join(" · "),
+          children: [
+            MotionSummary(controller: controller, element: e),
+            // Its arrival and way out, each a family and a choice, as in
+            // its Chain.
+            if (animates)
               CanvasControlGroup(
-                  key: ValueKey("${kind}Presets"),
-                  label: "Presets",
+                  key: ValueKey("${kind}MotionPick"),
+                  label: "Arrival and leaving",
+                  hideCaption: true,
                   rule: false,
-                  children: [presetsSection(controller, e)]),
-            ]),
-      ],
-    ),
+                  children: [
+                    panelRow([
+                      for (var w in canvasPresetPair<ElementAnimationPreset>(
+                          key: "${kind}Arrival",
+                          familyLabel: "Arrival",
+                          pair: PresetPair(
+                              elementPresetOptions(),
+                              CanvasController.elementAnimationOf(e).preset,
+                              ElementAnimationPreset.none),
+                          onChanged: (v) =>
+                              controller.applyElementAnimation(e, v)))
+                        cell(w),
+                    ]),
+                    panelRow([
+                      for (var w in canvasPresetPair<ElementAnimationPreset>(
+                          key: "${kind}Leaving",
+                          familyLabel: "Leaving",
+                          pair: PresetPair(
+                              elementPresetOptions(),
+                              CanvasController.elementAnimationOf(e).exit,
+                              ElementAnimationPreset.none),
+                          onChanged: (v) => controller.applyElementExit(e, v)))
+                        cell(w),
+                    ]),
+                  ]),
+            // A chart's are its own few, one list each (see OwnStyle).
+            if (e is ChartElement)
+              CanvasControlGroup(
+                  key: const ValueKey("chartMotionPick"),
+                  label: "Arrival and leaving",
+                  hideCaption: true,
+                  rule: false,
+                  children: [
+                    panelRow([
+                      for (var (leaving, label) in const [
+                        (false, "Arrival"),
+                        (true, "Leaving"),
+                      ])
+                        cell(CanvasDropdown<ChartAnimationPreset>(
+                          key: ValueKey(
+                              leaving ? "chartLeaving" : "chartArrival"),
+                          label: label,
+                          value:
+                              leaving ? e.animation.exit : e.animation.preset,
+                          options: [
+                            (ChartAnimationPreset.none, "None"),
+                            for (var (name, label) in OwnStyle(e).presets())
+                              (ChartAnimationPreset.values.byName(name), label),
+                          ],
+                          onChanged: (p) => leaving
+                              ? controller.applyChartExit(e, p)
+                              : controller.applyChartAnimation(e, p),
+                        )),
+                    ]),
+                  ]),
+            ...into(PanelSection.motion),
+            if (controller.cues.isNotEmpty) elementCueCard(controller, e),
+            ...into(PanelSection.motion, last: true),
+          ]),
+      section(e, "more",
+          glyph: SectionGlyph.more,
+          icon: Icons.more_horiz,
+          title: "More",
+          summary: [
+            said(PanelSection.more),
+            "presets",
+            said(PanelSection.more, last: true),
+          ].where((s) => s.isNotEmpty).join(", "),
+          children: [
+            ...into(PanelSection.more),
+            CanvasControlGroup(
+                key: ValueKey("${kind}Presets"),
+                label: "Presets",
+                rule: false,
+                children: [presetsSection(controller, e)]),
+            ...into(PanelSection.more, last: true),
+          ]),
+    ],
   );
 }

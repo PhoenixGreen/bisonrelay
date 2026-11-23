@@ -152,15 +152,9 @@ part 'stage_layouts.dart';
 
 /// _DragMode is what the pointer is currently doing, for the kinds of
 /// gesture not yet cases of StageGesture: the vector tools, the picture
-/// tools and warp, a text element's picture pieces, and Layouts.
+/// tools and warp, and Layouts.
 enum _DragMode {
   none,
-
-  /// pieceMove, pieceSize and pieceTurn move, size or turn a text element's
-  /// picture piece by its own box. See stage_text_pieces.dart.
-  pieceMove,
-  pieceSize,
-  pieceTurn,
 
   /// layoutCut and layoutTrack drag a Layout's cut or grid line, and
   /// layoutCutTurn and -Gutter a cut's tilt and gutter by its knobs;
@@ -589,14 +583,6 @@ class CanvasStageState extends State<CanvasStage>
   /// the app on release (_replayTap).
   bool _liveTapPending = false;
   int _replayPointer = 0x7FFF0000;
-
-  /// _pieceStart is the picture piece as it was when its box was pressed,
-  /// which a drag of it measures from. See stage_text_pieces.dart.
-  TextItem? _pieceStart;
-
-  /// _pieceMiddle is that piece's middle on the page at the press: what it
-  /// is sized and turned about.
-  Offset _pieceMiddle = Offset.zero;
 
   /// _layoutStart is a Layout as it was when one of its lines or cells was
   /// pressed, and _layoutCut, _layoutTrack and _layoutMiddle what was
