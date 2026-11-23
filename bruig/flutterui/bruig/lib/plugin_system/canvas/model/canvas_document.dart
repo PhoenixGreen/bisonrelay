@@ -30,6 +30,7 @@ import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // What a document is made of and read with, so whatever imports a document
 // has them: its background, its limits, and reading an element by kind.
@@ -878,6 +879,44 @@ class CanvasDocument {
     );
   }
 
+  /// mapColours is the document with every colour of its design put
+  /// through [f], or this very document where none changed (the
+  /// controller's edits compare by identity, so a replace that finds nothing
+  /// is no edit). It maps the background, every scene (or the one scene of a
+  /// document with none), the master (hidden while off), the cast, the text
+  /// styles and the sheets' colour rules. The cast and the text styles are
+  /// taken as hidden: neither is drawn itself, and what is drawn from them
+  /// (linked copies, the texts set in a style) holds its own colours, mapped
+  /// where it stands. The sheets' are shown: what tables and charts draw
+  /// from them is worked out again, not mapped.
+  CanvasDocument mapColours(ColourMap f) {
+    var hidden = f.shownOnlyIf(false);
+    var p = ColourPass(f);
+    var background = p.part(this.background, (b) => b.mapColours(f));
+    var scenes = p.list(this.scenes, (s) => s.mapColours(f));
+    var elements = p.list(_elements, (e) => e.mapColours(f));
+    var master =
+        p.partOrNone(this.master, (m) => m.mapColours(f.shownOnlyIf(masterOn)));
+    var cast = p.list(this.cast, (e) => e.mapColours(hidden));
+    var textStyles = p.list(this.textStyles, (s) => s.mapColours(hidden));
+    var sheets = p.list(this.sheets, (s) => s.mapColours(f));
+    if (!p.changed) return this;
+    var next = copyWith(
+      background: background,
+      scenes: scenes,
+      master: master,
+      cast: cast,
+      textStyles: textStyles,
+      sheets: sheets,
+    );
+    if (identical(elements, _elements)) return next;
+    // copyWith sends elements to the master while it is edited, and the one
+    // scene's are wanted: put them there with the master off, then back.
+    return next
+        .copyWith(onMaster: false, elements: elements)
+        .copyWith(onMaster: onMaster);
+  }
+
   /// withScenes is this document as a scene list. Everything that adds,
   /// removes or reorders scenes goes through here.
   CanvasDocument withScenes(List<CanvasScene> next, {int? at}) =>
@@ -1238,6 +1277,11 @@ class NamedTextStyle {
   final String name;
   final TextSpec spec;
   const NamedTextStyle(this.name, this.spec);
+
+  NamedTextStyle mapColours(ColourMap f) {
+    var next = spec.mapColours(f);
+    return identical(next, spec) ? this : NamedTextStyle(name, next);
+  }
 
   Map<String, dynamic> toJson() => {"name": name, "spec": spec.toJson()};
 

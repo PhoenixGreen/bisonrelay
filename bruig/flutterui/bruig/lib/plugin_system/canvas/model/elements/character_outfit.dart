@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+
 // character_outfit.dart is what a 3D character wears: for each piece, the
 // VRoid body's own, none, or one made to fit (kind, cut, colour, pattern),
 // made in render/vrm/vrm_wear.dart.
@@ -176,6 +178,19 @@ class Garment {
         ownCut: ownCut ?? this.ownCut,
       );
 
+  /// mapColours maps the garment's colours, kept as 0xRRGGBB: shown only for
+  /// a garment made to fit (the body's own clothes and none draw none of
+  /// them), the pattern's only with a pattern.
+  Garment mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var colour = p.rgb(this.colour, shown: made);
+    var patternColour =
+        p.rgb(this.patternColour, shown: made && pattern != "solid");
+    var sole = p.rgb(this.sole, shown: made);
+    if (!p.changed) return this;
+    return copyWith(colour: colour, patternColour: patternColour, sole: sole);
+  }
+
   List<Object> get _fields => [
         source, kind, sleeves, hem, depth, fit, neckline, length, rise, flare,
         pleats, //
@@ -269,6 +284,14 @@ class CharacterOutfit {
 
   CharacterOutfit wear(WearSlot s, Garment g) =>
       CharacterOutfit._({..._slots, s: g});
+
+  /// mapColours maps the garments set. A slot left as designed wears the
+  /// app's default garment, whose colours are not the design's and are left
+  /// alone.
+  CharacterOutfit mapColours(ColourMap f) {
+    var next = mappedValues(_slots, (_, g) => g.mapColours(f));
+    return identical(next, _slots) ? this : CharacterOutfit._(next);
+  }
 
   /// changed is whether [s] is not as designed.
   bool changed(WearSlot s) => this[s] != defaults[s];

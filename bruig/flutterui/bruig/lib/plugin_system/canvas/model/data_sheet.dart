@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/sheet_formula.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:flutter/foundation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 export 'package:bruig/plugin_system/canvas/model/sheet_formula.dart'
     show SheetError;
@@ -463,6 +464,16 @@ class DataSheet {
           made: unmade ? null : made ?? this.made,
           folder: folder ?? this.folder);
 
+  /// mapColours maps the rules' colours and the spotlight's, hidden with no
+  /// row picked out (as it is saved).
+  DataSheet mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var rules = p.list(this.rules, (r) => r.mapColours(f));
+    var spotlightColour = p(this.spotlightColour, shown: spotlight.isNotEmpty);
+    if (!p.changed) return this;
+    return copyWith(rules: rules, spotlightColour: spotlightColour);
+  }
+
   /// withBlock is it with [rows] written from [r0], [c0], and the cells of
   /// [clear] it doesn't reach emptied (where a view shrank). Rows and
   /// columns are added past the edge; empty ones left at the end go.
@@ -821,6 +832,20 @@ class SheetRule {
 
   SheetRule copyWith({CellRange? range}) => SheetRule(range ?? this.range, kind,
       colour: colour, low: low, high: high, value: value);
+
+  /// mapColours maps the rule's colours: [colour] shown for every kind but a
+  /// scale, which draws from [low] to [high] instead (it is saved for every
+  /// kind; the scale's two only for a scale).
+  SheetRule mapColours(ColourMap f) {
+    var scale = kind == SheetRuleKind.scale;
+    var p = ColourPass(f);
+    var colour = p(this.colour, shown: !scale);
+    var low = p(this.low, shown: scale);
+    var high = p(this.high, shown: scale);
+    if (!p.changed) return this;
+    return SheetRule(range, kind,
+        colour: colour, low: low, high: high, value: value);
+  }
 
   Map<String, dynamic> toJson() => {
         "range": range.a1,

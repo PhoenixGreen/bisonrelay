@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+import 'package:bruig/plugin_system/canvas/model/element_reading.dart'
+    show elementFromJson;
 import 'package:bruig/plugin_system/canvas/model/json_read.dart';
 import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -134,7 +137,8 @@ class ElementBase {
 
   /// rowColour is its row's ARGB colour on the timeline, mixer and slots;
   /// null for the given one (CanvasController.rowColour). A sound channel's
-  /// is on its sounds.
+  /// is on its sounds. Not put through mapColours: it is the editor's colour
+  /// for the row, not the design's.
   final int? rowColour;
 
   /// lockAspect holds width and height together while it is resized.
@@ -380,6 +384,42 @@ class ElementBase {
         spot: clearSpot ? null : (spot ?? this.spot),
         motion: motion ?? this.motion,
       );
+
+  /// mapColours maps what of the base is design: its motion's colours, and
+  /// the copies of the whole design it keeps for other page shapes ([shared]
+  /// and each layout's own), each read as an element of its kind, mapped and
+  /// written back in the same form. Only a copy whose colours changed is
+  /// written again. [rowColour] is the editor's, and is left alone.
+  ElementBase mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var motion = p.part(this.motion, (m) => m.mapColours(f));
+    var shared = p.partOrNone(this.shared, (s) => _mappedDesign(s, f));
+    var layouts = p.values(this.layouts, (_, l) {
+      var own = l.own;
+      if (own == null) return l;
+      var next = _mappedDesign(own, f);
+      return identical(next, own) ? l : l.copyWith(own: next);
+    });
+    if (!p.changed) return this;
+    return copyWith(motion: motion, shared: shared, layouts: layouts);
+  }
+
+  /// _mappedDesign is [design], a copy of a whole element as kept for a page
+  /// shape (its toJson less its layouts and shared copy: see _snapshot in
+  /// responsive_layout.dart), with its colours mapped; the very same map
+  /// where none changed.
+  static Map<String, dynamic> _mappedDesign(
+      Map<String, dynamic> design, ColourMap f) {
+    var element = elementFromJson(design);
+    var mapped = element.mapColours(f);
+    if (identical(mapped, element)) return design;
+    var out = mapped.toJson()
+      ..remove("layouts")
+      ..remove("shared");
+    // Read without an id, it was given one; it is written as it came.
+    if (!design.containsKey("id")) out.remove("id");
+    return out;
+  }
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
     var trackJson = json["track"];
@@ -646,6 +686,22 @@ abstract class CanvasElement {
 
   /// props is the element's own fields, and nothing [ElementBase] owns.
   Map<String, dynamic> props();
+
+  /// mapOwnColours is the element with every colour of its own fields (and
+  /// of what they hold) put through [f], and nothing [ElementBase] owns; the
+  /// very same element where none changed (see colour_map.dart). Each kind
+  /// states its own, so a kind cannot be added without saying what colours
+  /// it holds; one with none answers itself.
+  CanvasElement mapOwnColours(ColourMap f);
+
+  /// mapColours is the element with every colour of its design put through
+  /// [f]: its own ([mapOwnColours]) and its base's (ElementBase.mapColours).
+  /// The very same element where none changed.
+  CanvasElement mapColours(ColourMap f) {
+    var own = mapOwnColours(f);
+    var base = own.base.mapColours(f);
+    return identical(base, own.base) ? own : own.rebase(base);
+  }
 
   String get id => base.id;
   String get name => base.name.isEmpty ? kind.label : base.name;

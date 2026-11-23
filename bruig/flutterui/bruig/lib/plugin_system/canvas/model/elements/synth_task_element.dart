@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // synth_task_element.dart is a task card beside a synth rack: what to make,
 // a button to hear the teacher's sound, and checks ticked as the student's
@@ -130,6 +131,10 @@ class SynthTaskElement extends CanvasElement {
 
   @override
   ElementKind get kind => ElementKind.synthTask;
+
+  /// mapOwnColours is this: it has no colour of its own.
+  @override
+  CanvasElement mapOwnColours(ColourMap f) => this;
 
   @override
   CanvasElement rebase(ElementBase base) => SynthTaskElement(base,

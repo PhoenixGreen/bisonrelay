@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // synth_module_element.dart is one synth module on a canvas (keyboard,
 // oscillator, envelope, filter, LFO, amp, mixer, noise or speaker), drawn
@@ -114,6 +115,10 @@ class SynthModuleElement extends CanvasElement {
       look: look,
       channel: channel,
       big: big);
+
+  /// mapOwnColours is this: it has no colour of its own.
+  @override
+  CanvasElement mapOwnColours(ColourMap f) => this;
 
   @override
   CanvasElement rebase(ElementBase base) => SynthModuleElement(base,

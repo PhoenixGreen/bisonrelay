@@ -2,6 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // layout_element.dart is a Layout: one element that divides its box into
 // cells, three ways (Ken, 2026-11-18):
@@ -244,6 +245,15 @@ class LayoutCell {
         shape: shape ?? this.shape,
       );
 
+  /// mapColours maps the cell's own style; none is the layout's, and stays
+  /// none.
+  LayoutCell mapColours(ColourMap f) {
+    var s = style;
+    if (s == null) return this;
+    var next = s.mapColours(f);
+    return identical(next, s) ? this : copyWith(style: next);
+  }
+
   Map<String, dynamic> toJson() => {
         "id": id,
         if (name.isNotEmpty) "name": name,
@@ -387,6 +397,19 @@ class LayoutElement extends CanvasElement {
           cellStyle: cellStyle ?? this.cellStyle,
           order: order ?? this.order,
           unread: unread ?? this.unread);
+
+  /// mapOwnColours maps the gutters' colour (hidden while clear, as it is
+  /// saved), the cells' shared style and each cell's own.
+  @override
+  LayoutElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var gutterColor = p(this.gutterColor, shown: this.gutterColor.a > 0);
+    var cellStyle = p.part(this.cellStyle, (b) => b.mapColours(f));
+    var cells = p.list(this.cells, (c) => c.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+        gutterColor: gutterColor, cellStyle: cellStyle, cells: cells);
+  }
 
   LayoutCell? cellById(String id) {
     for (var c in cells) {

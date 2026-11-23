@@ -450,6 +450,8 @@ const List<StyleParam> pitchParams = [
       decimals: 0,
       group: "Track",
       onlyWhen: _track),
+  // A named choice, saved as its index, not a colour: not put through
+  // mapColours.
   StyleParam.choice(
       "trackColour", "Colour", ["Red", "Blue", "Green", "Grey", "Purple"],
       group: "Track", onlyWhen: _track),

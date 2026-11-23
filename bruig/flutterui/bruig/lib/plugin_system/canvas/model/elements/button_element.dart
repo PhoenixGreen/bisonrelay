@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// ButtonActionKind is what pressing a button does. Everything stays inside
 /// the canvas: a published canvas runs in a chat message or a page, and a
@@ -177,6 +178,27 @@ class ButtonElement extends CanvasElement {
           hoverTextColor: hoverTextColor ?? this.hoverTextColor,
           action: action ?? this.action,
           animation: animation ?? this.animation);
+
+  /// mapOwnColours maps the button's type, box and arrival, and its hover
+  /// colours, each hidden while transparent (as they are saved).
+  @override
+  ButtonElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var textSpec = p.part(this.textSpec, (s) => s.mapColours(f));
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var hoverFill = p(this.hoverFill, shown: this.hoverFill.a > 0);
+    var hoverTextColor =
+        p(this.hoverTextColor, shown: this.hoverTextColor.a > 0);
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      textSpec: textSpec,
+      box: box,
+      hoverFill: hoverFill,
+      hoverTextColor: hoverTextColor,
+      animation: animation,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

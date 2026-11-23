@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart' show EdgeInsets;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // text_spec.dart is how text looks, wherever it appears: text elements, shape
 // labels, buttons, chart titles and axes, table cells all hold one TextSpec,
@@ -224,6 +225,19 @@ class TextFill {
         panY: panY ?? this.panY,
       );
 
+  /// mapColours maps the overlay (shown only with a blend, as it is saved),
+  /// its fade and the pattern (shown only when the fill is a pattern).
+  TextFill mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var overlay = p(this.overlay, shown: blend != _defaults.blend);
+    var overlayFade = p.partOrNone(this.overlayFade, (g) => g.mapColours(f));
+    var pattern = p.part(this.pattern,
+        (s) => s.mapColours(f.shownOnlyIf(kind == TextFillKind.pattern)));
+    if (!p.changed) return this;
+    return copyWith(
+        overlay: overlay, overlayFade: overlayFade, pattern: pattern);
+  }
+
   Map<String, dynamic> toJson() => {
         if (kind != _defaults.kind) "kind": kind.name,
         if (assetId.isNotEmpty) "assetId": assetId,
@@ -404,6 +418,29 @@ class TextSpec {
         glowBlur: glowBlur ?? this.glowBlur,
         glowColor: glowColor ?? this.glowColor,
       );
+
+  /// mapColours maps the type's colour, fade and fill, and its outline,
+  /// shadow and glow colours, each shown only while that effect is on (as
+  /// they are saved).
+  TextSpec mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p(this.color);
+    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    var fill = p.part(this.fill, (x) => x.mapColours(f));
+    var outlineColor = p(this.outlineColor, shown: outlineWidth > 0);
+    var shadowColor =
+        p(this.shadowColor, shown: shadowBlur > 0 || shadowDistance > 0);
+    var glowColor = p(this.glowColor, shown: glowBlur > 0);
+    if (!p.changed) return this;
+    return copyWith(
+      color: color,
+      fade: fade,
+      fill: fill,
+      outlineColor: outlineColor,
+      shadowColor: shadowColor,
+      glowColor: glowColor,
+    );
+  }
 
   /// fontWeight is [weight] truncated to a hundred and clamped, so a stray
   /// saved value cannot index out of range.
@@ -973,6 +1010,27 @@ class BoxSpec {
         radBL: radBL ?? this.radBL,
         borderInset: borderInset ?? this.borderInset,
       );
+
+  /// mapColours maps the fill, the border colour (shown only where there is
+  /// a border, as it is saved), both fades, and the picture or pattern it is
+  /// painted with (shown only while it is painted).
+  BoxSpec mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var fill = p(this.fill);
+    var painted =
+        p.part(this.painted, (x) => x.mapColours(f.shownOnlyIf(x.on)));
+    var borderColor = p(this.borderColor, shown: hasBorder);
+    var fillFade = p.partOrNone(this.fillFade, (g) => g.mapColours(f));
+    var borderFade = p.partOrNone(this.borderFade, (g) => g.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      fill: fill,
+      painted: painted,
+      borderColor: borderColor,
+      fillFade: fillFade,
+      borderFade: borderFade,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         "fill": colorToJson(fill),

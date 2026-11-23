@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// CanvasBackground is what is behind the whole document: a pattern, a
 /// stage or parallax scenery (see [backdrop]), with any picture, drawing and
@@ -129,6 +130,38 @@ class CanvasBackground {
         sound: clearSound ? null : sound ?? this.sound,
         drawing: clearDrawing ? null : drawing ?? this.drawing,
       );
+
+  /// mapColours maps the pattern, the stage and the scenery, each shown only
+  /// while it is the one drawn, and the picture (shown only with a picture
+  /// in it), drawing, video and sound (never drawn) laid over them, each a
+  /// whole element.
+  CanvasBackground mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var spec = p.part(this.spec,
+        (s) => s.mapColours(f.shownOnlyIf(backdrop == BackdropKind.flat)));
+    var picture = p.partOrNone(this.picture,
+        (e) => e.mapColours(f.shownOnlyIf(e.hasImage)) as ImageElement);
+    var video =
+        p.partOrNone(this.video, (e) => e.mapColours(f) as VideoElement);
+    var sound = p.partOrNone(
+        this.sound, (e) => e.mapColours(f.shownOnlyIf(false)) as AudioElement);
+    var drawing =
+        p.partOrNone(this.drawing, (e) => e.mapColours(f) as VectorElement);
+    var stage = p.partOrNone(this.stage,
+        (e) => e.mapColours(f.shownOnlyIf(isStage)) as StageElement);
+    var parallax = p.partOrNone(this.parallax,
+        (e) => e.mapColours(f.shownOnlyIf(isParallax)) as ParallaxElement);
+    if (!p.changed) return this;
+    return copyWith(
+      spec: spec,
+      picture: picture,
+      video: video,
+      sound: sound,
+      drawing: drawing,
+      stage: stage,
+      parallax: parallax,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         "spec": spec.toJson(),

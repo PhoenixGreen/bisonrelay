@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_cube.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // image_adjustment.dart is what an adjustment layer does to the layers under
 // it, drawn by shaders/adjust.frag (see adjust_painter.dart). Each kind lists
@@ -282,7 +283,8 @@ class ImageAdjustment {
   final String table;
 
   /// cube is a colour table read in from a file, kept with the adjustment
-  /// so it goes wherever the picture goes.
+  /// so it goes wherever the picture goes. Not put through mapColours: it is
+  /// a look-up of every colour, not a colour of the design.
   final ColourCube? cube;
 
   /// tableName is what a table read in called itself.
@@ -339,6 +341,18 @@ class ImageAdjustment {
         cube: clearCube ? null : cube ?? this.cube,
         tableName: tableName ?? this.tableName,
       );
+
+  /// mapColours maps the adjustment's colour, shown only for a kind set by
+  /// one, and its gradient map, shown only for a gradient map (as each is
+  /// saved). The [cube] is left alone.
+  ImageAdjustment mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var colour = p(this.colour, shown: kind.usesColour);
+    var fade = p.part(this.fade,
+        (x) => x.mapColours(f.shownOnlyIf(kind == AdjustKind.gradientMap)));
+    if (!p.changed) return this;
+    return copyWith(colour: colour, fade: fade);
+  }
 
   /// withValue is this with [key] set to [v], within its kind's range.
   ImageAdjustment withValue(String key, double v) {

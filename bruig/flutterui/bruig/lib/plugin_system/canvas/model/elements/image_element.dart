@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// RemovalMode is how an image's background is taken out: [chromaKey] and
 /// [cornerFlood] for a flat colour behind a logo or screenshot, [luminance]
@@ -132,7 +133,9 @@ class RemovalStroke {
 class BackgroundRemoval {
   final RemovalMode mode;
 
-  /// keyColor is what [RemovalMode.chromaKey] matches against.
+  /// keyColor is what [RemovalMode.chromaKey] matches against. Not put
+  /// through mapColours: it must match the picture's own pixels, whatever
+  /// the design's colours become.
   final Color keyColor;
 
   /// tolerance is how far from the key a pixel may be and still be removed,
@@ -357,6 +360,13 @@ class ImageOutline {
         style: style ?? this.style,
         feather: feather ?? this.feather,
       );
+
+  /// mapColours maps the outline's colour, shown only while it draws (as it
+  /// is saved).
+  ImageOutline mapColours(ColourMap f) {
+    var next = f(color, shown: width > 0 && color.a > 0);
+    return next == color ? this : copyWith(color: next);
+  }
 
   Map<String, dynamic> toJson() => {
         "c": colorToJson(color),
@@ -751,6 +761,32 @@ class ImageElement extends CanvasElement {
           retouch: retouch ?? this.retouch,
           scaleContent: scaleContent ?? this.scaleContent,
           clip: clip ?? this.clip);
+
+  /// mapOwnColours maps the picture's box, outline, arrival, layers and
+  /// retouching, its tint (hidden while transparent) and its overlay
+  /// (hidden without a blend), as each is saved. The background removal's
+  /// key colour is left alone.
+  @override
+  ImageElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var tint = p(this.tint, shown: this.tint.a > 0);
+    var outline = p.part(this.outline, (o) => o.mapColours(f));
+    var overlay = p(this.overlay, shown: blend != _defaults.blend);
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    var layers = p.list(this.layers, (l) => l.mapColours(f));
+    var retouch = p.list(this.retouch, (s) => s.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      box: box,
+      tint: tint,
+      outline: outline,
+      overlay: overlay,
+      animation: animation,
+      layers: layers,
+      retouch: retouch,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

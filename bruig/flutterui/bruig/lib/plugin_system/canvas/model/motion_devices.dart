@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/design_device.dart'
     show designParams;
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // motion_devices.dart is an element's motion chain beyond its clips: the
 // devices of its Chain's Motion view. Three rules:
@@ -434,6 +435,40 @@ class MotionDevice {
 
   MotionDevice _withPlainValue(String id, double v) =>
       _copy(values: {...values, id: v});
+
+  /// colourSetting is whether setting [id] is a colour: its unit, as the
+  /// kind declares it, is "argb". Only Design has such settings.
+  bool colourSetting(String id) =>
+      kind.params.any((p) => p.id == id && p.unit == "argb");
+
+  /// mapColours maps the colour a look draws in, shown only while the
+  /// device is on, the chain is on ([chainOn]: ElementMotion.off), and it
+  /// is a look that draws in a colour (an outline only with a width). It
+  /// also maps every keyed, phase-keyed and resting value of a colour
+  /// setting, kept as a 0xAARRGGBB number in a double; those are taken as
+  /// shown.
+  MotionDevice mapColours(ColourMap f, {bool chainOn = true}) {
+    var draws = switch (kind) {
+      MotionDeviceKind.glow || MotionDeviceKind.shadow => true,
+      MotionDeviceKind.outline => value("width") > 0,
+      _ => false,
+    };
+    var p = ColourPass(f);
+    var colour = p.argbOrNone(this.colour, shown: chainOn && on && draws);
+    List<DeviceKey> keyed(String id, List<DeviceKey> ks) => colourSetting(id)
+        ? mappedList(ks, (k) {
+            var v = p.argbNumber(k.v);
+            return identical(v, k.v) || v == k.v ? k : k.copyWith(v: v);
+          })
+        : ks;
+    var keys = p.values(this.keys, keyed);
+    var phaseKeys = p.values(this.phaseKeys, (_, m) => mappedValues(m, keyed));
+    var values = p.values(
+        this.values, (id, v) => colourSetting(id) ? p.argbNumber(v) : v);
+    if (!p.changed) return this;
+    return _copy(
+        colour: () => colour, keys: keys, phaseKeys: phaseKeys, values: values);
+  }
 
   static List<List<num>> _keysJson(List<DeviceKey> ks) => [
         for (var k in ks)

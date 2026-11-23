@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // image_strokes.dart is brushwork: paint on a paint layer, and retouching
 // (clone, heal, dodge, burn, blur) done to a picture. Kept as strokes, not
@@ -297,7 +298,8 @@ class StrokeMark {
           List<double>? pressure,
           List<Offset>? tilt,
           double? radius,
-          Offset? source}) =>
+          Offset? source,
+          Color? colour}) =>
       StrokeMark(
         kind: kind,
         points: points ?? this.points,
@@ -305,11 +307,18 @@ class StrokeMark {
         radius: radius ?? this.radius,
         hardness: hardness,
         strength: strength,
-        colour: colour,
+        colour: colour ?? this.colour,
         source: source ?? this.source,
         tip: tip,
         tilt: tilt ?? this.tilt,
       );
+
+  /// mapColours maps the stroke's paint, shown only for a paint stroke (as
+  /// it is saved): the others take their colour from the picture.
+  StrokeMark mapColours(ColourMap f) {
+    var next = f(colour, shown: kind == StrokeKind.paint);
+    return next == colour ? this : copyWith(colour: next);
+  }
 
   static double _round(double v) => (v * 100000).round() / 100000;
 

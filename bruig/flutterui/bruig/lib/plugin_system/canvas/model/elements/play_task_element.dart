@@ -2,6 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // play_task_element.dart is a task card for an instrument, as a code task is
 // for a Code panel: a title and a list of steps, each ticked as the keys
@@ -263,6 +264,17 @@ class PlayTaskElement extends CanvasElement {
           titleSpec: titleSpec ?? this.titleSpec,
           spec: spec ?? this.spec,
           accent: accent ?? this.accent);
+
+  @override
+  PlayTaskElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var titleSpec = p.part(this.titleSpec, (s) => s.mapColours(f));
+    var spec = p.part(this.spec, (s) => s.mapColours(f));
+    var accent = p(this.accent);
+    if (!p.changed) return this;
+    return copyWith(box: box, titleSpec: titleSpec, spec: spec, accent: accent);
+  }
 
   /// maxChecks is the most steps a card is read with.
   static const maxChecks = 40;

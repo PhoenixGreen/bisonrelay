@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // code_element.dart is a Code panel: a little project of files shown as an
 // editor shows it (window bar, files down the side, one to three panes with
@@ -144,6 +145,11 @@ class CodeFile {
       name: name ?? this.name,
       text: text ?? this.text,
       colour: colour ?? this.colour);
+
+  CodeFile mapColours(ColourMap f) {
+    var next = f(colour, shown: true);
+    return next == colour ? this : copyWith(colour: next);
+  }
 
   Map<String, dynamic> toJson() =>
       {"id": id, "name": name, "text": text, "colour": colorToJson(colour)};
@@ -320,6 +326,9 @@ class CodeElement extends CanvasElement {
   /// CodeLayout.evenColumns): changed by dragging the lines between them.
   final List<double> columns;
   final List<double> rows;
+
+  /// theme is one of the named themes, whose colours are the app's: not put
+  /// through mapColours.
   final CodeTheme theme;
 
   /// fontSize is the code's size; the bar, tabs and file list follow it.
@@ -435,6 +444,19 @@ class CodeElement extends CanvasElement {
           steps: steps ?? this.steps,
           dim: dim ?? this.dim,
           start: clearStart ? null : start ?? this.start);
+
+  /// mapOwnColours maps each file's colour, and those of the files kept for
+  /// Reset (hidden: they are not drawn until reset to). The theme is a named
+  /// one, and is left alone.
+  @override
+  CodeElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var files = p.list(this.files, (x) => x.mapColours(f));
+    var start = p.partOrNone(this.start,
+        (l) => mappedList(l, (x) => x.mapColours(f.shownOnlyIf(false))));
+    if (!p.changed) return this;
+    return copyWith(files: files, start: start);
+  }
 
   /// startedAs is it begun again as an empty project of [k], a file a pane
   /// as far as there are panes, nothing typed or lit; look and box stay.

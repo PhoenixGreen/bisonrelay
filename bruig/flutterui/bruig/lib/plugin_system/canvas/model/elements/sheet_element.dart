@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart' show BoxSpec;
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // sheet_element.dart is Sheet music: the part of the instrument it follows,
 // engraved (notation.dart, sheet_painter.dart) with a playhead, and
@@ -218,6 +219,16 @@ class SheetElement extends CanvasElement {
           box: box ?? this.box,
           fromBar: math.max(0, fromBar ?? this.fromBar),
           toBar: math.max(0, toBar ?? this.toBar));
+
+  @override
+  SheetElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var paper = p(this.paper);
+    var ink = p(this.ink);
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(paper: paper, ink: ink, box: box);
+  }
 
   @override
   Map<String, dynamic> props() => {

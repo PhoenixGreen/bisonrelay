@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // element_animation.dart is how a shape or a picture arrives and leaves,
 // placed and sized on the timeline as a text element's arrival is. Not a
@@ -317,6 +318,11 @@ class ElementAnimation {
         exitDirection: exitDirection ?? this.exitDirection,
         exitStrength: exitStrength ?? this.exitStrength,
       );
+
+  ElementAnimation mapColours(ColourMap f) {
+    var next = loop.mapColours(f);
+    return identical(next, loop) ? this : copyWith(loop: next);
+  }
 
   Map<String, dynamic> toJson() => {
         if (on) "preset": preset.name,

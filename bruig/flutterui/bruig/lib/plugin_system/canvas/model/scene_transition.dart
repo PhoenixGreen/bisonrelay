@@ -2,6 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/json_read.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // scene_transition.dart is how one scene gives way to the next: the kinds
 // of transition, the settings each reads, and a transition as saved on a
@@ -486,6 +487,13 @@ class SceneTransition {
         soundVolume: soundVolume ?? this.soundVolume,
         soundLead: soundLead ?? this.soundLead,
       );
+
+  /// mapColours maps the colour it goes through, shown only while it is on
+  /// and of a kind that takes a colour.
+  SceneTransition mapColours(ColourMap f) {
+    var next = f(color, shown: on && kind.takesColour);
+    return next == color ? this : copyWith(color: next);
+  }
 
   Map<String, dynamic> toJson() => {
         "kind": kind.name,

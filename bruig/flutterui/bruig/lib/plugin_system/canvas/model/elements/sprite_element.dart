@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // sprite_element.dart is the Sprite element: a sprite sheet sliced into
 // frames (by a grid, or by the sheet's own notes) and its animations, each
@@ -152,7 +153,9 @@ class SpriteElement extends CanvasElement {
   final Color? tint;
 
   /// built is the builder's recipe (pieces and animations) when the builder
-  /// made the sheet, so it can reopen with it. See sprite_builder.dart.
+  /// made the sheet, so it can reopen with it. See sprite_builder.dart. Not
+  /// put through mapColours: its colours are names of the builder's, and the
+  /// sheet already drawn from them is a picture.
   final Map<String, dynamic>? built;
 
   /// drawn is the part of a frame anything is drawn in across all frames, as
@@ -383,6 +386,16 @@ class SpriteElement extends CanvasElement {
         // A new sheet invalidates the measured area.
         drawn: drawn ?? (sheet == null || sheet == this.sheet ? this.drawn : null),
       );
+
+  /// mapOwnColours maps its tint (none stays none). The builder's recipe
+  /// names its colours, and is left alone.
+  @override
+  SpriteElement mapOwnColours(ColourMap f) {
+    var c = tint;
+    if (c == null) return this;
+    var next = f(c, shown: true);
+    return next == c ? this : copyWith(tint: next);
+  }
 
   /// touchIn is the part of its current [box] a game touches: [drawn]
   /// within the fitted frame, or all of [box] if not measured.

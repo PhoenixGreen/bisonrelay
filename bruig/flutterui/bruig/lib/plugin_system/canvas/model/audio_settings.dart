@@ -228,7 +228,8 @@ class SongSection {
   final String name;
   final int bars;
 
-  /// color is its index in sectionColors.
+  /// color is its index in sectionColors. An index, not a colour: not put
+  /// through mapColours.
   final int color;
 
   const SongSection(this.id,

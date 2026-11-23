@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_params.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // procedural_spec.dart is the recipe for a generated background, shared by
 // the canvas background and a background element. A recipe, not a picture:
@@ -370,6 +371,37 @@ class ProceduralSpec {
         params: params ?? this.params,
         layers: layers ?? this.layers,
       );
+
+  /// mapColours maps the pattern's colours and its fades, its rings' tints
+  /// (shown only for the rings style, the only one that saves or draws
+  /// them), its light and its layers. The foreground and accent are taken as
+  /// shown, as they are always saved, though a plain pattern draws neither.
+  ProceduralSpec mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var background = p(this.background);
+    var foreground = p(this.foreground);
+    var accent = p(this.accent);
+    var gradient = p.partOrNone(this.gradient, (g) => g.mapColours(f));
+    var foregroundFade =
+        p.partOrNone(this.foregroundFade, (g) => g.mapColours(f));
+    var accentFade = p.partOrNone(this.accentFade, (g) => g.mapColours(f));
+    var rings = p.part(this.rings,
+        (r) => r.mapColours(f.shownOnlyIf(style == ProceduralStyle.rings)));
+    var light = p.part(this.light, (l) => l.mapColours(f));
+    var layers = p.list(this.layers, (l) => l.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      background: background,
+      foreground: foreground,
+      accent: accent,
+      gradient: gradient,
+      foregroundFade: foregroundFade,
+      accentFade: accentFade,
+      rings: rings,
+      light: light,
+      layers: layers,
+    );
+  }
 
   /// shuffled is the next seed along: sequential, so an earlier pick can be
   /// found again.

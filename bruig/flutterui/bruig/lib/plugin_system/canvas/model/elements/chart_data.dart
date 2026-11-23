@@ -5,6 +5,7 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // chart_data.dart is the numbers a chart is drawn from: the series, the
 // categories they are indexed by, and their colours. The data editor and
@@ -106,6 +107,17 @@ class ChartBackdrop {
         borderWidth: borderWidth ?? this.borderWidth,
         grow: grow ?? this.grow,
       );
+
+  /// mapColours maps the panel's fill and border, shown only while the
+  /// panel is on, and the border only with a width (both are saved either
+  /// way).
+  ChartBackdrop mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var fill = p(this.fill, shown: on);
+    var border = p(this.border, shown: on && borderWidth > 0);
+    if (!p.changed) return this;
+    return copyWith(fill: fill, border: border);
+  }
 
   Map<String, dynamic> toJson() => {
         if (on) "on": true,
@@ -408,6 +420,23 @@ class ChartSeries {
         backdrop: backdrop ?? this.backdrop,
       );
 
+  /// mapColours maps the series' colour and fade, its own point colour (none
+  /// is the chart's, and stays none) and its backdrop.
+  ChartSeries mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p(this.color);
+    var gradient = p.partOrNone(this.gradient, (g) => g.mapColours(f));
+    var pointColor = p.orNone(this.pointColor);
+    var backdrop = p.partOrNone(this.backdrop, (b) => b.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      color: color,
+      gradient: gradient,
+      pointColor: pointColor,
+      backdrop: backdrop,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         "name": name,
         "color": colorToJson(color),
@@ -528,7 +557,9 @@ class ChartData {
 
   /// marks are the categories' own colours, where highlights or colour-by
   /// give them one (null keeps the series' colour). Worked out from the sheet
-  /// by data_sync.dart, as are the fields below; none is saved.
+  /// by data_sync.dart, as are the fields below; none is saved. Not put
+  /// through mapColours, as [panels] are not: they are worked out again from
+  /// the sheet, whose colours are mapped.
   final List<Color?> marks;
 
   /// panels are the small charts of a chart split by a column (one per
@@ -615,6 +646,13 @@ class ChartData {
         pointNames: pointNames ?? this.pointNames,
         sizes: sizes ?? this.sizes,
       );
+
+  /// mapColours maps the series. [marks] and [panels] are left: worked out
+  /// from the sheet, they follow its colours.
+  ChartData mapColours(ColourMap f) {
+    var next = mappedList(series, (s) => s.mapColours(f));
+    return identical(next, series) ? this : copyWith(series: next);
+  }
 
   /// withRowRemoved takes a row out of the categories, every series and the
   /// estimate marks, keeping them in step.

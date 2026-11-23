@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
@@ -38,6 +39,13 @@ class BackgroundLayer {
         blend: blend ?? this.blend,
         visible: visible ?? this.visible,
       );
+
+  /// mapColours maps the layer's pattern, shown only while the layer is
+  /// visible and not wholly faded out.
+  BackgroundLayer mapColours(ColourMap f) {
+    var next = spec.mapColours(f.shownOnlyIf(visible && opacity > 0));
+    return identical(next, spec) ? this : copyWith(spec: next);
+  }
 
   Map<String, dynamic> toJson() => {
         // A layer's own layers are not drawn, so they are not kept.

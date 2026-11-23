@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// LineStrokeCap is how the stroke itself finishes; what is drawn at the
 /// end is [LineEnd], apart, since a line can want a round end and an arrow.
@@ -226,6 +227,16 @@ class LineElement extends CanvasElement {
           curvature: curvature ?? this.curvature,
           flipped: flipped ?? this.flipped,
           animation: animation ?? this.animation);
+
+  @override
+  LineElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p(this.color);
+    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(color: color, fade: fade, animation: animation);
+  }
 
   @override
   Map<String, dynamic> props() => {

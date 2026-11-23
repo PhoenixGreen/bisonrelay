@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // text_animation.dart is how a text element arrives: a closed set of
 // presets reusing ChartAnimation's ease and stagger, with the length set on
@@ -532,6 +533,15 @@ class TextDrawSpec {
         radius: radius ?? this.radius,
       );
 
+  /// mapColours maps the mark's own colour; none takes the text's, and stays
+  /// none.
+  TextDrawSpec mapColours(ColourMap f) {
+    var c = color;
+    if (c == null) return this;
+    var next = f(c, shown: true);
+    return next == c ? this : copyWith(color: next);
+  }
+
   TextDrawSpec withEvenPad(double pad) => TextDrawSpec(
       color: color,
       start: start,
@@ -848,6 +858,14 @@ class TextAnimation {
         piecesInTurn: piecesInTurn ?? this.piecesInTurn,
         piecesGap: piecesGap ?? this.piecesGap,
       );
+
+  TextAnimation mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var draw = p.part(this.draw, (d) => d.mapColours(f));
+    var loop = p.part(this.loop, (l) => l.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(draw: draw, loop: loop);
+  }
 
   /// progressAt is how far piece [index] of [count] has got at [reveal].
   /// The chart's own stagger, so a chart and headline line up.

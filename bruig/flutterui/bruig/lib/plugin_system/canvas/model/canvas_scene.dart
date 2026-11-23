@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/element_reading.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/model/scene_camera.dart';
 import 'package:bruig/plugin_system/canvas/model/scene_transition.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // A scene's transition and camera are part of it, so whatever imports a
 // scene has them.
@@ -175,6 +176,19 @@ class CanvasScene {
         camera: clearCamera ? null : (camera ?? this.camera),
         bus: bus ?? this.bus,
       );
+
+  /// mapColours maps the scene's elements, its own backdrop (hidden while
+  /// switched off) and its transition.
+  CanvasScene mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var elements = p.list(this.elements, (e) => e.mapColours(f));
+    var background = p.partOrNone(
+        this.background, (b) => b.mapColours(f.shownOnlyIf(!backgroundOff)));
+    var transition = p.partOrNone(this.transition, (t) => t.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+        elements: elements, background: background, transition: transition);
+  }
 
   Map<String, dynamic> toJson() => {
         "id": id,

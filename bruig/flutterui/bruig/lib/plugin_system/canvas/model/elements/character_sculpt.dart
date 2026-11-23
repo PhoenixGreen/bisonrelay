@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+
 // character_sculpt.dart is a 3D character shaped by brush strokes that
 // raise, lower or flatten the surface. Each is kept where drawn on the body
 // at rest, so it moves with the body and the clothes follow it; the mesh
@@ -166,6 +168,23 @@ class PaintStroke {
       softness: softness,
       mirror: mirror,
       points: [...points, p]);
+
+  /// mapColours maps the paint, kept as 0xRRGGBB, shown only for a stroke
+  /// that lays paint on (one that rubs it out draws nothing).
+  PaintStroke mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var next = p.rgb(colour, shown: tool == PaintTool.paint);
+    if (!p.changed) return this;
+    return PaintStroke(
+        on: on,
+        tool: tool,
+        colour: next,
+        radius: radius,
+        opacity: opacity,
+        softness: softness,
+        mirror: mirror,
+        points: points);
+  }
 
   String get key => "$on|${tool.name}|$colour|$radius|$opacity|$softness|"
       "$mirror|${points.length}|${Object.hashAll(points)}";

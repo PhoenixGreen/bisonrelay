@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageCrop;
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // vector_element.dart is a drawing: an .svg kept as vectors to the screen
 // and the export, and editable point by point. It is drawn as its file
@@ -250,6 +251,8 @@ class VectorShape {
   /// tints and erasures are the tint brush and eraser strokes painted over
   /// this shape, in the drawing's units. Held per shape so a shape drawn
   /// later over the place is not tinted, and a deleted shape takes its tints.
+  /// An eraser's paint is never put through mapColours: it is only a mask,
+  /// never seen.
   final List<VectorTint> tints;
   final List<VectorTint> erasures;
 
@@ -366,6 +369,30 @@ class VectorShape {
         locked: locked ?? this.locked,
         origin: clearOrigin ? null : origin ?? this.origin,
       );
+
+  /// mapColours maps the shape's fill and line (none stays none; the line
+  /// hidden with no width), their fades, its tints and its own arrival, all
+  /// hidden while the shape is. Its erasers are left alone.
+  VectorShape mapColours(ColourMap f) {
+    var g = f.shownOnlyIf(!hidden);
+    var p = ColourPass(g);
+    var fill = p.orNone(this.fill);
+    var stroke = p.orNone(this.stroke, shown: strokeWidth > 0);
+    var fillFade = p.partOrNone(this.fillFade, (x) => x.mapColours(g));
+    var strokeFade = p.partOrNone(
+        this.strokeFade, (x) => x.mapColours(g.shownOnlyIf(strokeWidth > 0)));
+    var tints = p.list(this.tints, (t) => t.mapColours(g));
+    var animation = p.partOrNone(this.animation, (a) => a.mapColours(g));
+    if (!p.changed) return this;
+    return copyWith(
+      fill: fill,
+      stroke: stroke,
+      fillFade: fillFade,
+      strokeFade: strokeFade,
+      tints: tints,
+      animation: animation,
+    );
+  }
 
   /// tapered is whether any point's width differs (see VectorNode.width).
   bool get tapered => paths.any((p) => p.nodes.any((n) => n.width != 1));
@@ -591,6 +618,22 @@ class VectorTint {
       fill: fill,
       erase: erase);
 
+  /// mapColours maps the tint's paint, hidden where it lands on neither line
+  /// nor fill. An eraser's is left alone: it is a mask.
+  VectorTint mapColours(ColourMap f) {
+    if (erase) return this;
+    var next = paint.mapColours(f.shownOnlyIf(line || fill));
+    if (identical(next, paint)) return this;
+    return VectorTint(
+        points: points,
+        paint: next,
+        width: width,
+        soft: soft,
+        line: line,
+        fill: fill,
+        erase: erase);
+  }
+
   /// mapped is this stroke with every point put through [f], for when the
   /// points under it move or scale.
   VectorTint mapped(Offset Function(Offset) f, {double scale = 1}) =>
@@ -676,7 +719,8 @@ class VectorElement extends CanvasElement {
   final VectorFit fit;
 
   /// handleColor and handleSize are how edit points are drawn, so they can be
-  /// told from the drawing whatever its colours.
+  /// told from the drawing whatever its colours. Not put through mapColours:
+  /// the colour is the editor's, not the design's.
   final Color handleColor;
   final double handleSize;
 
@@ -811,6 +855,19 @@ class VectorElement extends CanvasElement {
           tint: clearTint ? null : tint ?? this.tint,
           crop: crop ?? this.crop,
           animation: animation ?? this.animation);
+
+  /// mapOwnColours maps the drawing's shapes and its tint (none is its own
+  /// colours, and stays none). The edit handles' colour is left alone.
+  @override
+  VectorElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var shapes =
+        p.partOrNone(this.shapes, (l) => mappedList(l, (s) => s.mapColours(f)));
+    var tint = p.orNone(this.tint);
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(shapes: shapes, tint: tint, animation: animation);
+  }
 
   VectorElement withShape(int index, VectorShape shape) {
     var list = [...?shapes];

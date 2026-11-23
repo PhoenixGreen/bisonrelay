@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // character_design.dart is a new 3D character as the Character Studio makes
 // it, kept in the library (storage/character_designs.dart): the VRoid body it
@@ -66,6 +67,34 @@ class CharacterDesign {
       face: face,
       move: move,
       updated: updated);
+
+  /// mapColours maps the character's colours: its shape's colour choices
+  /// (eyes, brows, hair, skin), its garments, its look's ink and paper, its
+  /// decals' ink and its paint. The shaping strokes, face and stance hold
+  /// none.
+  CharacterDesign mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var shape = p.part(this.shape, (s) => s.mapColours(f));
+    var outfit = p.part(this.outfit, (o) => o.mapColours(f));
+    var look = p.part(this.look, (l) => l.mapColours(f));
+    var decals = p.list(this.decals, (d) => d.mapColours(f));
+    var paint = p.list(this.paint, (s) => s.mapColours(f));
+    if (!p.changed) return this;
+    return CharacterDesign(
+        id: id,
+        name: name,
+        body: body,
+        shape: shape,
+        outfit: outfit,
+        lookName: lookName,
+        look: look,
+        decals: decals,
+        sculpt: sculpt,
+        paint: paint,
+        face: face,
+        move: move,
+        updated: updated);
+  }
 
   /// pictureIds and vectorIds are the library's pictures and vectors its
   /// decals use, for a tidy of the library to keep.

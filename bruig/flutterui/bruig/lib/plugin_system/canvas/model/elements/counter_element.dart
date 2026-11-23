@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // counter_element.dart is a number that counts: across the timeline (a
 // figure animating up in a video) or, with [CounterElement.keyed] off, in
@@ -336,6 +337,30 @@ class CounterElement extends CanvasElement {
           buttonAt: buttonAt ?? this.buttonAt,
           buttonSize: buttonSize ?? this.buttonSize,
           animation: animation ?? this.animation);
+
+  /// mapOwnColours maps the number's and words' type, the box, the buttons'
+  /// type and box (hidden with no buttons, as they are saved) and the
+  /// arrival.
+  @override
+  CounterElement mapOwnColours(ColourMap f) {
+    var g = f.shownOnlyIf(buttons.isNotEmpty);
+    var p = ColourPass(f);
+    var numberSpec = p.part(this.numberSpec, (s) => s.mapColours(f));
+    var affixSpec = p.part(this.affixSpec, (s) => s.mapColours(f));
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var buttonSpec = p.part(this.buttonSpec, (s) => s.mapColours(g));
+    var buttonBox = p.part(this.buttonBox, (b) => b.mapColours(g));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      numberSpec: numberSpec,
+      affixSpec: affixSpec,
+      box: box,
+      buttonSpec: buttonSpec,
+      buttonBox: buttonBox,
+      animation: animation,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

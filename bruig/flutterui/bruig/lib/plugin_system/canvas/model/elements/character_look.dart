@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+
 // character_look.dart is how a 3D character is drawn: lines, fill,
 // shading, light, colour and finish; 2D and 3D are both looks. The dials
 // work in render/vrm/vrm_look.dart.
@@ -15,12 +17,14 @@ class CharacterLook {
   final int lineColour;
   final String lineMode;
 
-  /// fill is painted (textures as made) or flat, [levels] tones.
+  /// fill is painted (textures as made) or flat, [levels] tones. A name,
+  /// not a colour: not put through mapColours.
   final String fill;
   final double levels;
 
   /// shading is none, cel (two tone), soft or smooth; amount how dark the
-  /// shadow; shadowTint neutral, warm, cool or purple.
+  /// shadow; shadowTint neutral, warm, cool or purple, a name rather than a
+  /// colour, so not put through mapColours.
   final String shading;
   final double amount;
   final String shadowTint;
@@ -116,6 +120,17 @@ class CharacterLook {
       _with(numbers, choices, c, paperColour);
   CharacterLook withPaperColour(int c) =>
       _with(numbers, choices, lineColour, c);
+
+  /// mapColours maps the ink and the paper, kept as 0xRRGGBB; the ink shown
+  /// only while there are lines drawn in it.
+  CharacterLook mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var line =
+        p.rgb(lineColour, shown: lineStyle != "none" && lineMode == "ink");
+    var paper = p.rgb(paperColour);
+    if (!p.changed) return this;
+    return _with(numbers, choices, line, paper);
+  }
 
   static CharacterLook _with(
           Map<String, double> n, Map<String, String> c, int line, int paper) =>

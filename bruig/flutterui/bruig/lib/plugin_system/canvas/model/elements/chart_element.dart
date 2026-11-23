@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'dart:convert' show jsonEncode;
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // chart_element.dart is a chart as data and settings, painted from scratch
 // by render/chart_painter.dart on a ui.Canvas like every element, so it
@@ -354,7 +355,8 @@ class ChartElement extends CanvasElement {
   final Color panel;
 
   /// style is the name of the style last given (data_styles.dart), shown as
-  /// picked in its settings. Empty, none.
+  /// picked in its settings. Empty, none. A name, whose colours are the
+  /// app's: not put through mapColours.
   final String style;
 
   /// design is how its marks are drawn beyond its type (chart_design.dart).
@@ -650,6 +652,61 @@ class ChartElement extends CanvasElement {
           panel: panel,
           style: style,
           design: design);
+
+  /// mapOwnColours maps the chart's series, type, box, highlights, notes,
+  /// story steps and arrival, and its own colours: the grid's and axes'
+  /// hidden while they are off, the axis labels' (none is the label type's,
+  /// and stays none) while those labels are off, the points' and the panel's
+  /// while transparent (as they are saved).
+  @override
+  ChartElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var data = p.part(this.data, (d) => d.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    var descriptionSpec =
+        p.partOrNone(this.descriptionSpec, (s) => s.mapColours(f));
+    var xLabelColor = p.orNone(this.xLabelColor, shown: showXLabels);
+    var yLabelColor = p.orNone(this.yLabelColor, shown: showYLabels);
+    var gridColor = p(this.gridColor, shown: showGrid);
+    var axisColor = p(this.axisColor, shown: showAxes);
+    var riseColor = p(this.riseColor);
+    var fallColor = p(this.fallColor);
+    var sliceColors = p.list(this.sliceColors, (c) => p(c));
+    var axisSpec = p.partOrNone(this.axisSpec, (s) => s.mapColours(f));
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var titleSpec = p.part(this.titleSpec, (s) => s.mapColours(f));
+    var labelSpec = p.part(this.labelSpec, (s) => s.mapColours(f));
+    var valueSpec = p.part(this.valueSpec, (s) => s.mapColours(f));
+    var pointColor =
+        p(this.pointColor, shown: showPoints && this.pointColor.a > 0);
+    var highlights = p.list(this.highlights, (h) => h.mapColours(f));
+    var notes = p.list(this.notes, (n) => n.mapColours(f));
+    var steps = p.list(this.steps, (s) => s.mapColours(f));
+    var panel = p(this.panel, shown: this.panel.a > 0);
+    if (!p.changed) return this;
+    return copyWith(
+      data: data,
+      animation: animation,
+      descriptionSpec: descriptionSpec,
+      xLabelColor: xLabelColor,
+      yLabelColor: yLabelColor,
+      gridColor: gridColor,
+      axisColor: axisColor,
+      riseColor: riseColor,
+      fallColor: fallColor,
+      sliceColors: sliceColors,
+      axisSpec: axisSpec,
+      box: box,
+      titleSpec: titleSpec,
+      labelSpec: labelSpec,
+      valueSpec: valueSpec,
+      pointColor: pointColor,
+      highlights: highlights,
+      notes: notes,
+      steps: steps,
+      panel: panel,
+    );
+  }
 
   /// _copy is copyWith's and rebase's one body, so neither drops a field.
   ChartElement _copy(

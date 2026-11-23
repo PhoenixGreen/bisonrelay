@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // character3d_element.dart is a Character Studio character on the canvas,
 // drawn by Flutter GPU (render/vrm/vrm_character.dart). Its design is kept
@@ -133,6 +134,15 @@ class Character3dElement extends CanvasElement {
           round: round ?? this.round,
           performance: performance,
           animation: animation ?? this.animation);
+
+  @override
+  Character3dElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var design = p.part(this.design, (d) => d.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(design: design, animation: animation);
+  }
 
   @override
   Map<String, dynamic> props() => {

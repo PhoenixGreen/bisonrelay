@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // stage_element.dart is a 3D stage's settings: a floor and a back wall seen
 // through a camera, carried by a background whose backdrop is a stage (see
@@ -191,6 +192,9 @@ class StageElement extends CanvasElement {
   final bool wall;
   final Color wallColor;
   final Color sky;
+
+  /// light is one of the named lights, whose colours are the app's: not put
+  /// through mapColours.
   final StageLight light;
 
   const StageElement(
@@ -252,6 +256,18 @@ class StageElement extends CanvasElement {
           wallColor: wallColor ?? this.wallColor,
           sky: sky ?? this.sky,
           light: light ?? this.light);
+
+  /// mapOwnColours maps the floor, the wall (hidden with no wall) and the
+  /// sky. The light is a named one, and is left alone.
+  @override
+  StageElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var floor = p(this.floor);
+    var wallColor = p(this.wallColor, shown: wall);
+    var sky = p(this.sky);
+    if (!p.changed) return this;
+    return copyWith(floor: floor, wallColor: wallColor, sky: sky);
+  }
 
   @override
   Map<String, dynamic> props() => {

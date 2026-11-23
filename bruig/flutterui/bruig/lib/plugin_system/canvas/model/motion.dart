@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // motion.dart is how an element moves: its clips. A clip is one element's
 // piece of animation (an arrival, a loop, a way out, an action) made of keys,
@@ -935,6 +936,32 @@ class ElementMotion {
         kept: kept ?? this.kept,
         drawSize: drawSize ?? this.drawSize,
       );
+
+  /// mapColours maps its devices' colours (see MotionDevice.mapColours; a
+  /// look's hidden while the motion is [off]) and each copy's own value of a
+  /// device's colour setting (taken as shown).
+  ElementMotion mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var devices = p.list(this.devices, (d) => d.mapColours(f, chainOn: !off));
+    var instances = p.partOrNone(this.instances, (set) {
+      var items = mappedList(set.items, (copy) {
+        var own = mappedValues(copy.own, (key, v) {
+          if (!key.startsWith("dev:")) return v;
+          var rest = key.substring(4);
+          var cut = rest.indexOf(":");
+          if (cut < 0) return v;
+          var id = rest.substring(0, cut), param = rest.substring(cut + 1);
+          var device = devices.where((d) => d.id == id).firstOrNull;
+          if (device == null || !device.colourSetting(param)) return v;
+          return p.argbNumber(v);
+        });
+        return identical(own, copy.own) ? copy : copy.copyWith(own: own);
+      });
+      return identical(items, set.items) ? set : set.copyWith(items: items);
+    });
+    if (!p.changed) return this;
+    return copyWith(devices: devices, instances: instances);
+  }
 
   /// renamedFor is this for copy [id], with fresh placement ids: two
   /// elements sharing one would play each other's timing.

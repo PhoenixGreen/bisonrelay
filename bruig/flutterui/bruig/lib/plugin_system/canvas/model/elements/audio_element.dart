@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // audio_element.dart is a sound on a canvas: an icon a reader presses, with
 // mute and volume where wanted, playing a MediaClip. Play state and volume
@@ -162,6 +163,24 @@ class AudioElement extends CanvasElement {
           box: box ?? this.box,
           controls: controls ?? this.controls,
           animation: animation ?? this.animation);
+
+  @override
+  AudioElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var iconColor = p(this.iconColor);
+    var accent = p(this.accent);
+    var leftAccent = p(this.leftAccent);
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      iconColor: iconColor,
+      accent: accent,
+      leftAccent: leftAccent,
+      box: box,
+      animation: animation,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

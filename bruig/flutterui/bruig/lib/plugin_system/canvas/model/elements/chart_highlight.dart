@@ -2,6 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:flutter/foundation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // chart_highlight.dart is a chart's highlights: marks lit in their own
 // colour, made as a table's styles are. They follow the numbers: "top 4 by
@@ -106,6 +107,12 @@ class ChartHighlight {
         named: named ?? this.named,
         off: off ?? this.off,
       );
+
+  /// mapColours maps its colour, hidden while it is switched off.
+  ChartHighlight mapColours(ColourMap f) {
+    var next = f(colour, shown: !off);
+    return next == colour ? this : copyWith(colour: next);
+  }
 
   Map<String, dynamic> toJson() => {
         if (name.isNotEmpty) "name": name,
@@ -295,6 +302,12 @@ class ChartNote {
         off: off ?? this.off,
       );
 
+  /// mapColours maps its colour, hidden while it is switched off.
+  ChartNote mapColours(ColourMap f) {
+    var next = f(colour, shown: !off);
+    return next == colour ? this : copyWith(colour: next);
+  }
+
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
         if (text.isNotEmpty) "text": text,
@@ -379,6 +392,14 @@ class ChartStep {
         notes: notes ?? this.notes,
         at: at ?? this.at,
       );
+
+  ChartStep mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var highlights = p.list(this.highlights, (h) => h.mapColours(f));
+    var notes = p.list(this.notes, (n) => n.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(highlights: highlights, notes: notes);
+  }
 
   Map<String, dynamic> toJson() => {
         if (name.isNotEmpty) "name": name,

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// ShapeKind is which outline a shape element draws: one element with a
 /// choice of outline, so changing it keeps everything else.
@@ -329,6 +330,36 @@ class ShapeElement extends CanvasElement {
           bubble: bubble ?? this.bubble,
           painted: painted ?? this.painted,
           animation: animation ?? this.animation);
+
+  /// mapOwnColours maps the shape's fill, its outline (hidden with no
+  /// width) and their fades, the picture or pattern it is painted with
+  /// (hidden unless painted), its words' type (hidden with no words) and its
+  /// arrival. A speech bubble's shape holds no colour.
+  @override
+  ShapeElement mapOwnColours(ColourMap f) {
+    var lined = strokeWidth > 0;
+    var p = ColourPass(f);
+    var fill = p(this.fill);
+    var strokeColor = p(this.strokeColor, shown: lined);
+    var fillFade = p.partOrNone(this.fillFade, (g) => g.mapColours(f));
+    var strokeFade = p.partOrNone(
+        this.strokeFade, (g) => g.mapColours(f.shownOnlyIf(lined)));
+    var painted =
+        p.part(this.painted, (x) => x.mapColours(f.shownOnlyIf(x.on)));
+    var textSpec = p.part(
+        this.textSpec, (s) => s.mapColours(f.shownOnlyIf(text.isNotEmpty)));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      fill: fill,
+      strokeColor: strokeColor,
+      fillFade: fillFade,
+      strokeFade: strokeFade,
+      painted: painted,
+      textSpec: textSpec,
+      animation: animation,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

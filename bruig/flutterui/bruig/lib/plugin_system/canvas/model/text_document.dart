@@ -2,6 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // text_document.dart is a text element whose words come from the Writing
 // library. The words are copied into the element, not read while drawing:
@@ -98,6 +99,15 @@ class MarkdownLook {
         family: clearFamily ? null : (family ?? this.family),
       );
 
+  /// mapColours maps the look's own colour (none is the kind's, and stays
+  /// none), hidden while the look is off.
+  MarkdownLook mapColours(ColourMap f) {
+    var c = color;
+    if (c == null) return this;
+    var next = f(c, shown: on);
+    return next == c ? this : copyWith(color: next);
+  }
+
   Map<String, dynamic> toJson() => {
         if (!on) "off": true,
         if (scale != null) "scale": scale,
@@ -139,6 +149,11 @@ class MarkdownAllow {
 
   MarkdownAllow withLook(MarkdownKind kind, MarkdownLook look) =>
       MarkdownAllow(looks: {...looks, kind: look});
+
+  MarkdownAllow mapColours(ColourMap f) {
+    var next = mappedValues(looks, (_, l) => l.mapColours(f));
+    return identical(next, looks) ? this : MarkdownAllow(looks: next);
+  }
 
   Map<String, dynamic> toJson() {
     var out = <String, dynamic>{};
@@ -208,6 +223,13 @@ class TextDocumentRef {
         allow: allow ?? this.allow,
         wasText: wasText ?? this.wasText,
       );
+
+  /// mapColours maps the Markdown looks, hidden unless the document is set
+  /// and its formatting honoured (they are saved all the same).
+  TextDocumentRef mapColours(ColourMap f) {
+    var next = allow.mapColours(f.shownOnlyIf(on && markdown));
+    return identical(next, allow) ? this : copyWith(allow: next);
+  }
 
   Map<String, dynamic> toJson() => {
         if (folder.isNotEmpty) "folder": folder,

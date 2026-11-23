@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // text_item.dart is the extra pieces (items) a text element carries besides
 // its paragraph: words or pictures held to a slot of its box, so a card's
@@ -170,6 +171,18 @@ class TextItem {
         hidden: hidden ?? this.hidden,
         locked: locked ?? this.locked,
       );
+
+  /// mapColours maps its type, picture and box; all hidden while the piece
+  /// is (it is saved all the same).
+  TextItem mapColours(ColourMap f) {
+    var g = f.shownOnlyIf(!hidden);
+    var p = ColourPass(g);
+    var spec = p.part(this.spec, (s) => s.mapColours(g));
+    var icon = p.partOrNone(this.icon, (i) => i.mapColours(g));
+    var box = p.part(this.box, (b) => b.mapColours(g));
+    if (!p.changed) return this;
+    return copyWith(spec: spec, icon: icon, box: box);
+  }
 
   /// scaledBy scales its type, picture, box and spacing; slot and text stay.
   TextItem scaledBy(double by) => copyWith(

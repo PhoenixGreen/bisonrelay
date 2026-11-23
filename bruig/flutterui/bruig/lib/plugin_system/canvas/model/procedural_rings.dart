@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // procedural_rings.dart is the Rings background's own settings beyond those
 // every generator shares: where rings start, end, and what happens between.
@@ -241,6 +242,13 @@ class RingIcon {
         firstRunOnly: firstRunOnly ?? this.firstRunOnly,
       );
 
+  /// mapColours maps the icon's tint, shown only while it is [tinted] (as it
+  /// is saved).
+  RingIcon mapColours(ColourMap f) {
+    var next = f(tint, shown: tinted);
+    return next == tint ? this : copyWith(tint: next);
+  }
+
   Map<String, dynamic> toJson() => {
         "asset": asset,
         "ring": ring,
@@ -434,6 +442,11 @@ class RingSpec {
         grunge: grunge ?? this.grunge,
         icons: icons ?? this.icons,
       );
+
+  RingSpec mapColours(ColourMap f) {
+    var next = mappedList(icons, (i) => i.mapColours(f));
+    return identical(next, icons) ? this : copyWith(icons: next);
+  }
 
   /// ageOf is how far through its life ring [index] is at [t], in lives;
   /// negative before birth while building up. Rings are a life/[count] apart.

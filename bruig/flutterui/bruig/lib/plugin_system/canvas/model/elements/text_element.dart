@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// WrapSide is which side of an obstacle the words go.
 enum WrapSide {
@@ -130,6 +131,13 @@ class TextColumns {
         ruleColor: ruleColor ?? this.ruleColor,
         noBlankStart: noBlankStart ?? this.noBlankStart,
       );
+
+  /// mapColours maps the rule's colour, shown only with a rule (as it is
+  /// saved).
+  TextColumns mapColours(ColourMap f) {
+    var next = f(ruleColor, shown: ruleStyle != _defaults.ruleStyle);
+    return next == ruleColor ? this : copyWith(ruleColor: next);
+  }
 
   Map<String, dynamic> toJson() => {
         "count": count,
@@ -412,6 +420,34 @@ class TextElement extends CanvasElement {
           wrap: wrap ?? this.wrap,
           style: style ?? this.style,
           curve: clearCurve ? null : (curve ?? this.curve));
+
+  @override
+  TextElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var textSpec = p.part(this.textSpec, (s) => s.mapColours(f));
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var columns = p.part(this.columns, (c) => c.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    var items = p.list(this.items, (i) => i.mapColours(f));
+    var parts = p.list(this.parts, (x) => x.mapColours(f));
+    var highlight = p.partOrNone(this.highlight, (h) => h.mapColours(f));
+    var underline = p.partOrNone(this.underline, (u) => u.mapColours(f));
+    var document = p.part(this.document, (d) => d.mapColours(f));
+    var documentParts = p.list(this.documentParts, (x) => x.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      textSpec: textSpec,
+      box: box,
+      columns: columns,
+      animation: animation,
+      items: items,
+      parts: parts,
+      highlight: highlight,
+      underline: underline,
+      document: document,
+      documentParts: documentParts,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

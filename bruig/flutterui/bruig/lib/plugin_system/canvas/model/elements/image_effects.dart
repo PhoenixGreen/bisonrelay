@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // image_effects.dart holds the effects done to a layer as it is drawn
 // (shadow, glow, blur) and what a texture layer draws (grain, paper...).
@@ -93,6 +94,16 @@ class LayerEffect {
           on: on ?? this.on,
           values: values ?? this.values,
           colour: colour ?? _colour);
+
+  /// mapColours maps the colour it was given, shown while it is on and of a
+  /// kind drawn in a colour. With none given it draws in its kind's own,
+  /// which is not the design's and is left alone.
+  LayerEffect mapColours(ColourMap f) {
+    var c = _colour;
+    if (c == null) return this;
+    var next = f(c, shown: on && kind.usesColour);
+    return next == c ? this : copyWith(colour: next);
+  }
 
   LayerEffect withValue(String key, double v) {
     for (var p in kind.params) {
@@ -245,6 +256,17 @@ class TextureSpec {
         second: plainColours ? null : second ?? _second,
         seed: seed ?? this.seed,
       );
+
+  /// mapColours maps the colours it was given, the second shown only for a
+  /// kind that uses one. One not given is its kind's own, which is not the
+  /// design's and is left alone.
+  TextureSpec mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var colour = p.orNone(_colour);
+    var second = p.orNone(_second, shown: kind.usesSecond);
+    if (!p.changed) return this;
+    return copyWith(colour: colour, second: second);
+  }
 
   TextureSpec withValue(String key, double v) {
     for (var p in kind.params) {

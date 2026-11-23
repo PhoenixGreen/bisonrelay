@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
@@ -44,6 +45,8 @@ enum VideoControl {
 class ChromaKey {
   final bool on;
 
+  /// color is the screen's colour. Not put through mapColours: it must
+  /// match the footage, whatever the design's colours become.
   final Color color;
 
   /// tolerance is how far from [color] a pixel may be and still be removed,
@@ -256,6 +259,19 @@ class VideoElement extends CanvasElement {
           animation: animation ?? this.animation,
           blend: blend ?? this.blend,
           edges: edges ?? this.edges);
+
+  /// mapOwnColours maps the look (an image element's settings, saved without
+  /// a base, so only its own colours), the controls' accent and the arrival.
+  /// The chroma key's colour is left alone.
+  @override
+  VideoElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var look = p.part(this.look, (l) => l.mapOwnColours(f));
+    var accent = p(this.accent);
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(look: look, accent: accent, animation: animation);
+  }
 
   @override
   Map<String, dynamic> props() => {

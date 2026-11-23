@@ -118,7 +118,8 @@ bounded. A new kind, or a new sort of one, belongs in those samples.
 ### Adding an element kind
 
 Eight places, in this order. Four are asked for by the compiler (a `switch`
-with no default); the rest are not, and are marked.
+with no default), as is one method of the class (it is abstract); the rest
+are not, and are marked.
 
 1. **Its name**: a value of `ElementKind` (`model/canvas_element.dart`).
    The name is saved, so it is never changed afterwards.
@@ -126,6 +127,11 @@ with no default); the rest are not, and are marked.
    with `kind`, `rebase`, `props` (its own fields as saved), `fromJson` and
    `copyWith`. If it keeps pictures or media, it lists them in `assetIds`
    and `mediaIds`, or the stores' tidy-up deletes them. *Not asked for.*
+   Its colours, in `mapOwnColours` (`model/colour_map.dart`): every colour
+   of its own fields, and of the specs it holds, put through the function
+   and told whether it shows, the element itself coming back where none
+   changed; one with no colour answers itself. *Asked for: the method is
+   abstract.*
 3. **Reading it**: a case in `elementFromJson`
    (`model/element_reading.dart`).
 4. **Making one**: its starting size in `defaultSizeFor` and a new one in

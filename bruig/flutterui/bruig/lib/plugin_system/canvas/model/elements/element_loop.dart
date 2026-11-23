@@ -5,6 +5,7 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // element_loop.dart is an element's loop: a motion it repeats after it
 // arrives, or alone, until the scene ends or so many times.
@@ -215,6 +216,14 @@ class ElementLoop {
         from: clearFrom ? null : from ?? this.from,
         to: clearTo ? null : to ?? this.to,
       );
+
+  /// mapColours maps what it draws with, shown only while it is on and of a
+  /// kind that draws in a colour. It is saved only where it differs from the
+  /// default, which says nothing of whether it shows.
+  ElementLoop mapColours(ColourMap f) {
+    var next = colour.mapColours(f.shownOnlyIf(on && preset.coloured));
+    return identical(next, colour) ? this : copyWith(colour: next);
+  }
 
   /// span is the frames it plays across: from where it starts to where it
   /// stops (see [from]), shortened to its repeats. [arrived] is where the

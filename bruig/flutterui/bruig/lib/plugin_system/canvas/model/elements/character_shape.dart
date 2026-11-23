@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+
 // character_shape.dart is how a 3D character is shaped from its VRoid body:
 // every setting a number, nought as the body was made, and the presets last
 // picked. What the numbers do is in render/vrm/vrm_shape.dart; the settings
@@ -138,6 +140,17 @@ class CharacterShape {
   CharacterShape withColour(String path, int? c) => c == null
       ? CharacterShape(values: values, choices: {...choices}..remove(path))
       : withChoice(path, c.toRadixString(16).padLeft(6, '0'));
+
+  /// mapColours maps the colour choices ("colour.eyes", "colour.hair" and
+  /// the rest), kept as six hex digits with no alpha; the other choices are
+  /// names, and are left alone.
+  CharacterShape mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var next =
+        mappedValues(choices, (k, v) => k.startsWith("colour.") ? p.hex(v) : v);
+    if (!p.changed) return this;
+    return CharacterShape(values: values, choices: next);
+  }
 
   /// hair is where [base]'s hair comes from, as set: the back and sides,
   /// the fringe, and the tails (null for none).

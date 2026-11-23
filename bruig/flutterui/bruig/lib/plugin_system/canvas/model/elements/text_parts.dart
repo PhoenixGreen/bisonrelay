@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // text_parts.dart is "these words, not the others": ranges of a text
 // element's words or letters coloured, marked or animated differently.
@@ -98,6 +99,14 @@ class PartHighlight {
         radius: radius ?? this.radius,
       );
 
+  PartHighlight mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p(this.color);
+    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(color: color, fade: fade);
+  }
+
   PartHighlight withEvenPad(double pad) =>
       copyWith(padLeft: pad, padTop: pad, padRight: pad, padBottom: pad);
 
@@ -168,6 +177,16 @@ class PartUnderline {
         style: style ?? this.style,
         away: away ?? this.away,
       );
+
+  /// mapColours maps the line's colour (none is the words', and stays none)
+  /// and its fade.
+  PartUnderline mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p.orNone(this.color);
+    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(color: color, fade: fade);
+  }
 
   Map<String, dynamic> toJson() => {
         if (color != null) "color": colorToJson(color!),
@@ -281,6 +300,11 @@ class TextPartAnimation {
         markOffset: markOffset ?? this.markOffset,
         markLength: markLength ?? this.markLength,
       );
+
+  TextPartAnimation mapColours(ColourMap f) {
+    var next = draw.mapColours(f);
+    return identical(next, draw) ? this : copyWith(draw: next);
+  }
 
   Map<String, dynamic> toJson() => {
         if (on) "preset": preset.name,
@@ -498,6 +522,27 @@ class TextPart {
         animation: animation ?? this.animation,
       );
 
+  /// mapColours maps the part's own colour and outline colour (none is the
+  /// element's, and stays none; the outline's is hidden where the part's
+  /// own outline width is nought), its highlight, underline and drawn mark.
+  TextPart mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p.orNone(this.color);
+    var outlineColor =
+        p.orNone(this.outlineColor, shown: (outlineWidth ?? 1) > 0);
+    var highlight = p.partOrNone(this.highlight, (h) => h.mapColours(f));
+    var underline = p.partOrNone(this.underline, (u) => u.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      color: color,
+      outlineColor: outlineColor,
+      highlight: highlight,
+      underline: underline,
+      animation: animation,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         if (unit != _defaults.unit) "unit": unit.name,
         "from": from,
@@ -659,6 +704,24 @@ class TextIcon {
         box: box ?? this.box,
         underline: clearUnderline ? null : (underline ?? this.underline),
       );
+
+  /// mapColours maps its tint (none is its own colours, and stays none), its
+  /// outline colour (shown only with an outline, as it is saved), its box
+  /// and its underline.
+  TextIcon mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p.orNone(this.color);
+    var outlineColor = p(this.outlineColor, shown: outlineWidth > 0);
+    var box = p.part(this.box, (b) => b.mapColours(f));
+    var underline = p.partOrNone(this.underline, (u) => u.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      color: color,
+      outlineColor: outlineColor,
+      box: box,
+      underline: underline,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         "assetId": assetId,

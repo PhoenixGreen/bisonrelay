@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // metronome_element.dart is a metronome on a canvas for practice: a wooden
 // pyramid, its pendulum swinging a beat each way and its weight sliding
@@ -55,6 +56,15 @@ class MetronomeElement extends CanvasElement {
           beats: (beats ?? this.beats).clamp(1, 12),
           body: body ?? this.body,
           accent: accent ?? this.accent);
+
+  @override
+  MetronomeElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var body = p(this.body);
+    var accent = p(this.accent);
+    if (!p.changed) return this;
+    return copyWith(body: body, accent: accent);
+  }
 
   @override
   Map<String, dynamic> props() => {

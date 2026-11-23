@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart' show BoxSpec;
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
@@ -278,6 +279,36 @@ class ImageLayer {
         mask: kind == LayerKind.picture ? this.mask : mask ?? this.mask,
         basePlace: clearBasePlace ? null : basePlace ?? this.basePlace,
       );
+
+  /// mapColours maps everything the layer is drawn with, all hidden while
+  /// it is hidden or wholly faded: its loop, its picture (a whole picture
+  /// element, mapped as one), its effects and strokes, and its fill,
+  /// adjustment or texture, each shown only on the kind of layer that draws
+  /// it (as each is saved).
+  ImageLayer mapColours(ColourMap f) {
+    var g = f.shownOnlyIf(visible && opacity > 0);
+    var p = ColourPass(g);
+    var loop = p.part(this.loop, (l) => l.mapColours(g));
+    var look = p.partOrNone(this.look, (l) => l.mapColours(g) as ImageElement);
+    var fill = p.part(
+        this.fill, (x) => x.mapColours(g.shownOnlyIf(kind == LayerKind.fill)));
+    var adjust = p.part(this.adjust,
+        (x) => x.mapColours(g.shownOnlyIf(kind == LayerKind.adjustment)));
+    var texture = p.part(this.texture,
+        (x) => x.mapColours(g.shownOnlyIf(kind == LayerKind.texture)));
+    var effects = p.list(this.effects, (x) => x.mapColours(g));
+    var strokes = p.list(this.strokes, (x) => x.mapColours(g));
+    if (!p.changed) return this;
+    return copyWith(
+      loop: loop,
+      look: look,
+      fill: fill,
+      adjust: adjust,
+      texture: texture,
+      effects: effects,
+      strokes: strokes,
+    );
+  }
 
   /// placed is this picture layer or base layer moved to [place], and a
   /// picture layer turned to [turn].

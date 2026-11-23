@@ -197,7 +197,8 @@ class SessionClip {
   final String id;
   final String name;
 
-  /// color is its index in sectionColors.
+  /// color is its index in sectionColors. An index, not a colour: not put
+  /// through mapColours.
   final int color;
 
   /// midi is whether it is notes for the channel's instrument, not a sound.

@@ -1,6 +1,7 @@
 import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // procedural_light.dart is the light thrown across a generated background.
 // It is drawn over the finished pattern, so it works on every style and a
@@ -76,6 +77,13 @@ class LightSpec {
         direction: direction ?? this.direction,
         reach: reach ?? this.reach,
       );
+
+  /// mapColours maps the light's colour, shown only while the light is on
+  /// (as it is saved).
+  LightSpec mapColours(ColourMap f) {
+    var next = f(color, shown: on);
+    return next == color ? this : copyWith(color: next);
+  }
 
   Map<String, dynamic> toJson() => {
         "on": on,

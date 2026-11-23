@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart'
     show cameraChannel;
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // parallax_element.dart is a parallax background: layers of scenery each
 // moving a different amount with the camera, after Godot's Parallax2D (a
@@ -228,6 +229,21 @@ class ParallaxLayer {
         visible: visible ?? this.visible,
       );
 
+  /// mapColours maps the layer's two colours, shown only for scenery drawn
+  /// from settings, and its pattern, shown only for a pattern layer; all
+  /// hidden while the layer is hidden or wholly faded. Its two colours are
+  /// saved for every kind, its pattern only for a pattern layer.
+  ParallaxLayer mapColours(ColourMap f) {
+    var g = f.shownOnlyIf(visible && opacity > 0);
+    var p = ColourPass(g);
+    var color = p(this.color, shown: kind.drawn);
+    var color2 = p(this.color2, shown: kind.drawn);
+    var spec = p.part(this.spec,
+        (s) => s.mapColours(g.shownOnlyIf(kind == SceneryKind.pattern)));
+    if (!p.changed) return this;
+    return copyWith(color: color, color2: color2, spec: spec);
+  }
+
   Map<String, dynamic> toJson() {
     const d = ParallaxLayer();
     return {
@@ -329,6 +345,12 @@ class ParallaxElement extends CanvasElement {
           {ParallaxCamera? camera, List<ParallaxLayer>? layers}) =>
       ParallaxElement(base,
           camera: camera ?? this.camera, layers: layers ?? this.layers);
+
+  @override
+  ParallaxElement mapOwnColours(ColourMap f) {
+    var next = mappedList(layers, (l) => l.mapColours(f));
+    return identical(next, layers) ? this : copyWith(layers: next);
+  }
 
   ParallaxElement withLayer(int i, ParallaxLayer layer) =>
       copyWith(layers: [...layers]..[i] = layer);

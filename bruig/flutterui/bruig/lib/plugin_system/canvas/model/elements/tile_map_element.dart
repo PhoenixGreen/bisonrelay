@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // tile_map_element.dart is the Tile map element: tile sets (sheets sliced
 // by a grid) painted onto a grid of cells, as in Godot's TileMapLayer and
@@ -145,6 +146,11 @@ class TileSource {
         spacing: math.max(0, spacing ?? this.spacing),
       );
 
+  TileSource mapColours(ColourMap f) {
+    var next = mappedList(terrains, (t) => t.mapColours(f));
+    return identical(next, terrains) ? this : copyWith(terrains: next);
+  }
+
   Map<String, dynamic> toJson() => {
         "sheet": sheet,
         if (name.isNotEmpty) "name": name,
@@ -217,6 +223,13 @@ class Terrain {
   final int? sample;
   const Terrain(this.name, this.color, {this.sample});
 
+  /// mapColours maps the terrain's colour, never shown: it marks the terrain
+  /// in its settings, and is not drawn on the canvas.
+  Terrain mapColours(ColourMap f) {
+    var next = f(color, shown: false);
+    return next == color ? this : Terrain(name, next, sample: sample);
+  }
+
   Map<String, dynamic> toJson() => {"name": name, "color": colorToJson(color), if (sample != null) "sample": sample};
 
   static Terrain? fromJson(Object? json) {
@@ -246,6 +259,11 @@ class TerrainSet {
   TerrainSet copyWith({String? name, TerrainMode? mode, List<Terrain>? terrains, Map<int, List<int>>? tags}) =>
       TerrainSet(name ?? this.name,
           mode: mode ?? this.mode, terrains: terrains ?? this.terrains, tags: tags ?? this.tags);
+
+  TerrainSet mapColours(ColourMap f) {
+    var next = mappedList(terrains, (t) => t.mapColours(f));
+    return identical(next, terrains) ? this : copyWith(terrains: next);
+  }
 
   /// tagged is this set with [tile]'s [place] set to terrain [t]; a tile with
   /// every place -1 is untagged.
@@ -522,6 +540,15 @@ class TileLayer {
         tint: noTint ? null : (tint ?? this.tint),
       );
 
+  /// mapColours maps the layer's tint (none stays none), hidden while the
+  /// layer is hidden or wholly faded. Its tiles' words are not colours.
+  TileLayer mapColours(ColourMap f) {
+    var c = tint;
+    if (c == null) return this;
+    var next = f(c, shown: visible && opacity > 0);
+    return next == c ? this : copyWith(tint: next);
+  }
+
   Map<String, dynamic> toJson() => {
         "name": name,
         // Flat, three numbers a cell: column, row, tile.
@@ -723,6 +750,20 @@ class TileMapElement extends CanvasElement {
           patterns: patterns ?? this.patterns,
           light: noLight ? null : (light ?? this.light),
           lightTo: noLight || noLightTo ? null : (lightTo ?? this.lightTo));
+
+  /// mapOwnColours maps the tile sets' terrain colours, the layers' tints and
+  /// the light laid over the map (none is unlit, and stays none).
+  @override
+  TileMapElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var sources = p.list(this.sources, (s) => s.mapColours(f));
+    var layers = p.list(this.layers, (l) => l.mapColours(f));
+    var light = p.orNone(this.light);
+    var lightTo = p.orNone(this.lightTo);
+    if (!p.changed) return this;
+    return copyWith(
+        sources: sources, layers: layers, light: light, lightTo: lightTo);
+  }
 
   TileMapElement withLayer(int i, TileLayer layer) =>
       copyWith(layers: [for (var (k, l) in layers.indexed) k == i ? layer : l]);

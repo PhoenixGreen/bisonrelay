@@ -13,6 +13,7 @@ export 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_sort.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// TableGrid is which rules a table draws between its cells.
 enum TableGrid {
@@ -200,6 +201,19 @@ class TableCellStyle {
         nudgeX: nudgeX ?? this.nudgeX,
         nudgeY: nudgeY ?? this.nudgeY,
       );
+
+  /// mapColours maps the cell's fill, words and border colours, each
+  /// transparent one hidden (as it is saved: transparent is "the table's
+  /// own").
+  TableCellStyle mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var background = p(this.background, shown: this.background.a > 0);
+    var textColor = p(this.textColor, shown: this.textColor.a > 0);
+    var borderColor = p(this.borderColor, shown: this.borderColor.a > 0);
+    if (!p.changed) return this;
+    return copyWith(
+        background: background, textColor: textColor, borderColor: borderColor);
+  }
 
   /// scaledBy scales the measurements only, not fontScale, which multiplies
   /// a size that is scaled already.
@@ -556,6 +570,12 @@ class TableRule {
         when: noWhen ? null : when ?? this.when,
       );
 
+  /// mapColours maps the rule's style, hidden while the rule is off.
+  TableRule mapColours(ColourMap f) {
+    var next = style.mapColours(f.shownOnlyIf(!off));
+    return identical(next, style) ? this : copyWith(style: next);
+  }
+
   Map<String, dynamic> toJson() => {
         if (column.isNotEmpty) "col": column,
         if (rows.isNotEmpty) "rows": rows,
@@ -682,6 +702,7 @@ class TableElement extends CanvasElement {
   final TableTurn turn;
 
   /// style is the name of the style last given (data_styles.dart), or empty.
+  /// A name, whose colours are the app's: not put through mapColours.
   final String style;
 
   /// columnKinds is how some columns' cells are drawn rather than written:
@@ -706,7 +727,8 @@ class TableElement extends CanvasElement {
   final SheetLink? sheet;
 
   /// sheetLooks is what its sheet's colour rules make of each cell, row by
-  /// row: made with the rows (data_sync.dart), not saved.
+  /// row: made with the rows (data_sync.dart), not saved. Not put through
+  /// mapColours: it follows the sheet's rules, whose colours are mapped.
   final List<List<SheetCellLook?>> sheetLooks;
 
   SheetCellLook? sheetLookAt(int r, int c) =>
@@ -1033,6 +1055,41 @@ class TableElement extends CanvasElement {
           sheet: sheet,
           clearSheet: clearSheet,
           sheetLooks: sheetLooks);
+
+  /// mapOwnColours maps the table's type, fills, fades, grid and rules: the
+  /// header's fill and type hidden without a header, the stripes' fill
+  /// without stripes, the grid's colour without a grid.
+  @override
+  TableElement mapOwnColours(ColourMap f) {
+    var headed = headerRow || headerColumn;
+    var p = ColourPass(f);
+    var cellSpec = p.part(this.cellSpec, (s) => s.mapColours(f));
+    var headerSpec =
+        p.part(this.headerSpec, (s) => s.mapColours(f.shownOnlyIf(headed)));
+    var headerFill = p(this.headerFill, shown: headed);
+    var cellFill = p(this.cellFill);
+    var headerFade = p.partOrNone(
+        this.headerFade, (g) => g.mapColours(f.shownOnlyIf(headed)));
+    var cellFade = p.partOrNone(this.cellFade, (g) => g.mapColours(f));
+    var zebraFill = p(this.zebraFill, shown: zebra);
+    var gridColor =
+        p(this.gridColor, shown: grid != TableGrid.none && gridWidth > 0);
+    var rules = p.list(this.rules, (r) => r.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      cellSpec: cellSpec,
+      headerSpec: headerSpec,
+      headerFill: headerFill,
+      cellFill: cellFill,
+      headerFade: headerFade,
+      cellFade: cellFade,
+      zebraFill: zebraFill,
+      gridColor: gridColor,
+      rules: rules,
+      animation: animation,
+    );
+  }
 
   TableElement _copy(
     ElementBase newBase, {

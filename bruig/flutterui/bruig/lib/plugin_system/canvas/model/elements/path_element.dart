@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // path_element.dart is a bezier curve, and optionally the route a named
 // follower takes along it, timed node by node. The movement is not worked
@@ -456,6 +457,16 @@ class PathElement extends CanvasElement {
           guide: guide ?? this.guide,
           follow: clearFollow ? null : (follow ?? this.follow),
           animation: animation ?? this.animation);
+
+  @override
+  PathElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p(this.color);
+    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    var animation = p.part(this.animation, (a) => a.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(color: color, fade: fade, animation: animation);
+  }
 
   @override
   Map<String, dynamic> props() => {

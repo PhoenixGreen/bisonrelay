@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // player_element.dart is a whole team on the pitch, not one player: one
 // element with a sport, a formation, a kit and a token size. Players are
@@ -1084,6 +1085,14 @@ class BallLook {
         trail: trail ?? this.trail,
       );
 
+  BallLook mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var color = p(this.color);
+    var second = p(this.second);
+    if (!p.changed) return this;
+    return copyWith(color: color, second: second);
+  }
+
   bool get isDefault => this == const BallLook();
 
   Map<String, dynamic> toJson() => {
@@ -1589,6 +1598,29 @@ class TeamElement extends CanvasElement {
           teamPhoto: teamPhoto ?? this.teamPhoto,
           photoCropSize:
               autoCropSize ? null : (photoCropSize ?? this.photoCropSize));
+
+  /// mapOwnColours maps the kit's colours, the ring round each token
+  /// (hidden with no width), the label type and the ball. A player's own
+  /// spot holds no colour.
+  @override
+  TeamElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var keeperColor = p(this.keeperColor);
+    var playerColor = p(this.playerColor);
+    var outlineColor = p(this.outlineColor, shown: ringWidth > 0);
+    var labelSpec = p.part(this.labelSpec, (s) => s.mapColours(f));
+    var secondaryColor = p(this.secondaryColor);
+    var ballLook = p.part(this.ballLook, (b) => b.mapColours(f));
+    if (!p.changed) return this;
+    return copyWith(
+      keeperColor: keeperColor,
+      playerColor: playerColor,
+      outlineColor: outlineColor,
+      labelSpec: labelSpec,
+      secondaryColor: secondaryColor,
+      ballLook: ballLook,
+    );
+  }
 
   @override
   Map<String, dynamic> props() => {

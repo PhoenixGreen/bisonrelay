@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // object3d_element.dart is a 3D object: a .glb model from the library drawn
 // in its box, or standing on a 3D stage as anything can (see StageSpot).
@@ -35,6 +36,10 @@ class Object3dElement extends CanvasElement {
   /// mediaIds is its model, carried with the canvas when it is sent.
   @override
   Set<String> get mediaIds => assetId.isEmpty ? const {} : {assetId};
+
+  /// mapOwnColours is this: it has no colour of its own.
+  @override
+  CanvasElement mapOwnColours(ColourMap f) => this;
 
   @override
   CanvasElement rebase(ElementBase base) => copyWith(base: base);

@@ -4,6 +4,7 @@
 // moves with it; what is made of it is in render/vrm/vrm_decal.dart.
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// DecalArea is the part of the body a decal is placed on, and the line it
 /// is placed along: up the torso, down a limb.
@@ -98,6 +99,14 @@ class CharacterDecal {
         opacity: opacity ?? this.opacity,
         ink: ink ?? this.ink,
       );
+
+  /// mapColours maps the ink, kept as 0xRRGGBB, shown only for a one-ink
+  /// decal.
+  CharacterDecal mapColours(ColourMap f) {
+    var p = ColourPass(f);
+    var next = p.rgb(ink, shown: mode == "ink");
+    return p.changed ? copyWith(ink: next) : this;
+  }
 
   /// shapeKey says what the decal's shape depends on; pictureKey its picture.
   String get shapeKey => "$on|${area.name}|$along|$around|$size|$turn";

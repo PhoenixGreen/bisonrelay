@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 /// BackgroundElement is a generated pattern (see procedural_spec.dart) as
 /// an element, or, by [backdrop], a 3D stage ([staged]) or scenery
@@ -105,6 +106,23 @@ class BackgroundElement extends CanvasElement {
           backdrop: backdrop ?? this.backdrop,
           stage: stage ?? this.stage,
           parallax: parallax ?? this.parallax);
+
+  /// mapOwnColours maps the pattern, the stage and the scenery, each shown
+  /// only while it is the one drawn. The stage and scenery are kept without
+  /// a base of their own (this element's stands for theirs), so only their
+  /// own colours are mapped.
+  @override
+  BackgroundElement mapOwnColours(ColourMap f) {
+    var p = ColourPass(f);
+    var spec = p.part(this.spec,
+        (s) => s.mapColours(f.shownOnlyIf(backdrop == BackdropKind.flat)));
+    var stage = p.partOrNone(
+        this.stage, (s) => s.mapOwnColours(f.shownOnlyIf(isStage)));
+    var parallax = p.partOrNone(
+        this.parallax, (s) => s.mapOwnColours(f.shownOnlyIf(isParallax)));
+    if (!p.changed) return this;
+    return copyWith(spec: spec, stage: stage, parallax: parallax);
+  }
 
   @override
   Map<String, dynamic> props() => {

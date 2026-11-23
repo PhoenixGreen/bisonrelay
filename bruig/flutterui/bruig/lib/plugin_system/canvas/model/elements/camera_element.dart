@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // camera_element.dart is a Camera: the part of the page shown, played and
 // exported, moved by clips. Its box is the frame, in the page's shape; a
@@ -62,6 +63,10 @@ class CameraElement extends CanvasElement {
 
   @override
   ElementKind get kind => ElementKind.camera;
+
+  /// mapOwnColours is this: it has no colour of its own.
+  @override
+  CanvasElement mapOwnColours(ColourMap f) => this;
 
   @override
   CanvasElement rebase(ElementBase base) => copyWith(base: base);

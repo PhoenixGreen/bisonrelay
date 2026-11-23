@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/pattern_counts.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // code_task_element.dart is a task card beside a Code panel, as a synth's
 // task card is beside its rack: what to do, the checks it is marked by
@@ -255,6 +256,12 @@ class CodeTaskElement extends CanvasElement {
           notYet: notYet ?? this.notYet,
           accent: accent ?? this.accent,
           textSize: (textSize ?? this.textSize).clamp(4.0, 1000.0));
+
+  @override
+  CodeTaskElement mapOwnColours(ColourMap f) {
+    var next = f(accent, shown: true);
+    return next == accent ? this : copyWith(accent: next);
+  }
 
   /// codeIn is the Code panel it marks in [doc], and its Run panel.
   (CodeElement?, CodeRunElement?) codeIn(CanvasDocument? doc) {

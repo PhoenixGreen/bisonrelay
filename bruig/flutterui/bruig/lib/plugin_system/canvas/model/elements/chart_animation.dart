@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // chart_animation.dart is how a chart arrives and leaves: its preset,
 // overlap and easing. Timing only; progressAt's use is the painter's.
@@ -235,6 +236,11 @@ class ChartAnimation {
         length: length ?? this.length,
         loop: loop ?? this.loop,
       );
+
+  ChartAnimation mapColours(ColourMap f) {
+    var next = loop.mapColours(f);
+    return identical(next, loop) ? this : copyWith(loop: next);
+  }
 
   /// progressAt is how far item [index] of [count] has got when the whole
   /// animation is [reveal] through. See [staggeredProgress].

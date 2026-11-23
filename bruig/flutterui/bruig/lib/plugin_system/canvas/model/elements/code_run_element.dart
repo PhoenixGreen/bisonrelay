@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' show Size;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // code_run_element.dart is a Run panel: it runs a Code panel's project and
 // shows the page or app it makes, over what it printed. A run's result is
@@ -156,6 +157,10 @@ class CodeRunElement extends CanvasElement {
 
   @override
   ElementKind get kind => ElementKind.codeRun;
+
+  /// mapOwnColours is this: it has no colour of its own.
+  @override
+  CanvasElement mapOwnColours(ColourMap f) => this;
 
   @override
   CanvasElement rebase(ElementBase base) => CodeRunElement(base,
