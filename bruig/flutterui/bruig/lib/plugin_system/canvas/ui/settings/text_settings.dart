@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
+import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
@@ -25,6 +26,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart'
 import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/layout_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 part 'text_settings_piece.dart';
@@ -341,6 +343,8 @@ List<Widget> _bodySections(
         ].join(" · "),
         children: [
           positionGroup(controller, e, write, begin, commit),
+          // Docked in a Layout's cell, where the page has one.
+          if (dockGroup(controller, e) case var dock?) dock,
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),

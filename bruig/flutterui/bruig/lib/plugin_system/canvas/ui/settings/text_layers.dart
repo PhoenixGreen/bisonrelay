@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -76,10 +77,12 @@ class _TextLayersListState extends State<TextLayersList> {
 
   void _remove(TextItem item) {
     _pick(null);
-    widget.onChanged(e.copyWith(items: [
-      for (var i in e.items)
-        if (i.id != item.id) i,
-    ]));
+    widget.onChanged(withPieceLooks(
+        e.copyWith(items: [
+          for (var i in e.items)
+            if (i.id != item.id) i,
+        ]),
+        item.id));
   }
 
   void _duplicate(TextItem item) {
@@ -88,7 +91,8 @@ class _TextLayersListState extends State<TextLayersList> {
     // with one id would be one.
     var copy = TextItem.fromJson({...item.toJson(), "id": newElementId()});
     var items = [...e.items]..insert(at + 1, copy);
-    widget.onChanged(e.copyWith(items: items));
+    widget.onChanged(
+        withPieceLooks(e.copyWith(items: items), item.id, copiedTo: copy.id));
     _pick(copy);
   }
 

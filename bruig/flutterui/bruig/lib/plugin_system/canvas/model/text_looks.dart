@@ -101,6 +101,27 @@ TextElement textLooksLifted(TextElement e) {
       as TextElement;
 }
 
+/// withPieceLooks is [e] after piece [id] was removed or copied: its looks
+/// taken off with it, or, given [copiedTo], laid on the copy too, each look
+/// after the one it copies and with an id of its own. A piece's looks are
+/// keyed by its id, so they do not follow it unasked.
+TextElement withPieceLooks(TextElement e, String id, {String? copiedTo}) {
+  var devices = e.base.motion.devices;
+  if (!devices.any((d) => d.layer == id)) return e;
+  var next = [
+    for (var d in devices)
+      if (d.layer != id)
+        d
+      else if (copiedTo != null) ...[
+        d,
+        d.withId("").withLayer(copiedTo),
+      ],
+  ];
+  return e.withBase(
+          motion: e.base.motion.copyWith(devices: withMotionDeviceIds(next)))
+      as TextElement;
+}
+
 /// _blurAsLook is a type's blur radius as a look's blur: a text shadow's
 /// radius is a spread of 0.58 of it and half a pixel (Flutter's Shadow),
 /// a look's of half of it.

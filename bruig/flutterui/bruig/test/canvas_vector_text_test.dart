@@ -49,6 +49,23 @@ void main() {
     expect(h.height, closeTo(72.7, 1.5), reason: "Inter's cap height");
   });
 
+  test("the faces read, and any read under way, are forgotten for a new file",
+      () async {
+    // A read begun under one test file's clock never finishes under the
+    // next's, and every later load of that face would wait on it.
+    var fonts = FontFiles.instance;
+    await fonts.load("Inter", 400, false);
+    expect(fonts.cached("Inter", 400, false), isNotNull);
+    var reading = fonts.load("Inter", 700, false);
+    expect(identical(fonts.load("Inter", 700, false), reading), isTrue,
+        reason: "one read of a face at a time");
+    FontFiles.forgetForTest();
+    expect(fonts.cached("Inter", 400, false), isNull);
+    expect(identical(fonts.load("Inter", 700, false), reading), isFalse,
+        reason: "read afresh, not waited on");
+    await reading;
+  });
+
   test("text until its points are edited; moved, still text", () {
     var shape = typed(const VectorShape(paths: []),
         const VectorText(text: "A", size: 50), const Offset(0, 100), inter());

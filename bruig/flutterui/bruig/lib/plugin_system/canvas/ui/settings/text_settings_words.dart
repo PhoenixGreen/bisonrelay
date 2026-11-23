@@ -39,30 +39,33 @@ Widget textWordsCard(
         ),
         // A field the page fills in (text_fields.dart), put at the end of
         // the words of the layer picked: its Name typed over on the canvas.
-        CanvasDropdown<TextFieldKind?>(
-          key: const ValueKey("textAddField"),
-          label: "Field",
-          value: null,
-          options: [
-            (null, "Add a field"),
-            for (var k in TextFieldKind.values) (k, k.label),
-          ],
-          onChanged: (kind) {
-            if (kind == null) return;
-            String joined(String words) => words.isEmpty || words.endsWith(" ")
-                ? "$words${kind.written}"
-                : "$words ${kind.written}";
-            var piece = controller.textLayer(e);
-            now(piece == null || piece.isIcon
-                ? e.copyWith(text: joined(e.text))
-                : e.copyWith(items: [
-                    for (var it in e.items)
-                      it.id == piece.id
-                          ? it.copyWith(text: joined(it.text))
-                          : it,
-                  ]));
-          },
-        ),
+        // Not where the words are a document's, which each read puts back.
+        if (!e.document.on)
+          CanvasDropdown<TextFieldKind?>(
+            key: const ValueKey("textAddField"),
+            label: "Field",
+            value: null,
+            options: [
+              (null, "Add a field"),
+              for (var k in TextFieldKind.values) (k, k.label),
+            ],
+            onChanged: (kind) {
+              if (kind == null) return;
+              String joined(String words) =>
+                  words.isEmpty || words.endsWith(" ")
+                      ? "$words${kind.written}"
+                      : "$words ${kind.written}";
+              var piece = controller.textLayer(e);
+              now(piece == null || piece.isIcon
+                  ? e.copyWith(text: joined(e.text))
+                  : e.copyWith(items: [
+                      for (var it in e.items)
+                        it.id == piece.id
+                            ? it.copyWith(text: joined(it.text))
+                            : it,
+                    ]));
+            },
+          ),
         // Words of this shape's own, for several page shapes: a two-line
         // banner headline is four in a feed, so it needs fewer words. Off,
         // one text everywhere, a typo fixed once.

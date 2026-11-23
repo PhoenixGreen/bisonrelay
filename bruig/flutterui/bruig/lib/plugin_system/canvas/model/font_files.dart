@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
 // font_files.dart finds the font file a drawing's text is set from: the
@@ -29,6 +30,15 @@ class FontFiles {
   /// or null; typing uses it so as not to wait.
   FontPick? cached(String family, int weight, bool italic) =>
       _picks[_key(family, weight, italic)];
+
+  /// forgetForTest forgets the faces read and any read under way, so the
+  /// next test file reads afresh: a read begun under one file's clock never
+  /// finishes under the next's, and its load would wait for ever.
+  @visibleForTesting
+  static void forgetForTest() {
+    instance._picks.clear();
+    instance._loading.clear();
+  }
 
   /// load is the face for [family], [weight] and [italic], read once.
   Future<FontPick?> load(String family, int weight, bool italic) {

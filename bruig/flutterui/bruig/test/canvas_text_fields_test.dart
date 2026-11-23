@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -8,10 +10,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_settings_bar.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -250,6 +255,44 @@ void main() {
       await tester.pumpAndSettle();
       expect((controller.document.elementById("t1") as TextElement).text,
           "Lesson title {page}");
+    });
+
+    testWidgets("a text read from a document is not offered a field",
+        (tester) async {
+      // Its words are the document's: each read puts them back as written,
+      // so a field added here would be gone a few seconds later.
+      var root = Directory.systemTemp.createTempSync("text-field-doc");
+      PostStorage.rootOverride = root.path;
+      addTearDown(() {
+        PostStorage.rootOverride = null;
+        root.deleteSync(recursive: true);
+      });
+      var name = (await tester
+          .runAsync(() => PostStorage.write("", "Lesson", "A lesson")))!;
+      var reading = TextElement(const ElementBase(id: "d"),
+          text: "A lesson {page}",
+          document: TextDocumentRef(name: name, wasText: "Typed"));
+      var controller =
+          CanvasController(const CanvasDocument().addElement(reading));
+      addTearDown(controller.dispose);
+      await tester.runAsync(() => refreshTextDocuments(controller));
+      expect((controller.document.elementById("d") as TextElement).text,
+          "A lesson",
+          reason: "a field among a document's words does not last");
+
+      controller.selectOnly("d");
+      setTestScreen(tester, const Size(1400, 1200));
+      await tester.pumpWidget(canvasApp(designSidebar(controller)));
+      await tester.pumpAndSettle();
+      if (find.byKey(const ValueKey("textWords")).evaluate().isEmpty) {
+        await tester.ensureVisible(find.text("Content").first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text("Content").first);
+        await tester.pumpAndSettle();
+      }
+      expect(find.byKey(const ValueKey("textFromDocument")), findsOneWidget,
+          reason: "the words' card is open");
+      expect(find.byKey(const ValueKey("textAddField")), findsNothing);
     });
   });
 }

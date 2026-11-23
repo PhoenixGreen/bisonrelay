@@ -4,6 +4,7 @@ import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
@@ -514,6 +515,65 @@ void main() {
             reason: "all five on one line: $tops");
       }
     });
+
+    testWidgets("a part that arrives as a highlight shows its mark's look",
+        (tester) async {
+      // The band's colour, its room round the words and its corners: what a
+      // drawn highlight is made of, and nowhere else to set them.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        parts: const [
+          TextPart(
+              from: 1,
+              to: 2,
+              animation:
+                  TextPartAnimation(preset: TextAnimationPreset.highlight)),
+        ],
+      );
+      await panel(tester, element: element);
+      await openFold(tester, "textParts",
+          shows: find.byKey(const ValueKey("partBold0")));
+      expect(find.byKey(const ValueKey("textMarkRadius")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textDrawStart")), findsOneWidget);
+    });
+
+    testWidgets(
+      "a style changed later leaves a size typed by hand alone",
+      (tester) async {
+        // The size typed here is this text's own: the text stops following
+        // the style, keeping the rest of the style's look.
+        var text = TextElement(
+          ElementBase(id: newElementId(), width: 400, height: 200),
+          text: "A heading",
+          style: "Heading",
+          textSpec: const TextSpec(fontSize: 30),
+        );
+        var controller = CanvasController(CanvasDocument(textStyles: const [
+          NamedTextStyle("Heading", TextSpec(fontSize: 30))
+        ], elements: [
+          text
+        ]));
+        addTearDown(controller.dispose);
+        controller.selectOnly(text.id);
+        await pump(tester, designSidebar(controller));
+        await tester.pumpAndSettle();
+        var size = find.byKey(const ValueKey("typeSize")).first;
+        await tester.ensureVisible(size);
+        await tester.pumpAndSettle();
+        await enterValue(tester, size, "50");
+        await tester.pumpAndSettle();
+        expect(textIn(controller).textSpec.fontSize, 50);
+
+        controller.updateTextStyle(
+            "Heading", const TextSpec(fontSize: 30, color: Color(0xFFFF0000)));
+        expect(textIn(controller).textSpec.fontSize, 50);
+        expect(textIn(controller).style, "");
+      },
+      skip: true, // Waiting on how "Change the style to this text's type"
+      // is reached once a hand edit unlinks the text: it shows only while
+      // the text is in the style.
+    );
 
     testWidgets(
         "a picture's own controls sit with the choice that asked for it",

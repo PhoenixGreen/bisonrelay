@@ -664,9 +664,15 @@ extension StagePress on CanvasStageState {
         !element.document.on &&
         flowSourceOf(element, document) == null &&
         _secondClickOn(element)) {
+      // A locked piece is neither opened nor picked, and it is not the
+      // element's own words under it: the click is an ordinary one.
+      var piece = _textItemAt(element, doc, locked: true);
+      if (piece != null && piece.locked) {
+        _lastClickAt = clock.now();
+        return false;
+      }
       // A picture has no words: it is picked, which gives it its own box
       // to move, size, turn or delete (stage_text_pieces.dart).
-      var piece = _textItemAt(element, doc);
       if (piece != null && piece.isIcon) {
         controller.pickTextLayer(element.id, piece.id);
         _mode = _DragMode.none;

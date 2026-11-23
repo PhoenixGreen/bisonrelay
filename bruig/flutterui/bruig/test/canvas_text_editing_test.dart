@@ -112,6 +112,21 @@ void main() {
     expect(linesIn(editable(tester)), 1, reason: "not folded onto two lines");
   });
 
+  testWidgets("a locked piece is not opened, nor the words under it",
+      (tester) async {
+    // The click lands on the piece, which is locked: it is not the element's
+    // own words, so they are not opened in its place.
+    var e = _card();
+    e = e.copyWith(items: [e.items.single.copyWith(locked: true)]);
+    var (controller, stage) = await pump(tester, e);
+    await doubleClick(
+        tester, stage, controller, textItemRects(e, e.bounds).single.center);
+    expect(find.byType(CanvasTextEditor), findsNothing);
+    expect(controller.textLayer(e), isNull, reason: "nor is it picked");
+    expect(controller.isOnlySelected("t"), isTrue,
+        reason: "the click still selects the text");
+  });
+
   testWidgets("the field has no underline or fill of its own", (tester) async {
     // The app's theme gives every field an underline, drawn here on the page.
     var e = _card();

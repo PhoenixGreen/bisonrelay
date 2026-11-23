@@ -275,10 +275,12 @@ List<Widget> _pieceSections(
                       ? null
                       : () {
                           begin();
-                          write(e.copyWith(items: [
-                            for (var (i, it) in e.items.indexed)
-                              if (i != at) it,
-                          ]));
+                          write(withPieceLooks(
+                              e.copyWith(items: [
+                                for (var (i, it) in e.items.indexed)
+                                  if (i != at) it,
+                              ]),
+                              item.id));
                           commit();
                           controller.pickTextLayer(e.id, null);
                         },

@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
@@ -20,41 +20,77 @@ import 'package:flutter/foundation.dart';
 const Duration canvasDocumentPoll = Duration(seconds: 3);
 
 /// refreshTextDocuments re-reads every document-backed text element in
-/// [controller]'s canvas, and every Speech device's script read from one, and
+/// [controller]'s canvas (each scene, the master and the Cast; see
+/// _documentTexts), and every Speech device's script read from one, and
 /// returns whether anything changed. Applied as one transient change, outside
 /// the undo history: it is not something the reader did.
 Future<bool> refreshTextDocuments(CanvasController controller) async {
   var changed = false;
 
   // Read first, applied after: the reads wait, and a document captured
-  // before them would put back whatever was edited meanwhile.
-  var read = <String, (String, List<TextPart>)>{};
-  for (var element in controller.document.elements) {
-    if (element is! TextElement || !element.document.on) continue;
+  // before them would put back whatever was edited meanwhile. Each file
+  // once, however many texts show it.
+  var read = <(String, String), String>{};
+  for (var element in _documentTexts(controller.document)) {
+    var ref = (element.document.folder, element.document.name);
+    if (read.containsKey(ref)) continue;
     String? raw;
     try {
-      raw = await PostStorage.read(
-          element.document.folder, element.document.name);
+      raw = await PostStorage.read(ref.$1, ref.$2);
     } catch (exception) {
       debugPrint("Unable to read ${element.document.says}: $exception");
       continue;
     }
     // A deleted or renamed document leaves the last words read in place,
     // rather than losing work that is only on the canvas.
-    if (raw == null) continue;
-    read[element.id] = readDocument(raw,
-        markdown: element.document.markdown, allow: element.document.allow);
+    if (raw != null) read[ref] = raw;
   }
 
-  var next = controller.document;
-  for (var MapEntry(key: id, value: (text, parts)) in read.entries) {
-    var element = next.elementById(id);
-    if (element is! TextElement || !element.document.on) continue;
-    if (text == element.text && _same(parts, element.documentParts)) continue;
-    next = next.withElement(element.copyWith(text: text, documentParts: parts));
+  // [list] with each text showing a document read given its words; [list]
+  // itself where none differ.
+  List<CanvasElement> fresh(List<CanvasElement> list) {
+    var out = [...list];
+    var differs = false;
+    for (var (i, e) in list.indexed) {
+      if (e is! TextElement || !e.document.on) continue;
+      var raw = read[(e.document.folder, e.document.name)];
+      if (raw == null) continue;
+      var (text, parts) = readDocument(raw,
+          markdown: e.document.markdown, allow: e.document.allow);
+      if (text == e.text && _same(parts, e.documentParts)) continue;
+      out[i] = e.copyWith(text: text, documentParts: parts);
+      differs = true;
+    }
+    if (!differs) return list;
     changed = true;
+    return out;
   }
-  if (changed) controller.apply(next, transient: true);
+
+  var now = controller.document;
+  var scenes = [
+    for (var s in now.allScenes)
+      if (fresh(s.elements) case var l when !identical(l, s.elements))
+        s.copyWith(elements: l)
+      else
+        s,
+  ];
+  var master = now.master;
+  if (master != null) {
+    var l = fresh(master.elements);
+    if (!identical(l, master.elements)) master = master.copyWith(elements: l);
+  }
+  var cast = fresh(now.cast);
+  if (changed) {
+    // A document with no scene list keeps its one scene's elements apart:
+    // they go there with the master off, then it is put back.
+    var next = now.scenes.isEmpty
+        ? now
+            .copyWith(onMaster: false, elements: scenes.single.elements)
+            .copyWith(onMaster: now.onMaster)
+        : now.withScenes(scenes, at: now.at);
+    controller.apply(next.copyWith(master: master, cast: cast),
+        transient: true);
+  }
 
   // The Speech devices' scripts: the document's words, as plain text.
   for (var lane in controller.timelineChannels) {
@@ -81,9 +117,7 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
 /// text, or a Speech device's script, read from a document.
 bool wantsDocumentPoll(CanvasDocument document,
     {CanvasController? controller}) {
-  for (var element in document.elements) {
-    if (element is TextElement && element.document.on) return true;
-  }
+  if (_documentTexts(document).isNotEmpty) return true;
   return controller?.timelineChannels
           .any((l) => l.mix.speech?.document.on ?? false) ??
       false;
@@ -124,6 +158,14 @@ class TextDocumentWatch {
     }
   }
 }
+
+/// _documentTexts is every text in [document] showing a document: on each
+/// scene, not only the one being edited, on the master and in the Cast.
+Iterable<TextElement> _documentTexts(CanvasDocument document) => [
+      for (var s in document.allScenes) ...s.elements,
+      ...?document.master?.elements,
+      ...document.cast,
+    ].whereType<TextElement>().where((e) => e.document.on);
 
 /// _same is whether two lists of derived parts say the same thing.
 bool _same(List parts, List other) {

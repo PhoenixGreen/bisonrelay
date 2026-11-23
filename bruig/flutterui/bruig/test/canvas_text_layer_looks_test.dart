@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'support/canvas_app.dart';
+import 'support/canvas_sidebar_host.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -14,6 +16,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/picked_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart' show StudioDrop;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -250,5 +254,83 @@ void main() {
     await show("s");
     expect(find.byKey(const ValueKey("mdevLayer-m0")), findsNothing,
         reason: "a shape has no layers to choose from");
+  });
+
+  group("a piece's looks go where it goes", () {
+    List<String> layersOf(CanvasController c) => [
+          for (var d in c.document.elementById("t")!.base.motion.devices)
+            d.layer
+        ];
+
+    testWidgets("a copy has looks of its own; a removed piece takes its own",
+        (tester) async {
+      // Read in, its outline is a look on the piece, so the piece's own type
+      // no longer carries it: a copy of the piece alone would have none.
+      var read = elementFromJson(jsonRoundTrip(text(items: const [
+        TextItem(
+            id: "kicker",
+            text: "LEDGER",
+            slot: TextSlot.topLeft,
+            spec: TextSpec(outlineWidth: 3, outlineColor: Color(0xFF112233))),
+      ]).toJson()));
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      var c = CanvasController(const CanvasDocument().addElement(read));
+      addTearDown(c.dispose);
+      expect(layersOf(c), ["kicker"]);
+      c.selectOnly("t");
+      setTestScreen(tester, const Size(1400, 1200));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
+      await tester.pumpAndSettle();
+      Future<void> press(String key) async {
+        var f = find.byKey(ValueKey(key));
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      // The rows, with their buttons, rather than the strip.
+      if (find.byKey(const ValueKey("textLayersRows")).evaluate().isEmpty) {
+        await press("textLayersOpen");
+      }
+      await press("textLayer-kicker");
+      await press("textLayerDuplicate");
+      var copy = (c.document.elementById("t") as TextElement).items.last;
+      expect(copy.id, isNot("kicker"));
+      expect(layersOf(c), ["kicker", copy.id]);
+      var looks = c.document.elementById("t")!.base.motion.devices;
+      expect(looks.map((d) => d.id).toSet(), hasLength(2),
+          reason: "each its own id, to animate it by");
+      expect(looks.last.value("width"), 3);
+
+      // The copy is picked: removed from its own settings.
+      await press("pieceRemove");
+      expect(layersOf(c), ["kicker"]);
+      // And the first from the Layers' bin.
+      await press("textLayer-kicker");
+      await press("textLayersDelete");
+      expect(layersOf(c), isEmpty);
+    });
+
+    test("a picture piece deleted on the canvas takes its looks", () {
+      var c = CanvasController(const CanvasDocument().addElement(text(
+          items: const [
+            TextItem(
+                id: "pic",
+                slot: TextSlot.topLeft,
+                icon: TextIcon(assetId: "a", size: 40)),
+          ],
+          looks: const [
+            MotionDevice(MotionDeviceKind.glow, layer: "pic"),
+            MotionDevice(MotionDeviceKind.glow, layer: "body"),
+          ])));
+      addTearDown(c.dispose);
+      c.selectOnly("t");
+      c.pickTextLayer("t", "pic");
+      removePickedPiece(c);
+      expect((c.document.elementById("t") as TextElement).items, isEmpty);
+      expect(layersOf(c), ["body"]);
+    });
   });
 }

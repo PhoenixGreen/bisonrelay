@@ -222,8 +222,9 @@ extension StageHitTesting on CanvasStageState {
   }
 
   /// _textItemAt is [e]'s extra piece at a document point, or null, from
-  /// what draws them (see textItemRects).
-  TextItem? _textItemAt(TextElement e, Offset doc) {
+  /// what draws them (see textItemRects). A locked piece is passed over
+  /// unless [locked], for a click that must know it landed on one.
+  TextItem? _textItemAt(TextElement e, Offset doc, {bool locked = false}) {
     if (e.items.isEmpty) return null;
     // Where it is drawn, its fields filled in.
     e = textWithFields(e, document);
@@ -232,7 +233,7 @@ extension StageHitTesting on CanvasStageState {
     // Backwards: the last drawn is on top.
     for (var i = e.items.length - 1; i >= 0; i--) {
       // Hidden or locked in the Layers, it cannot be pressed.
-      if (e.items[i].hidden || e.items[i].locked) continue;
+      if (e.items[i].hidden || (e.items[i].locked && !locked)) continue;
       if (!rects[i].isEmpty && rects[i].inflate(2).contains(doc)) {
         return e.items[i];
       }

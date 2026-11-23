@@ -344,18 +344,13 @@ TextPartAnimation _partPreset(
     animation.copyWith(
         preset: preset, ease: preset.wants, effect: preset.effect);
 
-/// _animationBits are the preset-dependent settings (drawn mark, echo,
-/// timing), shared by element and parts. [live] writes; [done] commits, so
-/// a drag is one undo step.
+/// _animationBits are a part's preset-dependent settings (drawn mark, echo,
+/// timing). [live] writes; [done] commits, so a drag is one undo step.
 List<Widget> _animationBits(
   TextAnimation a, {
   required Color textColor,
   required void Function(TextAnimation) live,
   required VoidCallback done,
-  List<Widget> timingFirst = const [],
-  List<Widget> timingLast = const [],
-  String timingLabel = "Timing",
-  bool timing = true,
 }) {
   void now(TextAnimation next) {
     live(next);
@@ -368,86 +363,78 @@ List<Widget> _animationBits(
     if (a.cuts)
       ...effectBits(a.effect, a.scatters, done,
           live: (next) => live(a.copyWith(effect: next))),
-    // Draw the outline invents nothing: a stroke where the type has one, the
-    // words where not, or the preset looks broken on unoutlined type.
-    if (a.preset == TextAnimationPreset.strokeOn ||
-        a.exit == TextAnimationPreset.strokeOn)
-      // A drawn mark's look (an underline's line, a highlight's band), only
-      // where something is drawn.
-      if (a.draws)
-        CanvasControlGroup(label: "The mark", children: [
-          CanvasColorButton(
-            label: "Colour",
-            color: a.draw.color ?? textColor,
-            onChanged: (c) => now(a.copyWith(draw: a.draw.copyWith(color: c))),
+    // A drawn mark's look (an underline's line, a highlight's band), only
+    // where something is drawn.
+    if (a.draws)
+      CanvasControlGroup(label: "The mark", children: [
+        CanvasColorButton(
+          label: "Colour",
+          color: a.draw.color ?? textColor,
+          onChanged: (c) => now(a.copyWith(draw: a.draw.copyWith(color: c))),
+        ),
+        CanvasDropdown<TextDrawStart>(
+          key: const ValueKey("textDrawStart"),
+          label: "The words are",
+          value: a.draw.start,
+          width: 148,
+          options: [for (var s in TextDrawStart.values) (s, s.label)],
+          onChanged: (v) => now(a.copyWith(draw: a.draw.copyWith(start: v))),
+        ),
+        const CanvasLineBreak(),
+        // The room round the words is a band's and a line's; a stroke
+        // follows the letterform and has nowhere to put it.
+        if (a.preset != TextAnimationPreset.strokeOn) ...[
+          // One field for all four sides, the four alone under it: a little
+          // air round the letters reads as a highlighter.
+          CanvasNumberField(
+            label: "Padding",
+            value: a.draw.evenPad ?? 0,
+            min: 0,
+            max: 200,
+            decimals: 0,
+            width: 62,
+            onChanged: (v) {
+              live(a.copyWith(draw: a.draw.withEvenPad(v)));
+            },
+            onCommit: done,
           ),
-          CanvasDropdown<TextDrawStart>(
-            key: const ValueKey("textDrawStart"),
-            label: "The words are",
-            value: a.draw.start,
-            width: 148,
-            options: [for (var s in TextDrawStart.values) (s, s.label)],
-            onChanged: (v) => now(a.copyWith(draw: a.draw.copyWith(start: v))),
-          ),
-          const CanvasLineBreak(),
-          // The room round the words is a band's and a line's; a stroke
-          // follows the letterform and has nowhere to put it.
-          if (a.preset != TextAnimationPreset.strokeOn) ...[
-            // One field for all four sides, the four alone under it: a little
-            // air round the letters reads as a highlighter.
+          for (var (name, at, set)
+              in <(String, double, TextDrawSpec Function(double))>[
+            ("Left", a.draw.padLeft, (v) => a.draw.copyWith(padLeft: v)),
+            ("Top", a.draw.padTop, (v) => a.draw.copyWith(padTop: v)),
+            ("Right", a.draw.padRight, (v) => a.draw.copyWith(padRight: v)),
+            ("Bottom", a.draw.padBottom, (v) => a.draw.copyWith(padBottom: v)),
+          ])
             CanvasNumberField(
-              label: "Padding",
-              value: a.draw.evenPad ?? 0,
+              label: name,
+              value: at,
+              min: 0,
+              max: 200,
+              decimals: 0,
+              width: 56,
+              onChanged: (v) {
+                live(a.copyWith(draw: set(v)));
+              },
+              onCommit: done,
+            ),
+          // A band's corners, as a part's own highlight has, so the two are
+          // the same mark.
+          if (a.preset == TextAnimationPreset.highlight)
+            CanvasNumberField(
+              key: const ValueKey("textMarkRadius"),
+              label: "Corners",
+              value: a.draw.radius,
               min: 0,
               max: 200,
               decimals: 0,
               width: 62,
               onChanged: (v) {
-                live(a.copyWith(draw: a.draw.withEvenPad(v)));
+                live(a.copyWith(draw: a.draw.copyWith(radius: v)));
               },
               onCommit: done,
             ),
-            for (var (name, at, set)
-                in <(String, double, TextDrawSpec Function(double))>[
-              ("Left", a.draw.padLeft, (v) => a.draw.copyWith(padLeft: v)),
-              ("Top", a.draw.padTop, (v) => a.draw.copyWith(padTop: v)),
-              ("Right", a.draw.padRight, (v) => a.draw.copyWith(padRight: v)),
-              (
-                "Bottom",
-                a.draw.padBottom,
-                (v) => a.draw.copyWith(padBottom: v)
-              ),
-            ])
-              CanvasNumberField(
-                label: name,
-                value: at,
-                min: 0,
-                max: 200,
-                decimals: 0,
-                width: 56,
-                onChanged: (v) {
-                  live(a.copyWith(draw: set(v)));
-                },
-                onCommit: done,
-              ),
-            // A band's corners, as a part's own highlight has, so the two are
-            // the same mark.
-            if (a.preset == TextAnimationPreset.highlight)
-              CanvasNumberField(
-                key: const ValueKey("textMarkRadius"),
-                label: "Corners",
-                value: a.draw.radius,
-                min: 0,
-                max: 200,
-                decimals: 0,
-                width: 62,
-                onChanged: (v) {
-                  live(a.copyWith(draw: a.draw.copyWith(radius: v)));
-                },
-                onCommit: done,
-              ),
-          ],
-        ]),
+        ],
+      ]),
     // An echo's copies: how many, how far apart, how much quieter each, and
     // whether they shrink away.
     if (a.echoes)
@@ -506,54 +493,45 @@ List<Widget> _animationBits(
           onChanged: (v) => now(a.copyWith(echo: a.echo.copyWith(resolve: v))),
         ),
       ]),
-    if (timing && (a.on || a.closes || timingLast.isNotEmpty))
-      CanvasControlGroup(label: timingLabel, children: [
-        if (a.on || a.closes) ...[
-          // Whatever the caller wants first: the element's own Length, unused
-          // by a part, which has its own offset and length.
-          ...timingFirst,
-          if (a.preset.staggers || a.exit.staggers)
-            CanvasNumberField(
-              label: "Gap",
-              min: 0,
-              max: 4,
-              decimals: 2,
-              width: 62,
-              value: a.gap,
-              onChanged: (v) {
-                live(a.copyWith(gap: v));
-              },
-              onCommit: done,
-            ),
-          // Where a scaling preset starts from, as in _animationCards.
-          if (a.scales)
-            CanvasNumberField(
-              label: "From size",
-              min: 0,
-              max: 8,
-              decimals: 2,
-              width: 66,
-              value: a.scale > 0 ? a.scale : a.preset.from,
-              onChanged: (v) {
-                live(a.copyWith(scale: v));
-              },
-              onCommit: done,
-            ),
-          easeDropdown<ChartEase>(
-            label: "End curve",
-            value: a.ease,
-            values: ChartEase.values,
-            name: (c) => c.label,
-            curve: (c) => c.apply,
+    if (a.on || a.closes)
+      CanvasControlGroup(label: "Timing", children: [
+        if (a.preset.staggers || a.exit.staggers)
+          CanvasNumberField(
+            label: "Gap",
+            min: 0,
+            max: 4,
+            decimals: 2,
+            width: 62,
+            value: a.gap,
             onChanged: (v) {
-              now(a.copyWith(ease: v));
+              live(a.copyWith(gap: v));
             },
+            onCommit: done,
           ),
-        ],
-        if (timingLast.isNotEmpty) ...[
-          if (a.on || a.closes) const CanvasLineBreak(),
-          ...timingLast,
-        ],
+        // Where a scaling preset starts from, as in _animationCards.
+        if (a.scales)
+          CanvasNumberField(
+            label: "From size",
+            min: 0,
+            max: 8,
+            decimals: 2,
+            width: 66,
+            value: a.scale > 0 ? a.scale : a.preset.from,
+            onChanged: (v) {
+              live(a.copyWith(scale: v));
+            },
+            onCommit: done,
+          ),
+        easeDropdown<ChartEase>(
+          label: "End curve",
+          value: a.ease,
+          values: ChartEase.values,
+          name: (c) => c.label,
+          curve: (c) => c.apply,
+          onChanged: (v) {
+            now(a.copyWith(ease: v));
+          },
+        ),
       ]),
   ];
 }

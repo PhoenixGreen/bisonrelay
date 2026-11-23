@@ -1,9 +1,14 @@
+import 'dart:io';
 import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/picking/text_documents.dart';
+import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_text_document_test.dart is a text element whose words come from the
@@ -218,6 +223,43 @@ Some **bold** and *italic* and a [link](https://example.com).
       var back = elementFromJson(element.toJson()) as TextElement;
       expect(back.documentParts.single.weight, 700);
       expect(back.parts.single.italic, isTrue);
+    });
+  });
+
+  group("kept up to date", () {
+    test("wherever the text is: another scene, the master, the Cast", () async {
+      var root = Directory.systemTemp.createTempSync("text-doc");
+      PostStorage.rootOverride = root.path;
+      addTearDown(() {
+        PostStorage.rootOverride = null;
+        root.deleteSync(recursive: true);
+      });
+      var name = (await PostStorage.write("", "Words", "First words."))!;
+      TextElement reading(String id) => TextElement(ElementBase(id: id),
+          text: "Typed", document: TextDocumentRef(name: name));
+
+      // Its text on the first scene; the second in front, with none.
+      var doc = const CanvasDocument()
+          .addElement(reading("away"))
+          .addScene()
+          .copyWith(
+              masterOn: true,
+              master: CanvasScene(id: "m", elements: [reading("over")]),
+              cast: [reading("member")]);
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      expect(c.document.elements, isEmpty);
+      expect(wantsDocumentPoll(c.document, controller: c), isTrue,
+          reason: "polled, though the scene in front reads nothing");
+
+      expect(await refreshTextDocuments(c), isTrue);
+      String textOf(List<CanvasElement> list, String id) =>
+          (list.firstWhere((e) => e.id == id) as TextElement).text;
+      expect(
+          textOf(c.document.allScenes.first.elements, "away"), "First words.");
+      expect(textOf(c.document.master!.elements, "over"), "First words.");
+      expect(textOf(c.document.cast, "member"), "First words.");
+      expect(c.document.at, 1, reason: "still on the scene it was on");
     });
   });
 }

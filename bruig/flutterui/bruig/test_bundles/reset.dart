@@ -4,6 +4,7 @@
 import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/presets/drawn_styles.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -63,6 +64,7 @@ void betweenFiles() {
     store.forget();
   }
   DrawnStyles.forgetForTest();
+  FontFiles.forgetForTest();
   forgetFfmpegForTest();
   // What a feature registers as the app starts, and a test registers to
   // stand in for that: left behind, the next file's Settings page builds a

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_sync.dart';
@@ -732,6 +733,39 @@ void main() {
       await tester.tap(find.textContaining("Cell 1").last);
       await tester.pumpAndSettle();
       expect(c.document.elementById("s")!.base.dock, "L:a");
+    });
+
+    testWidgets("a text is docked in a cell from its own Layout section",
+        (tester) async {
+      // The text panel builds its own sections, so it has to offer the cells
+      // itself: the canvas has no other way to dock a text.
+      var doc = const CanvasDocument()
+          .addElement(_two())
+          .addElement(const TextElement(ElementBase(id: "t"), text: "Words"));
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.selectOnly("t");
+      setTestScreen(tester, const Size(1400, 1400));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
+      await tester.pumpAndSettle();
+      if (find.byKey(const ValueKey("dockCell")).evaluate().isEmpty) {
+        var heading = find.descendant(
+            of: find.byKey(const ValueKey("elementSection-layout")),
+            matching: find.text("Layout"));
+        await tester.ensureVisible(heading.first);
+        await tester.pumpAndSettle();
+        await tester.tap(heading.first);
+        await tester.pumpAndSettle();
+      }
+      var dock = find.byKey(const ValueKey("dockCell"));
+      expect(dock, findsOneWidget);
+      await tester.ensureVisible(dock);
+      await tester.pumpAndSettle();
+      await tester.tap(dock);
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining("Cell 1").last);
+      await tester.pumpAndSettle();
+      expect(c.document.elementById("t")!.base.dock, "L:a");
     });
   });
 }
