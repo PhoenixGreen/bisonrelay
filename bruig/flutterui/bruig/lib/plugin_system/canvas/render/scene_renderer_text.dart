@@ -114,7 +114,7 @@ void _paintTextBody(
     var blocked = flow.blocked;
     if (e.wrap.on &&
         blocked.isNotEmpty &&
-        wrapFits(words, spec, inner, blocked, e.wrap)) {
+        wrapFits(words, spec, inner, blocked, e.wrap, parts: drawn)) {
       // The arrival applies as a block, set line by line, there being no
       // pieces to move; marks line by line. Outline and fill as everywhere
       // (outlineSpecFor).
@@ -174,7 +174,7 @@ void _paintTextBody(
       // can run on into another box, see flowFor) -- but not while arriving,
       // since many presets bring the words in from outside the box.
       var arriving = animation.on && (reveal < 1 || animation.keeps);
-      paintTextInBox(canvas, words, spec, inner,
+      paintWordsInBox(canvas, words, spec, inner,
           clip: !arriving && !partsAnimate(drawn),
           animation: animation,
           reveal: reveal,

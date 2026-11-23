@@ -250,7 +250,8 @@ void main() {
         const TextPart(from: 1, to: 1, scale: 2),
       ]);
       var body = textBodyRect(card, card.bounds)!;
-      var drawn = layoutText(card.displayText, drawnTextSpec(card, card.bounds),
+      var drawn = layOutWords(
+          card.displayText, drawnTextSpec(card, card.bounds),
           maxWidth: card.box.inner(card.bounds).width, parts: card.drawnParts);
       expect(body.height, closeTo(drawn.height, 0.5));
     });

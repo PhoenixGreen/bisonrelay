@@ -15,12 +15,12 @@ class PlacedGlyph {
   /// index is where this glyph starts in its text, to find its parts.
   final int index;
 
-  /// spec is what this glyph is drawn in, the element's own unless a part
-  /// says otherwise: carried so the letter measured is the letter drawn.
-  final TextSpec spec;
+  /// part is the part over this glyph, or null: carried so the letter
+  /// measured is the letter drawn (layOutGlyph).
+  final TextPart? part;
 
   const PlacedGlyph(this.glyph, this.at, this.angle, this.size,
-      {this.index = 0, this.spec = const TextSpec()});
+      {this.index = 0, this.part});
 }
 
 /// placeTextOnPath works out where every letter of [text] goes along [curve],
@@ -35,7 +35,7 @@ List<PlacedGlyph> placeTextOnPath(
 
   /// parts colour, size, embolden or italicise some letters, or set them in
   /// another face (TextPart); needed here because they change letter widths.
-  List<TextPart> parts = const [],
+  required List<TextPart> parts,
 }) {
   if (text.isEmpty || curve.length < 2) return const [];
 
@@ -57,15 +57,14 @@ List<PlacedGlyph> placeTextOnPath(
     at0.add(offset);
     offset += g.length;
   }
-  var specs = [
-    for (var i = 0; i < glyphs.length; i++)
-      _specForPart(spec, partAt(text, parts, at0[i])),
+  var over = [
+    for (var i = 0; i < glyphs.length; i++) partAt(text, parts, at0[i]),
   ];
-  var painters = [
+  var laid = [
     for (var i = 0; i < glyphs.length; i++)
-      layoutText(glyphs[i], specs[i], maxWidth: double.infinity, scale: scale),
+      layOutGlyph(glyphs[i], spec, part: over[i], scale: scale),
   ];
-  var widths = [for (var p in painters) p.width + on.spacing * scale];
+  var widths = [for (var p in laid) p.width + on.spacing * scale];
   var runLength = widths.fold(0.0, (sum, w) => sum + w);
 
   // Where the run starts, from the spec's own alignment plus the slide.
@@ -84,9 +83,8 @@ List<PlacedGlyph> placeTextOnPath(
     // Past the ends the letters carry straight on rather than being dropped,
     // so a slide travels off the line (see _alongPolyline).
     var (point, angle) = _alongPolyline(curve, lengths, centre);
-    out.add(PlacedGlyph(
-        glyphs[i], point, angle, Size(painters[i].width, painters[i].height),
-        index: at0[i], spec: specs[i]));
+    out.add(PlacedGlyph(glyphs[i], point, angle, laid[i].size,
+        index: at0[i], part: over[i]));
   }
   return out;
 }
@@ -101,20 +99,6 @@ int _animatedPartAt(String text, List<TextPart> parts, int index) {
     if (index >= range.start && index < range.end) found = i;
   }
   return found;
-}
-
-/// _specForPart is [spec] with whatever [part] says about these letters.
-TextSpec _specForPart(TextSpec spec, TextPart? part) {
-  if (part == null) return spec;
-  return spec.copyWith(
-    color: part.color ?? spec.color,
-    fontSize: part.scale == null ? spec.fontSize : spec.fontSize * part.scale!,
-    fontFamily: part.family ?? spec.fontFamily,
-    weight: part.weight ?? spec.weight,
-    italic: part.italic ?? spec.italic,
-    outlineWidth: part.outlineWidth ?? spec.outlineWidth,
-    outlineColor: part.outlineColor ?? spec.outlineColor,
-  );
 }
 
 /// textOnPathBounds is the placed letters' box, round every turned corner.
@@ -155,7 +139,7 @@ void paintTextOnPath(
   double scale = 1,
   TextAnimation? animation,
   double reveal = 1,
-  List<TextPart> parts = const [],
+  required List<TextPart> parts,
   List<PartTiming> timings = const [],
   bool asOne = false,
   CanvasImageSource? images,
@@ -315,7 +299,7 @@ void paintTextOnPath(
     if (anim != null &&
         (anim.preset.motion == TextMotion.echo ||
             anim.preset.motion == TextMotion.trail)) {
-      _paintCurveCopies(canvas, g, dy, scale, local, anim, p,
+      _paintCurveCopies(canvas, g, spec, dy, scale, local, anim, p,
           outlineOnly: outlineOnly, fillOnly: fillOnly);
     }
 
@@ -328,7 +312,7 @@ void paintTextOnPath(
       outlineAlpha = ((p * glyphs.length) - i).clamp(0.0, 1.0).toDouble();
       fillAlpha = anim.draw.start == TextDrawStart.fadeText ? p : null;
     }
-    _paintGlyph(canvas, g, dy, scale, frame.alpha,
+    _paintGlyph(canvas, g, spec, dy, scale, frame.alpha,
         outlineOnly: outlineOnly,
         fillOnly: fillOnly,
         outlineAlpha: outlineAlpha,
@@ -395,11 +379,11 @@ Rect _boundsOf(List<Offset> curve) {
   return box;
 }
 
-/// _paintGlyph draws one placed letter, and its outline where it has one.
-/// [outlineAlpha] and [fillAlpha] fade the stroke and the fill separately,
-/// for stroke-on; null for every other preset.
-void _paintGlyph(
-    ui.Canvas canvas, PlacedGlyph g, double dy, double scale, double alpha,
+/// _paintGlyph draws one placed letter in [spec] and its part, and its
+/// outline where it has one. [outlineAlpha] and [fillAlpha] fade the stroke
+/// and the fill separately, for stroke-on; null for every other preset.
+void _paintGlyph(ui.Canvas canvas, PlacedGlyph g, TextSpec spec, double dy,
+    double scale, double alpha,
     {bool outlineOnly = false,
     bool fillOnly = false,
     double? outlineAlpha,
@@ -426,24 +410,22 @@ void _paintGlyph(
     canvas.saveLayer(
         room, Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0.0, 1.0)));
   }
-  if (!fillOnly) {
-    softFor(g.glyph, g.spec,
-            maxWidth: double.infinity, scale: scale, fillWidth: false)
-        ?.paint(canvas, at);
+  if (!fillOnly && spec.softPasses) {
+    layOutGlyph(g.glyph, spec, part: g.part, scale: scale, pass: WordsPass.soft)
+        .paint(canvas, at);
   }
-  if (g.spec.outlineWidth > 0 && !fillOnly) {
+  if ((g.part?.outlineWidth ?? spec.outlineWidth) > 0 && !fillOnly) {
     half(
         outlineAlpha ?? 1,
-        () => layoutText(g.glyph, g.spec,
-                maxWidth: double.infinity, scale: scale, outline: true)
+        () => layOutGlyph(g.glyph, spec,
+                part: g.part, scale: scale, pass: WordsPass.outline)
             .paint(canvas, at));
   }
   if (!outlineOnly) {
     half(
         fillAlpha ?? 1,
-        () =>
-            layoutText(g.glyph, g.spec, maxWidth: double.infinity, scale: scale)
-                .paint(canvas, at));
+        () => layOutGlyph(g.glyph, spec, part: g.part, scale: scale)
+            .paint(canvas, at));
   }
   if (faded) canvas.restore();
 }
@@ -508,27 +490,15 @@ void _paintCurvePartMarks(
             canvas, box, part.underline!, part.color ?? spec.color);
         return;
       }
-      var h = part.highlight!;
-      var band = Rect.fromLTRB(
-          box.left - (first ? h.padLeft : 0),
-          box.top - h.padTop,
-          box.right + (last ? h.padRight : 0),
-          box.bottom + h.padBottom);
-      var r = Radius.circular(h.radius);
-      canvas.drawRRect(
-          RRect.fromRectAndCorners(band,
-              topLeft: first ? r : Radius.zero,
-              bottomLeft: first ? r : Radius.zero,
-              topRight: last ? r : Radius.zero,
-              bottomRight: last ? r : Radius.zero),
-          PaintSpec(h.color, gradient: h.fade).into(Paint(), band));
+      _paintPartHighlight(canvas, box, part.highlight!,
+          first: first, last: last);
     });
   }
 }
 
 /// _paintCurveCopies draws an echo's or a trail's copies of one letter.
-void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
-    Rect local, TextAnimation animation, double p,
+void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, TextSpec spec,
+    double dy, double scale, Rect local, TextAnimation animation, double p,
     {bool outlineOnly = false, bool fillOnly = false}) {
   var echo = animation.echo;
   var preset = animation.preset;
@@ -571,7 +541,8 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
       canvas.save();
       canvas.translate(away.dx, away.dy);
       if (size != 1) canvas.scale(size, size);
-      _paintGlyph(canvas, g, dy, scale, (strength * arrived).clamp(0.0, 1.0),
+      _paintGlyph(
+          canvas, g, spec, dy, scale, (strength * arrived).clamp(0.0, 1.0),
           outlineOnly: outlineOnly, fillOnly: fillOnly);
       canvas.restore();
     }

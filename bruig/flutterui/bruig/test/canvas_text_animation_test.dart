@@ -34,40 +34,39 @@ void main() {
   const spec = TextSpec(fontSize: 20, color: Color(0xFFFFFFFF));
   const words = "One two three four";
 
-  TextPainter laidOut(String text) =>
-      layoutText(text, spec, maxWidth: 400, fillWidth: true);
+  LaidOutWords laidOut(String text) =>
+      layOutWords(text, spec, parts: const [], maxWidth: 400, fillWidth: true);
 
   group("what moves", () {
     test("a block is one piece whatever is in it", () {
-      var pieces = piecesFor(laidOut(words), words, TextAnimationScope.block);
+      var pieces = piecesFor(laidOut(words), TextAnimationScope.block);
       expect(pieces.length, 1);
     });
 
     test("words are the words, and letters the letters", () {
-      expect(
-          piecesFor(laidOut(words), words, TextAnimationScope.word).length, 4);
+      expect(piecesFor(laidOut(words), TextAnimationScope.word).length, 4);
       // Spaces are not letters: an empty piece has nothing to animate and
       // would still take its turn in the stagger, so the words would arrive
       // with gaps in the rhythm.
-      expect(piecesFor(laidOut(words), words, TextAnimationScope.letter).length,
+      expect(piecesFor(laidOut(words), TextAnimationScope.letter).length,
           words.replaceAll(" ", "").length);
     });
 
     test("lines come from the paragraph's own line metrics", () {
       var text = List.filled(12, "wrapping words").join(" ");
-      var painter = layoutText(text, spec, maxWidth: 200, fillWidth: true);
-      var pieces = piecesFor(painter, text, TextAnimationScope.line);
-      expect(pieces.length, painter.computeLineMetrics().length);
+      var laid = layOutWords(text, spec,
+          parts: const [], maxWidth: 200, fillWidth: true);
+      var pieces = piecesFor(laid, TextAnimationScope.line);
+      expect(pieces.length, laid.lines.length);
       expect(pieces.length, greaterThan(1));
     });
 
     test("a piece knows where it actually is", () {
       // Off the paragraph's boxes rather than counted out from the left,
       // which on a centred paragraph is wrong by half a line.
-      var painter = layoutText(
-          words, spec.copyWith(align: TextAlignSpec.center),
-          maxWidth: 400, fillWidth: true);
-      var pieces = piecesFor(painter, words, TextAnimationScope.word);
+      var laid = layOutWords(words, spec.copyWith(align: TextAlignSpec.center),
+          parts: const [], maxWidth: 400, fillWidth: true);
+      var pieces = piecesFor(laid, TextAnimationScope.word);
       expect(pieces.first.box.left, greaterThan(1),
           reason: "a centred line does not start at the left edge");
     });

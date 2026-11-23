@@ -134,11 +134,11 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
 /// _sizeOfText is how tall and wide a run of words comes out at a width,
 /// with the [parts] it is drawn with.
 Size _sizeOfText(String text, TextSpec spec, double maxWidth,
-    {List<TextPart> parts = const []}) {
+    {required List<TextPart> parts}) {
   if (text.isEmpty) return Size.zero;
-  var painter =
-      layoutText(text, spec, maxWidth: math.max(1, maxWidth), parts: parts);
-  return Size(math.min(painter.width, maxWidth), painter.height);
+  var words =
+      layOutWords(text, spec, parts: parts, maxWidth: math.max(1, maxWidth));
+  return Size(math.min(words.width, maxWidth), words.height);
 }
 
 /// _sizeOf is how much room one piece takes, given the width it has: a
@@ -155,7 +155,8 @@ Size _sizeOf(TextItem item, double maxWidth) {
     var side = math.min(icon.size, inside);
     return Size(side + pad.left + pad.right, icon.size + pad.top + pad.bottom);
   }
-  var words = _sizeOfText(item.text, item.spec, inside);
+  // A piece's words have no parts of their own.
+  var words = _sizeOfText(item.text, item.spec, inside, parts: const []);
   if (words.isEmpty) return Size.zero;
   return Size(
       words.width + pad.left + pad.right, words.height + pad.top + pad.bottom);
@@ -223,7 +224,7 @@ void paintTextItems(
       // The slot decides how the words sit, not the item's alignment: a
       // piece held to the right-hand edge is set ragged-left in a rectangle
       // only as wide as it is.
-      paintTextInBox(
+      paintWordsInBox(
         canvas,
         item.text,
         item.spec.copyWith(
@@ -231,6 +232,7 @@ void paintTextItems(
           verticalAlign: VerticalAlignSpec.top,
         ),
         inner,
+        parts: const [],
         animation: animation,
         reveal: mine,
         images: images,

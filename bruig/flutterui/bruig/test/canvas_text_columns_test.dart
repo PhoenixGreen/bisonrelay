@@ -223,14 +223,15 @@ void main() {
       // could be and all of it landed in the first column -- which read as
       // columns not working with Fit to box at all.
       const box = Size(200, 300);
-      var one = fitFontSize(paragraph, spec, box);
-      var three = fitFontSize(paragraph, spec, box, columns: 3);
+      var one = fitFontSize(paragraph, spec, box, parts: const []);
+      var three =
+          fitFontSize(paragraph, spec, box, columns: 3, parts: const []);
       expect(three, greaterThan(one * 1.4));
     });
 
     test("and the fitted size really does fit", () {
       const box = Size(200, 300);
-      var size = fitFontSize(paragraph, spec, box, columns: 3);
+      var size = fitFontSize(paragraph, spec, box, columns: 3, parts: const []);
       var metrics = lines(paragraph, spec.copyWith(fontSize: size), box.width);
       var runs = columnRuns(metrics, box.height, 3);
       expect(runs.last.$2, metrics.length,
@@ -239,8 +240,8 @@ void main() {
 
     test("one column is what it always was", () {
       const box = Size(200, 300);
-      expect(fitFontSize(paragraph, spec, box, columns: 1),
-          fitFontSize(paragraph, spec, box));
+      expect(fitFontSize(paragraph, spec, box, columns: 1, parts: const []),
+          fitFontSize(paragraph, spec, box, parts: const []));
     });
   });
 

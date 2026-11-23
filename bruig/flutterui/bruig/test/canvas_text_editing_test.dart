@@ -244,8 +244,6 @@ void main() {
           of: find.byType(CanvasTextEditor), matching: find.byType(TextField)));
       expect(field.controller!.selection.baseOffset, inInclusiveRange(8, 10));
     },
-    skip: true, // The field cannot lay out a part's size until the
-    // paragraph is laid out in one place for the painter and the editor.
   );
 
   testWidgets("a turned editor is turned as the element is on this frame",

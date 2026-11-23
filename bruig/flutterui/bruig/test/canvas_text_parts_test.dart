@@ -474,7 +474,7 @@ void main() {
         parts: const [TextPart(from: 1, to: 2, scale: 1.8)],
       );
       var spec = drawnTextSpec(e, e.bounds);
-      var drawn = layoutText(e.displayText, spec,
+      var drawn = layOutWords(e.displayText, spec,
           maxWidth: 300, fillWidth: true, parts: e.drawnParts);
       expect(drawn.height, lessThanOrEqualTo(80 + 0.5),
           reason: "drawn at ${spec.fontSize}, it is ${drawn.height} tall");

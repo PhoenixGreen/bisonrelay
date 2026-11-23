@@ -130,15 +130,13 @@ void main() {
       var doc = CanvasDocument(elements: [a, b]);
 
       // Where the first box's last whole line ends, laid out as it is drawn.
-      var drawn = layoutText(_lorem, spec,
+      var drawn = layOutWords(_lorem, spec,
           maxWidth: 300, fillWidth: true, parts: a.drawnParts);
-      var lines = drawn.computeLineMetrics();
+      var lines = drawn.lines;
       var shown = columnRuns(lines, 44, 1).single.$2;
       expect(shown, inInclusiveRange(1, lines.length - 1),
           reason: "otherwise this test is not asking anything");
-      var end = drawn
-          .getPositionForOffset(Offset(1000, lines[shown - 1].baseline))
-          .offset;
+      var end = drawn.characterAt(Offset(1000, lines[shown - 1].baseline));
 
       var second = flowFor(b, doc, room, spec);
       expect(second.text.trimLeft(), _lorem.substring(end).trimLeft());

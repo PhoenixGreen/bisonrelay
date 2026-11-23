@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/material.dart';
@@ -77,6 +78,32 @@ void main() {
     expect(lit.length, greaterThan(10));
     expect(lit.last - lit.first, greaterThan(0.3),
         reason: "the far side of the box is the second colour");
+  });
+
+  testWidgets("and with a part of the words set apart, they are still drawn",
+      (tester) async {
+    // A fade is a paint on the letters, and a part's style once took any
+    // paint on them for an outline's and drew every word clear: a faded
+    // heading with one bold word was an empty box.
+    var spec = plain.copyWith(fade: const GradientSpec(to: _to, angle: 90));
+    late int lit;
+    await tester.runAsync(() async {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 120, 120),
+          Paint()..color = const Color(0xFF000000));
+      paintWordsInBox(
+          canvas, "HH HH", spec, const Rect.fromLTWH(0, 0, 120, 120),
+          parts: const [TextPart(from: 1, to: 1, weight: 700)]);
+      var image = await recorder.endRecording().toImage(_size, _size);
+      var bytes = (await image.toByteData())!;
+      lit = 0;
+      for (var i = 0; i < _size * _size; i++) {
+        if (_pinkness(bytes.getUint32(i * 4)) >= 0) lit++;
+      }
+      image.dispose();
+    });
+    expect(lit, greaterThan(100), reason: "the words are drawn");
   });
 
   testWidgets("the outline still decides its own colour", (tester) async {

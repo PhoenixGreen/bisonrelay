@@ -22,43 +22,13 @@ part 'paint_util_text_marks.dart';
 part 'paint_util_shapes.dart';
 part 'paint_util_columns.dart';
 part 'paint_util_text_on_path.dart';
+part 'paint_util_words.dart';
 
 // paint_util.dart is the drawing every element does the same way: laying
 // out a string, filling a box, turning a shape's name into a path. Every
 // text drawer goes through layoutText, so outline, shadow, spacing and line
 // height are implemented once. Nothing here touches a BuildContext or a
 // theme: an export must not depend on the app's theme.
-
-// _layouts memoises laid-out paragraphs, the most expensive thing here and
-// repeated every frame for unchanged text. The key is every input that can
-// change the result, so nothing has to clear it. Painters are only read
-// from, so sharing is safe; evicted ones are dropped, not disposed, as a
-// caller may still hold one from an earlier frame.
-typedef _LayoutKey = (
-  String,
-  TextSpec,
-  double,
-  double,
-  Color?,
-  bool,
-  bool,
-  bool,
-  // The size of the box a fading colour runs across, not its place: the
-  // shader is in paragraph coordinates, and nothing else carries the height.
-  Size?,
-  // The parts, written out.
-  String,
-);
-
-final _layouts = <_LayoutKey, TextPainter>{};
-
-/// _partsKeys remembers a parts list written out for the key: a list never
-/// changes once made, and writing it out on every lookup cost more than
-/// the lookup.
-final _partsKeys = Expando<String>();
-
-String _partsKey(List<TextPart> parts) =>
-    [for (var p in parts) p.toJson()].toString();
 
 /// _dashed is outlines already cut into dashes, by what they outline and
 /// where: cutting one is dozens of path extractions, and an empty element's
@@ -103,8 +73,8 @@ final _retired = <TextPainter>[];
 
 /// clearTextLayouts lets go of every text laid out and kept.
 void clearTextLayouts() {
-  for (var painter in _layouts.values) {
-    painter.dispose();
+  for (var words in _layouts.values) {
+    words.painter.dispose();
   }
   _layouts.clear();
   for (var painter in _labels.values) {
@@ -198,13 +168,9 @@ TextPainter labelPainter(
   return painter;
 }
 
-/// _layoutCap is the number of paragraphs kept (a busy table is a few
-/// hundred cells); the oldest inserted go first.
-const _layoutCap = 512;
-
-/// layoutText builds a laid-out paragraph from a [TextSpec]. The outline is
-/// a second painter ([outline]) drawn behind, not a stroke: a stroke is
-/// centred on the glyph edge and would thin the letterform.
+/// layoutText is [text] laid out in [spec] where it has no parts (a label,
+/// a cell, a chart's title): layOutWords with none. [outline] lays out the
+/// outline drawn behind and [soft] the shadow and glow alone (WordsPass).
 TextPainter layoutText(
   String text,
   TextSpec spec, {
@@ -212,89 +178,21 @@ TextPainter layoutText(
   double scale = 1,
   Color? colorOverride,
   bool outline = false,
-
-  /// soft lays out the shadow and the glow on their own, with the letters
-  /// themselves left clear. See textStyleOf.
-  bool soft = false,
-
-  /// fillWidth lays the paragraph out at exactly [maxWidth] rather than its
-  /// intrinsic width: a TextPainter aligns within its own width, so without
-  /// this every alignment looks like left. Measuring wants it off.
-  bool fillWidth = false,
-
-  /// parts are the runs of the text drawn differently (a word in another
-  /// colour, a phrase in bold); empty for almost every paragraph.
-  List<TextPart> parts = const [],
-
-  /// over is the box the words are drawn in, for a fade (see textStyleOf).
-  Rect? over,
-}) {
-  var key = (
-    text,
-    spec,
-    maxWidth,
-    scale,
-    colorOverride,
-    outline,
-    soft,
-    fillWidth,
-    // The gradient is baked into the style. See _LayoutKey.
-    over?.size,
-    parts.isEmpty ? "" : (_partsKeys[parts] ??= _partsKey(parts)),
-  );
-  var hit = _layouts[key];
-  if (hit != null) return hit;
-  var painter = _layoutText(text, spec,
-      maxWidth: maxWidth,
-      scale: scale,
-      colorOverride: colorOverride,
-      outline: outline,
-      soft: soft,
-      fillWidth: fillWidth,
-      parts: parts,
-      over: over);
-  if (_layouts.length >= _layoutCap) {
-    retirePainter(_layouts.remove(_layouts.keys.first)!);
-  }
-  _layouts[key] = painter;
-  return painter;
-}
-
-TextPainter _layoutText(
-  String text,
-  TextSpec spec, {
-  required double maxWidth,
-  Rect? over,
-  double scale = 1,
-  Color? colorOverride,
-  bool outline = false,
   bool soft = false,
   bool fillWidth = false,
-  List<TextPart> parts = const [],
-}) {
-  // The case transform is idempotent and applied here, so none can forget it.
-  text = spec.textCase.apply(text);
-
-  var style = textStyleOf(spec,
-      scale: scale,
-      colorOverride: colorOverride,
-      outline: outline,
-      soft: soft,
-      over: over);
-
-  var painter = TextPainter(
-    text: parts.isEmpty
-        ? TextSpan(text: text, style: style)
-        : _partedSpan(text, spec, parts, style, colorOverride, scale),
-    textAlign: spec.align.flutter,
-    textDirection: TextDirection.ltr,
-    maxLines: null,
-  );
-  var width = math.max(0.0, maxWidth);
-  painter.layout(
-      minWidth: fillWidth && width.isFinite ? width : 0, maxWidth: width);
-  return painter;
-}
+  Rect? over,
+}) =>
+    layOutWords(text, spec,
+            parts: const [],
+            maxWidth: maxWidth,
+            scale: scale,
+            colorOverride: colorOverride,
+            pass: outline
+                ? WordsPass.outline
+                : (soft ? WordsPass.soft : WordsPass.letters),
+            fillWidth: fillWidth,
+            over: over)
+        .painter;
 
 /// textOffsetIn is where a laid-out paragraph is drawn inside [box]. Only
 /// the vertical alignment moves it: the painter (laid out with fillWidth)
@@ -333,42 +231,44 @@ TextSpec? outlineSpecFor(TextSpec spec,
 }
 
 /// outlineFor is [outlineSpecFor] laid out, or null where there is none.
-TextPainter? outlineFor(String text, TextSpec spec,
+LaidOutWords? outlineFor(String text, TextSpec spec,
     {required double maxWidth,
     double scale = 1,
-    List<TextPart> parts = const [],
+    required List<TextPart> parts,
     TextAnimation? animation,
     double reveal = 1}) {
   var outlineSpec =
       outlineSpecFor(spec, parts: parts, animation: animation, reveal: reveal);
   if (outlineSpec == null) return null;
-  return layoutText(text, outlineSpec,
+  return layOutWords(text, outlineSpec,
+      parts: parts,
       maxWidth: maxWidth,
       scale: scale,
-      outline: true,
-      fillWidth: true,
-      parts: parts);
+      pass: WordsPass.outline,
+      fillWidth: true);
 }
 
 /// softFor lays out the shadow and glow alone (the words with clear glyphs,
 /// so it lines up), or null with neither. See textStyleOf's soft.
-TextPainter? softFor(String text, TextSpec spec,
+LaidOutWords? softFor(String text, TextSpec spec,
     {required double maxWidth,
     double scale = 1,
     bool fillWidth = true,
-    List<TextPart> parts = const []}) {
+    required List<TextPart> parts}) {
   if (!spec.softPasses) return null;
-  return layoutText(text, spec,
+  return layOutWords(text, spec,
+      parts: parts,
       maxWidth: maxWidth,
       scale: scale,
-      soft: true,
-      fillWidth: fillWidth,
-      parts: parts);
+      pass: WordsPass.soft,
+      fillWidth: fillWidth);
 }
 
 /// paintTextInBox lays [text] out inside [box] and draws it, honouring both
-/// alignments and the outline, and returns the height it took. [animation]
-/// and [reveal] draw it part way through arriving (text_animator.dart).
+/// alignments and the outline, and returns the height it took: words with
+/// no parts (a label, a cell, a chart's title), paintWordsInBox with none.
+/// [animation] and [reveal] draw it part way through arriving
+/// (text_animator.dart).
 double paintTextInBox(
   ui.Canvas canvas,
   String text,
@@ -379,7 +279,31 @@ double paintTextInBox(
   bool clip = false,
   TextAnimation? animation,
   double reveal = 1,
-  List<TextPart> parts = const [],
+  CanvasImageSource? images,
+}) =>
+    paintWordsInBox(canvas, text, spec, box,
+        parts: const [],
+        scale: scale,
+        colorOverride: colorOverride,
+        clip: clip,
+        animation: animation,
+        reveal: reveal,
+        images: images);
+
+/// paintWordsInBox is paintTextInBox for words drawn with [parts]: the
+/// runs drawn differently (a word in another colour, a phrase in bold),
+/// an empty list for none.
+double paintWordsInBox(
+  ui.Canvas canvas,
+  String text,
+  TextSpec spec,
+  Rect box, {
+  required List<TextPart> parts,
+  double scale = 1,
+  Color? colorOverride,
+  bool clip = false,
+  TextAnimation? animation,
+  double reveal = 1,
 
   /// timings are where each part arriving alone has got (TextPartAnimation).
   List<PartTiming> timings = const [],
@@ -392,16 +316,16 @@ double paintTextInBox(
 }) {
   if (text.isEmpty || box.width <= 0) return 0;
 
-  var painter = layoutText(text, spec,
+  var words = layOutWords(text, spec,
+      parts: parts,
       maxWidth: box.width,
       scale: scale,
       colorOverride: colorOverride,
       fillWidth: true,
-      parts: parts,
       // So a fade runs across the box the words are drawn in.
       over: box);
 
-  var offset = textOffsetIn(box, painter, spec);
+  var offset = textOffsetIn(box, words.painter, spec);
 
   if (clip) {
     canvas.save();
@@ -424,25 +348,24 @@ double paintTextInBox(
   // Highlights behind the words now, underlines after them; they move with
   // the words while the arrival is under way.
   var marksMove = animation != null && animation.on && reveal < 1;
-  paintPartMarks(canvas, painter, text, parts, spec, offset,
+  paintPartMarks(canvas, words, parts, spec, offset,
       behind: true,
       timings: timings,
       moving: marksMove ? animation : null,
       at: reveal);
 
-  // words draws the paragraph, through the animator whenever anything moves
+  // drawn draws the paragraph, through the animator whenever anything moves
   // (an arrival under way, a motion that [keeps] something, a part arriving
   // on its own). A closure because a filled paragraph is drawn twice, once
   // per TextDrawPhase, by the same code so the passes stay in register.
-  void words({TextDrawPhase phase = TextDrawPhase.all}) {
+  void drawn({TextDrawPhase phase = TextDrawPhase.all}) {
     if (animation != null &&
         ((animation.on && (reveal < 1 || animation.keeps)) ||
             (!asOne && partsAnimate(parts)))) {
-      paintAnimatedText(canvas, painter, text, spec, offset, animation, reveal,
+      paintAnimatedText(canvas, words, spec, offset, animation, reveal,
           maxWidth: box.width,
           outline: outline,
           soft: soft,
-          parts: parts,
           timings: timings,
           asOne: asOne,
           phase: phase);
@@ -450,27 +373,27 @@ double paintTextInBox(
     }
     if (phase.drawsOutline) soft?.paint(canvas, offset);
     if (phase.drawsOutline) outline?.paint(canvas, offset);
-    if (phase.drawsLetters) paintTp(painter, canvas, offset);
+    if (phase.drawsLetters) words.paintAsWords(canvas, offset);
   }
 
   if (!spec.fill.on) {
-    words();
+    drawn();
   } else {
     // Outline and soft passes first, outside the fill's layer: own colours.
-    words(phase: TextDrawPhase.behind);
+    drawn(phase: TextDrawPhase.behind);
     paintThroughText(canvas, box, spec.fill, images,
-        () => words(phase: TextDrawPhase.letters),
-        animation: animation, reveal: reveal, moving: offset & painter.size);
+        () => drawn(phase: TextDrawPhase.letters),
+        animation: animation, reveal: reveal, moving: offset & words.size);
   }
 
-  paintPartMarks(canvas, painter, text, parts, spec, offset,
+  paintPartMarks(canvas, words, parts, spec, offset,
       behind: false,
       timings: timings,
       moving: marksMove ? animation : null,
       at: reveal);
 
   if (clip) canvas.restore();
-  return painter.height;
+  return words.height;
 }
 
 /// fitFontSize is the largest size at which [text] fits inside [box], for
@@ -486,24 +409,12 @@ final _fits = <(String, TextSpec, Size, int, String), double>{};
 const _fitCap = 1024;
 
 double fitFontSize(String text, TextSpec spec, Size box,
-    {int columns = 1, List<TextPart> parts = const []}) {
+    {int columns = 1, required List<TextPart> parts}) {
   var key = (text, spec, box, columns, _sizingOf(parts));
   if (_fits[key] case var hit?) return hit;
   if (_fits.length >= _fitCap) _fits.remove(_fits.keys.first);
   return _fits[key] = _fitFontSize(text, spec, box, columns, parts);
 }
-
-/// _sizingOf is what in [parts] can change how big the words come out, as a
-/// key: a list is a new one on every frame, so it cannot be one itself.
-String _sizingOf(List<TextPart> parts) => [
-      for (var p in parts)
-        if (p.scale != null ||
-            p.family != null ||
-            p.weight != null ||
-            p.italic != null)
-          "${p.unit.index} ${p.from} ${p.to} ${p.scale} ${p.family} "
-              "${p.weight} ${p.italic}",
-    ].join(";");
 
 double _fitFontSize(
     String text, TextSpec spec, Size box, int columns, List<TextPart> parts) {
@@ -512,90 +423,22 @@ double _fitFontSize(
   var low = 4.0, high = box.height * 2 * count;
   for (var i = 0; i < 14; i++) {
     var mid = (low + high) / 2;
-    var p = layoutText(text, spec.copyWith(fontSize: mid),
-        maxWidth: box.width, parts: parts);
-    if (p.width > box.width + 0.5) {
+    var words = layOutWords(text, spec.copyWith(fontSize: mid),
+        parts: parts, maxWidth: box.width);
+    if (words.width > box.width + 0.5) {
       high = mid;
       continue;
     }
     if (count == 1) {
-      p.height <= box.height ? low = mid : high = mid;
+      words.height <= box.height ? low = mid : high = mid;
       continue;
     }
     // Against the real packing, since a column holds whole lines only.
-    var runs = columnRuns(p.computeLineMetrics(), box.height, count);
-    var carried = runs.isEmpty ? 0 : runs.last.$2;
-    carried >= p.computeLineMetrics().length ? low = mid : high = mid;
+    words.linesIn(box.height, columns: count) >= words.lines.length
+        ? low = mid
+        : high = mid;
   }
   return low;
-}
-
-/// _partedSpan builds the paragraph from runs, so a few words can differ:
-/// one span per run with the same part (see partAt), not one per letter.
-TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
-    TextStyle style, Color? colorOverride, double scale) {
-  var children = <TextSpan>[];
-  var from = 0;
-  TextPart? current = partAt(text, parts, 0);
-
-  TextStyle styleFor(TextPart? part) {
-    // An outline paragraph has a foreground paint, and a TextStyle cannot
-    // carry that and a colour (it throws): take the part's size, family,
-    // weight, slant and stroke, and never set color.
-    if (style.foreground != null) {
-      var width = part?.outlineWidth ?? spec.outlineWidth;
-      var out = part == null
-          ? style
-          : style.copyWith(
-              fontSize: part.scale == null
-                  ? style.fontSize
-                  : (style.fontSize ?? spec.fontSize) * part.scale!,
-              fontFamily: part.family ?? style.fontFamily,
-              fontWeight: part.weight == null
-                  ? style.fontWeight
-                  : TextSpec.weightOf(part.weight!),
-              fontStyle: part.italic == null
-                  ? style.fontStyle
-                  : (part.italic! ? FontStyle.italic : FontStyle.normal),
-            );
-      // A zero width is drawn transparent: a zero-width stroke is a hairline.
-      return out.copyWith(
-        foreground: Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeJoin = StrokeJoin.round
-          ..strokeWidth = width * 2 * scale
-          ..color = width <= 0
-              ? const Color(0x00000000)
-              : (part?.outlineColor ?? spec.outlineColor),
-      );
-    }
-    if (part == null) return style;
-    return style.copyWith(
-      // colorOverride wins, so a one-colour preview (a ghost) has no colours.
-      color: colorOverride ?? part.color ?? style.color,
-      fontFamily: part.family ?? style.fontFamily,
-      fontSize: part.scale == null
-          ? style.fontSize
-          : (style.fontSize ?? 0) * part.scale!,
-      fontWeight: part.weight == null
-          ? style.fontWeight
-          : TextSpec.weightOf(part.weight!),
-      fontStyle: part.italic == null
-          ? style.fontStyle
-          : (part.italic! ? FontStyle.italic : FontStyle.normal),
-    );
-  }
-
-  for (var i = 1; i <= text.length; i++) {
-    var here = i == text.length ? null : partAt(text, parts, i);
-    if (i == text.length || !identical(here, current)) {
-      children.add(
-          TextSpan(text: text.substring(from, i), style: styleFor(current)));
-      from = i;
-      current = here;
-    }
-  }
-  return TextSpan(children: children, style: style);
 }
 
 /// _capHeightRatio is how much of a font's size the capitals and digits
@@ -628,8 +471,11 @@ void paintCentredGlyphs(
     center.dy - (baseline - capHeight / 2),
   );
 
-  softFor(text, spec, maxWidth: double.infinity, scale: scale, fillWidth: false)
-      ?.paint(canvas, at);
+  softFor(text, spec,
+      maxWidth: double.infinity,
+      scale: scale,
+      fillWidth: false,
+      parts: const [])?.paint(canvas, at);
   if (spec.outlineWidth > 0) {
     layoutText(text, spec,
             maxWidth: double.infinity, scale: scale, outline: true)

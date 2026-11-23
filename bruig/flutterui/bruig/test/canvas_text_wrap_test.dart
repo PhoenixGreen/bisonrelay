@@ -185,7 +185,8 @@ void main() {
           spec,
           box,
           [const WrapShape(Rect.fromLTRB(293, 110, 577, 365))],
-          const TextWrap(on: true));
+          const TextWrap(on: true),
+          parts: const []);
       expect(out.consumed, paragraphs.length,
           reason: "all of it, not just the first line");
       expect(out.lines.length, greaterThan(10));
@@ -204,7 +205,8 @@ void main() {
           spec,
           box,
           [const WrapShape(Rect.fromLTRB(293, 110, 577, 365))],
-          const TextWrap(on: true));
+          const TextWrap(on: true),
+          parts: const []);
       var beside = out.lines.where((l) => l.box.top > 110 && l.box.top < 340);
       expect(beside, isNotEmpty);
       expect(beside.every((l) => l.box.right <= 293.5), isTrue,
@@ -215,7 +217,8 @@ void main() {
 
     test("and no line starts with the space it broke on", () {
       var out = layoutWrapped(
-          paragraphs, spec, box, const [], const TextWrap(on: true));
+          paragraphs, spec, box, const [], const TextWrap(on: true),
+          parts: const []);
       for (var line in out.lines) {
         expect(paragraphs[line.from].trim(), isNotEmpty,
             reason: "a line beginning with a space starts a word's width in");
@@ -381,8 +384,9 @@ void main() {
       expect(blocked, hasLength(1),
           reason: "reaching past both edges is not a reason to ignore it");
 
-      var out =
-          layoutWrapped(_words, text.textSpec, text.bounds, blocked, text.wrap);
+      var out = layoutWrapped(
+          _words, text.textSpec, text.bounds, blocked, text.wrap,
+          parts: const []);
       expect(out.lines, isNotEmpty);
       expect(out.lines.every((l) => l.box.right <= 232.5), isTrue,
           reason: "every line stops at its edge, the last one included");
@@ -398,7 +402,9 @@ void main() {
       var doc = CanvasDocument(elements: [text, panel]);
       var blocked = wrapObstacles(text, doc, 0, text.bounds);
       expect(blocked, hasLength(1));
-      expect(wrapFits(_words, text.textSpec, text.bounds, blocked, text.wrap),
+      expect(
+          wrapFits(_words, text.textSpec, text.bounds, blocked, text.wrap,
+              parts: const []),
           isFalse);
     });
   });
@@ -442,10 +448,14 @@ void main() {
       var text = _text(wrap: const TextWrap(on: true, gap: 8));
       const room = Rect.fromLTWH(0, 0, 400, 200);
       var across = [const WrapShape(Rect.fromLTRB(-20, -20, 420, 220))];
-      expect(wrapFits(_words, text.textSpec, room, across, text.wrap), isFalse);
+      expect(
+          wrapFits(_words, text.textSpec, room, across, text.wrap,
+              parts: const []),
+          isFalse);
       expect(
           wrapFits(_words, text.textSpec, room,
-              [const WrapShape(Rect.fromLTRB(300, 40, 420, 120))], text.wrap),
+              [const WrapShape(Rect.fromLTRB(300, 40, 420, 120))], text.wrap,
+              parts: const []),
           isTrue);
     });
   });
@@ -479,9 +489,11 @@ void main() {
           room,
           wrapObstacles(
               blocked.elementById("t") as TextElement, blocked, 0, room),
-          const TextWrap(on: true, gap: 8));
-      var openText =
-          layoutWrapped(_words, spec, room, const [], const TextWrap(on: true));
+          const TextWrap(on: true, gap: 8),
+          parts: const []);
+      var openText = layoutWrapped(
+          _words, spec, room, const [], const TextWrap(on: true),
+          parts: const []);
       expect(wrappedText.consumed, lessThan(openText.consumed));
     });
   });

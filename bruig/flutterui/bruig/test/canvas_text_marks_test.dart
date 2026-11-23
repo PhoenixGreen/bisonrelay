@@ -627,17 +627,20 @@ void main() {
       const spec = TextSpec(fontSize: 20, align: TextAlignSpec.left);
 
       var on = placeTextOnPath(
-          "ALONGTHELINE", spec, line, const TextOnCurve(elementId: "l"));
+          "ALONGTHELINE", spec, line, const TextOnCurve(elementId: "l"),
+          parts: const []);
       expect(on.length, 12);
 
       var off = placeTextOnPath("ALONGTHELINE", spec, line,
-          const TextOnCurve(elementId: "l", offset: -2));
+          const TextOnCurve(elementId: "l", offset: -2),
+          parts: const []);
       expect(off.length, 12, reason: "every letter is still placed");
       expect(off.last.at.dx, lessThan(40),
           reason: "and all of them are past the near end of the line");
 
       var beyond = placeTextOnPath("ALONGTHELINE", spec, line,
-          const TextOnCurve(elementId: "l", offset: 2));
+          const TextOnCurve(elementId: "l", offset: 2),
+          parts: const []);
       expect(beyond.first.at.dx, greaterThan(360),
           reason: "and past the far end at the other extreme");
     });
@@ -721,8 +724,8 @@ void main() {
           ]);
       expect(
           glyphs.first.size.height, closeTo(glyphs.last.size.height * 2, 0.5));
-      expect(glyphs.first.spec.fontFamily, "Serif");
-      expect(glyphs.last.spec.fontFamily, spec.fontFamily);
+      expect(glyphs.first.part?.family, "Serif");
+      expect(glyphs.last.part, isNull);
     });
 
     test("and the selection box is round the letters as drawn", () {

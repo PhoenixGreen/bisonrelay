@@ -208,6 +208,51 @@ element's own track and are kept as keyframes. `render/motion_document.dart`
 works out where everything is at a frame (`motionTimesOf`). An element's
 arrival and exit are its own clips (`model/own_motion.dart`).
 
+### Text: how a paragraph is laid out
+
+A text's words are laid out in one place: `layOutWords`
+(`render/paint_util_words.dart`) makes a `LaidOutWords` from everything
+that decides where a glyph goes: the words (it applies the case), the type
+(`TextSpec`), the width to wrap in, the parts, the scale, the pass (letters,
+outline, or shadow and glow) and, for a fade, the box. It answers its size,
+its lines, the boxes of a range of characters, the character at a point, how
+many characters fit in a height, and draws itself. Laid-out paragraphs are
+kept in one cache keyed by those inputs.
+
+**The rule:** whatever draws or measures a text's words asks
+`layOutWords`, and the parts are a required argument (an empty list where
+there are none), so a site that leaves them out does not compile. Labels
+with no parts (a chart's title, a cell, a button) use `layoutText` and
+`paintTextInBox`, which are `layOutWords` with none.
+
+**The four ways words are set** share the styled words (`partRuns`, then
+`partStyle` for each run) and the measure; each owns only how lines are
+placed:
+
+- *In a box* (`paintWordsInBox`): one layout at the box's width, placed by
+  its vertical alignment.
+- *In columns* (`paintTextInColumns`): one layout at a column's width, its
+  whole lines packed into the columns (`columnRuns`).
+- *Round something in the way* (`layoutWrapped`, `text_wrap.dart`): its
+  own line breaking, since each line has runs of different widths between
+  the obstacles; each candidate line is a layout of its words with their
+  parts.
+- *On a line* (`placeTextOnPath`): a letter at a time along the curve, each
+  laid out by `layOutGlyph` in the part over it.
+
+**The measuring sites** ask the same layout: Fit to box (`fitFontSize`),
+what a chained box passes on (`_consumed`, `text_flow.dart`), a slotted
+block's size (`_sizeOfText`, `text_items.dart`), the selection box of words
+on a line (`visualBoundsOf`), the animator's pieces and the scramble
+(`text_animator.dart`), and the parts' marks. The editor over the stage
+styles its words with `partRuns` and `partStyle`, so its caret is where the
+glyph is drawn.
+
+**Adding something a part can change**: the field on `TextPart`, and one
+line in `partStyle` (and in `_sizingOf` beside it, if it changes the words'
+size). Every way of setting words, the measures and the editor then have
+it.
+
 ## The editor
 
 `CanvasController` (`ui/canvas_controller.dart`) is the editing session. One

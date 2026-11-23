@@ -276,8 +276,7 @@ EdgeInsets marksRoom(List<TextPart> parts) {
 /// on; [moving] and [at] the animation, so a mark moves with its words.
 void paintPartMarks(
   ui.Canvas canvas,
-  TextPainter painter,
-  String text,
+  LaidOutWords words,
   List<TextPart> parts,
   TextSpec spec,
   Offset offset, {
@@ -286,6 +285,7 @@ void paintPartMarks(
   TextAnimation? moving,
   double at = 1,
 }) {
+  var text = words.text;
   if (parts.isEmpty || text.isEmpty) return;
 
   for (var (i, part) in parts.indexed) {
@@ -296,22 +296,21 @@ void paintPartMarks(
     var drawn = i < timings.length ? timings[i].mark : 1.0;
     if (drawn <= 0) continue;
 
-    var boxes = painter.getBoxesForSelection(
-        TextSelection(baseOffset: range.start, extentOffset: range.end));
+    var boxes = words.boxesOf(range.start, range.end);
     // Drawn on along the first line, then the second, not both at once.
     var total = 0.0;
     for (var b in boxes) {
-      total += b.toRect().width;
+      total += b.width;
     }
     var reached = total * drawn;
     for (var b in boxes) {
-      var box = b.toRect().shift(offset);
+      var box = b.shift(offset);
       if (box.width <= 0) continue;
       if (reached < box.width) {
         if (reached <= 0) break;
         box = Rect.fromLTWH(box.left, box.top, reached, box.height);
       }
-      reached -= b.toRect().width;
+      reached -= b.width;
 
       // Carried by the words' motion, as one piece rather than per letter.
       var frame = moving == null || !moving.on
@@ -348,21 +347,36 @@ void _fadeInto(ui.Canvas canvas, Rect box, double alpha, void Function() what) {
   canvas.restore();
 }
 
-void _paintPartHighlight(ui.Canvas canvas, Rect box, PartHighlight mark) {
+/// _paintPartHighlight draws [mark] behind the words in [box]: padded and
+/// rounded at both ends, or only at the [first] or [last] end where the box
+/// is one letter of a run (on a line, a letter at a time).
+void _paintPartHighlight(ui.Canvas canvas, Rect box, PartHighlight mark,
+    {bool first = true, bool last = true}) {
   var band = Rect.fromLTRB(
-    box.left - mark.padLeft,
+    box.left - (first ? mark.padLeft : 0),
     box.top - mark.padTop,
-    box.right + mark.padRight,
+    box.right + (last ? mark.padRight : 0),
     box.bottom + mark.padBottom,
   );
   // Shaded across the whole band, not per word.
   var paint = PaintSpec(mark.color, gradient: mark.fade).into(Paint(), band);
-  if (mark.radius <= 0) {
-    canvas.drawRect(band, paint);
+  if (first && last) {
+    if (mark.radius <= 0) {
+      canvas.drawRect(band, paint);
+      return;
+    }
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(band, Radius.circular(mark.radius)), paint);
     return;
   }
+  var r = Radius.circular(mark.radius);
   canvas.drawRRect(
-      RRect.fromRectAndRadius(band, Radius.circular(mark.radius)), paint);
+      RRect.fromRectAndCorners(band,
+          topLeft: first ? r : Radius.zero,
+          bottomLeft: first ? r : Radius.zero,
+          topRight: last ? r : Radius.zero,
+          bottomRight: last ? r : Radius.zero),
+      paint);
 }
 
 void _paintPartUnderline(

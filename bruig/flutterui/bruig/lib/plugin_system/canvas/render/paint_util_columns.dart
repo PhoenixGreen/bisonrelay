@@ -78,7 +78,7 @@ void paintTextInColumns(
   double scale = 1,
   TextAnimation? animation,
   double reveal = 1,
-  List<TextPart> parts = const [],
+  required List<TextPart> parts,
   List<PartTiming> timings = const [],
   bool asOne = false,
   CanvasImageSource? images,
@@ -88,9 +88,9 @@ void paintTextInColumns(
   var width = columns.columnWidth(box.width);
   if (width <= 0) return;
 
-  var painter = layoutText(text, spec,
-      maxWidth: width, scale: scale, fillWidth: true, parts: parts);
-  var metrics = painter.computeLineMetrics();
+  var words = layOutWords(text, spec,
+      parts: parts, maxWidth: width, scale: scale, fillWidth: true);
+  var metrics = words.lines;
   if (metrics.isEmpty) return;
 
   var runs = columnRuns(metrics, box.height, columns.count,
@@ -155,31 +155,30 @@ void paintTextInColumns(
 
     // Marks for the whole paragraph; the clip keeps each column to its own.
     var marksMove = animation != null && animation.on && reveal < 1;
-    paintPartMarks(canvas, painter, text, parts, spec, at,
+    paintPartMarks(canvas, words, parts, spec, at,
         behind: true,
         timings: timings,
         moving: marksMove ? animation : null,
         at: reveal);
 
-    // words draws this column's share, a closure as in paintTextInBox.
-    void words({TextDrawPhase phase = TextDrawPhase.all}) {
+    // drawn draws this column's share, a closure as in paintWordsInBox.
+    void drawn({TextDrawPhase phase = TextDrawPhase.all}) {
       // A block motion is applied outside; parts arriving alone animate here.
       var animating = (!asBlock && moving) || (!asOne && partsAnimate(parts));
       if (animating) {
         // Only the pieces whose lines fall in this column; their places in
         // the whole paragraph set their progress.
-        paintAnimatedText(canvas, painter, text, spec, at,
-            animation ?? const TextAnimation(), reveal,
+        paintAnimatedText(
+            canvas, words, spec, at, animation ?? const TextAnimation(), reveal,
             maxWidth: width,
             outline: outline,
             soft: soft,
-            parts: parts,
             timings: timings,
             asOne: asOne,
             phase: phase, keep: (piece) {
           // A block-scoped piece covers the paragraph, which every column
           // shares: it moves or uncovers the same way in each.
-          if (piece.box.height >= painter.height - 0.5) return true;
+          if (piece.box.height >= words.height - 0.5) return true;
           var middle = piece.box.center.dy;
           return middle >= top(from) - 0.5 && middle < top(to) + 0.5;
         });
@@ -187,24 +186,24 @@ void paintTextInColumns(
       }
       if (phase.drawsOutline) soft?.paint(canvas, at);
       if (phase.drawsOutline) outline?.paint(canvas, at);
-      if (phase.drawsLetters) paintTp(painter, canvas, at);
+      if (phase.drawsLetters) words.paintAsWords(canvas, at);
     }
 
     var column = Rect.fromLTWH(left, box.top + dy, width, used);
     if (!spec.fill.on) {
-      words();
+      drawn();
     } else {
-      words(phase: TextDrawPhase.behind);
+      drawn(phase: TextDrawPhase.behind);
       paintThroughText(canvas, column, spec.fill, images,
-          () => words(phase: TextDrawPhase.letters),
+          () => drawn(phase: TextDrawPhase.letters),
           // Under a block motion (applied outside) the words here are
           // still, so the fill has nothing to follow.
           animation: asBlock ? null : animation,
           reveal: reveal,
-          moving: at & painter.size);
+          moving: at & words.size);
     }
 
-    paintPartMarks(canvas, painter, text, parts, spec, at,
+    paintPartMarks(canvas, words, parts, spec, at,
         behind: false,
         timings: timings,
         moving: marksMove ? animation : null,

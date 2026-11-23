@@ -47,33 +47,28 @@ class TextPiece {
 /// rectangles come from the paragraph's own boxes, so centred and indented
 /// lines are right. [range] restricts it to some words (see TextPart); a
 /// block-scoped animation given one moves that range alone.
-List<TextPiece> piecesFor(
-    TextPainter painter, String text, TextAnimationScope scope,
+List<TextPiece> piecesFor(LaidOutWords words, TextAnimationScope scope,
     {(int, int)? range}) {
+  var text = words.text;
   if (text.isEmpty) {
-    return [TextPiece(Offset.zero & painter.size, 0, text.length)];
+    return [TextPiece(Offset.zero & words.size, 0, text.length)];
   }
 
   if (scope == TextAnimationScope.block) {
     if (range == null) {
-      return [TextPiece(Offset.zero & painter.size, 0, text.length)];
+      return [TextPiece(Offset.zero & words.size, 0, text.length)];
     }
     // The range as one piece: the box round the letters it covers.
-    var boxes = painter.getBoxesForSelection(
-        TextSelection(baseOffset: range.$1, extentOffset: range.$2));
-    if (boxes.isEmpty) {
-      return [TextPiece(Offset.zero & painter.size, 0, text.length)];
-    }
-    var box = boxes.first.toRect();
-    for (var b in boxes.skip(1)) {
-      box = box.expandToInclude(b.toRect());
+    var box = words.boxOf(range.$1, range.$2);
+    if (box == null) {
+      return [TextPiece(Offset.zero & words.size, 0, text.length)];
     }
     return [TextPiece(box, range.$1, range.$2)];
   }
 
   if (scope == TextAnimationScope.line) {
     var out = <TextPiece>[];
-    for (var line in painter.computeLineMetrics()) {
+    for (var line in words.lines) {
       var top = line.baseline - line.ascent;
       var box =
           Rect.fromLTWH(line.left, top, math.max(1, line.width), line.height);
@@ -81,9 +76,7 @@ List<TextPiece> piecesFor(
       // motion aimed at one word moves that word.
       if (range != null) {
         Rect? mine;
-        for (var b in painter.getBoxesForSelection(
-            TextSelection(baseOffset: range.$1, extentOffset: range.$2))) {
-          var r = b.toRect();
+        for (var r in words.boxesOf(range.$1, range.$2)) {
           if (r.center.dy < box.top || r.center.dy > box.bottom) continue;
           mine = mine == null ? r : mine.expandToInclude(r);
         }
@@ -97,7 +90,7 @@ List<TextPiece> piecesFor(
       out.add(TextPiece(box, 0, text.length));
     }
     return out.isEmpty
-        ? [TextPiece(Offset.zero & painter.size, 0, text.length)]
+        ? [TextPiece(Offset.zero & words.size, 0, text.length)]
         : out;
   }
 
@@ -118,17 +111,12 @@ List<TextPiece> piecesFor(
 
   var out = <TextPiece>[];
   for (var (from, to) in ranges) {
-    var boxes = painter.getBoxesForSelection(
-        TextSelection(baseOffset: from, extentOffset: to));
-    if (boxes.isEmpty) continue;
-    var box = boxes.first.toRect();
-    for (var b in boxes.skip(1)) {
-      box = box.expandToInclude(b.toRect());
-    }
+    var box = words.boxOf(from, to);
+    if (box == null) continue;
     out.add(TextPiece(box, from, to));
   }
   return out.isEmpty
-      ? [TextPiece(Offset.zero & painter.size, 0, text.length)]
+      ? [TextPiece(Offset.zero & words.size, 0, text.length)]
       : out;
 }
 
@@ -142,12 +130,11 @@ class _Layer {
 
 /// _layersFor is the parts arriving on their own. A part without its own
 /// animation is drawn with the rest of the paragraph.
-List<_Layer> _layersFor(TextPainter painter, String text, List<TextPart> parts,
-    List<PartTiming> timings) {
+List<_Layer> _layersFor(LaidOutWords words, List<PartTiming> timings) {
   var out = <_Layer>[];
-  for (var (i, part) in parts.indexed) {
+  for (var (i, part) in words.parts.indexed) {
     if (!part.animation.on) continue;
-    var range = rangeOf(text, part);
+    var range = rangeOf(words.text, part);
     if (range == null) continue;
     out.add(_Layer((range.start, range.end), part.animation.asAnimation,
         i < timings.length ? timings[i].words : 1));
@@ -156,17 +143,16 @@ List<_Layer> _layersFor(TextPainter painter, String text, List<TextPart> parts,
 }
 
 /// _boxesOf is the rectangles some characters occupy, at [offset].
-List<Rect> _boxesOf(TextPainter painter, (int, int) range, Offset offset) => [
-      for (var b in painter.getBoxesForSelection(
-          TextSelection(baseOffset: range.$1, extentOffset: range.$2)))
-        b.toRect().shift(offset).inflate(1),
+List<Rect> _boxesOf(LaidOutWords words, (int, int) range, Offset offset) => [
+      for (var b in words.boxesOf(range.$1, range.$2))
+        b.shift(offset).inflate(1),
     ];
 
-/// paintAnimatedText draws [painter] at [offset] with [animation] [reveal]
-/// of the way through, and each part with its own animation at its own
-/// moment.
+/// paintAnimatedText draws [words] at [offset] with [animation] [reveal]
+/// of the way through, and each of its parts with its own animation at its
+/// own moment.
 ///
-/// [painter] is the layout the still drawing uses, so what arrives is
+/// [words] is the layout the still drawing uses, so what arrives is
 /// exactly what is there after. [outline], where there is one, moves with
 /// the fill. [soft] is the shadow and glow: it moves with the words but no
 /// pen writes it, so it is there from the first frame. [keep] draws only
@@ -176,16 +162,14 @@ List<Rect> _boxesOf(TextPainter painter, (int, int) range, Offset offset) => [
 /// clipped out, then each part with its own preset and progress.
 void paintAnimatedText(
   ui.Canvas canvas,
-  TextPainter painter,
-  String text,
+  LaidOutWords words,
   TextSpec spec,
   Offset offset,
   TextAnimation animation,
   double reveal, {
   double maxWidth = 0,
-  TextPainter? outline,
-  TextPainter? soft,
-  List<TextPart> parts = const [],
+  LaidOutWords? outline,
+  LaidOutWords? soft,
   List<PartTiming> timings = const [],
   bool Function(TextPiece)? keep,
 
@@ -195,13 +179,12 @@ void paintAnimatedText(
   /// asOne ignores parts' animations: on the way out all leaves together.
   bool asOne = false,
 }) {
-  var layers =
-      asOne ? const <_Layer>[] : _layersFor(painter, text, parts, timings);
+  var layers = asOne ? const <_Layer>[] : _layersFor(words, timings);
   var holes = <Rect>[
-    for (var layer in layers) ..._boxesOf(painter, layer.range, offset),
+    for (var layer in layers) ..._boxesOf(words, layer.range, offset),
   ];
 
-  _paintBase(canvas, painter, text, spec, offset, animation, reveal,
+  _paintBase(canvas, words, spec, offset, animation, reveal,
       outline: outline,
       soft: soft,
       maxWidth: maxWidth,
@@ -211,7 +194,7 @@ void paintAnimatedText(
       phase: phase);
 
   for (var layer in layers) {
-    _paintLayer(canvas, painter, text, spec, offset, layer,
+    _paintLayer(canvas, words, spec, offset, layer,
         outline: outline,
         soft: soft,
         maxWidth: maxWidth,
@@ -223,14 +206,13 @@ void paintAnimatedText(
 /// _paintBase draws the words not singled out, with the singled-out cut out.
 void _paintBase(
   ui.Canvas canvas,
-  TextPainter painter,
-  String text,
+  LaidOutWords words,
   TextSpec spec,
   Offset offset,
   TextAnimation animation,
   double reveal, {
-  TextPainter? outline,
-  TextPainter? soft,
+  LaidOutWords? outline,
+  LaidOutWords? soft,
   double maxWidth = 0,
   List<Rect> holes = const [],
   List<_Layer> layers = const [],
@@ -248,7 +230,7 @@ void _paintBase(
     }
     if (phase.drawsOutline) soft?.paint(canvas, offset);
     if (withOutline && phase.drawsOutline) outline?.paint(canvas, offset);
-    if (phase.drawsLetters) painter.paint(canvas, offset);
+    if (phase.drawsLetters) words.paint(canvas, offset);
     canvas.restore();
   }
 
@@ -278,13 +260,13 @@ void _paintBase(
     for (var hole in holes) {
       canvas.clipRect(hole, clipOp: ui.ClipOp.difference);
     }
-    _paintScramble(canvas, text, spec, offset, animation, reveal,
-        maxWidth: maxWidth <= 0 ? painter.width : maxWidth);
+    _paintScramble(canvas, words, spec, offset, animation, reveal,
+        maxWidth: maxWidth <= 0 ? words.width : maxWidth);
     canvas.restore();
     return;
   }
 
-  var pieces = piecesFor(painter, text, preset.scope);
+  var pieces = piecesFor(words, preset.scope);
   var mine = <int>[];
   for (var (i, piece) in pieces.indexed) {
     // A piece inside a singled-out part belongs to that part's layer; a
@@ -302,27 +284,26 @@ void _paintBase(
   }
 
   _paintAnimatedPieces(
-      canvas, painter, offset, pieces, mine, spec, animation, reveal,
+      canvas, words, offset, pieces, mine, spec, animation, reveal,
       outline: outline, soft: soft, holes: holes, phase: phase);
 }
 
 /// _paintLayer draws one part of the text arriving on its own account.
 void _paintLayer(
   ui.Canvas canvas,
-  TextPainter painter,
-  String text,
+  LaidOutWords words,
   TextSpec spec,
   Offset offset,
   _Layer layer, {
-  TextPainter? outline,
-  TextPainter? soft,
+  LaidOutWords? outline,
+  LaidOutWords? soft,
   double maxWidth = 0,
   bool Function(TextPiece)? keep,
   TextDrawPhase phase = TextDrawPhase.all,
 }) {
   var animation = layer.animation;
   var preset = animation.preset;
-  var boxes = _boxesOf(painter, layer.range, offset);
+  var boxes = _boxesOf(words, layer.range, offset);
   if (boxes.isEmpty) return;
 
   // inside clips [what] to the part's own letters inflated by a line height,
@@ -345,7 +326,7 @@ void _paintLayer(
     inside(() {
       if (phase.drawsOutline) soft?.paint(canvas, offset);
       if (phase.drawsOutline) outline?.paint(canvas, offset);
-      if (phase.drawsLetters) painter.paint(canvas, offset);
+      if (phase.drawsLetters) words.paint(canvas, offset);
     });
     return;
   }
@@ -353,19 +334,18 @@ void _paintLayer(
   if (preset.motion == TextMotion.scramble && !phase.drawsLetters) return;
   if (preset.motion == TextMotion.scramble) {
     inside(() => _paintScramble(
-        canvas, text, spec, offset, animation, layer.reveal,
-        maxWidth: maxWidth <= 0 ? painter.width : maxWidth,
-        range: layer.range));
+        canvas, words, spec, offset, animation, layer.reveal,
+        maxWidth: maxWidth <= 0 ? words.width : maxWidth, range: layer.range));
     return;
   }
 
-  var pieces = piecesFor(painter, text, preset.scope, range: layer.range);
+  var pieces = piecesFor(words, preset.scope, range: layer.range);
   var mine = [
     for (var (i, piece) in pieces.indexed)
       if (keep == null || keep(piece)) i,
   ];
   _paintAnimatedPieces(
-      canvas, painter, offset, pieces, mine, spec, animation, layer.reveal,
+      canvas, words, offset, pieces, mine, spec, animation, layer.reveal,
       outline: outline, soft: soft, restricted: true, phase: phase);
 }
 
@@ -624,15 +604,15 @@ MotionFrame applyMotionSpec(
 /// paragraph rather than restarting in each.
 void _paintAnimatedPieces(
   ui.Canvas canvas,
-  TextPainter painter,
+  LaidOutWords words,
   Offset offset,
   List<TextPiece> all,
   Iterable<int> which,
   TextSpec spec,
   TextAnimation animation,
   double reveal, {
-  TextPainter? outline,
-  TextPainter? soft,
+  LaidOutWords? outline,
+  LaidOutWords? soft,
 
   /// restricted clips even a whole-paragraph motion to its piece.
   bool restricted = false,
@@ -647,7 +627,7 @@ void _paintAnimatedPieces(
     if (i < 0 || i >= all.length) continue;
     var p = animation.progressAt(reveal, i, all.length);
     if (p <= 0) continue;
-    _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
+    _paintPiece(canvas, words, offset, all[i], animation.preset, p, spec,
         motion: animation.spec,
         outline: outline,
         soft: soft,
@@ -662,11 +642,11 @@ void _paintAnimatedPieces(
 
 /// _paintPiece draws one piece part way through its movement: [motion] is
 /// [preset] with the animation's own settings (TextAnimation.spec).
-void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
+void _paintPiece(ui.Canvas canvas, LaidOutWords words, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
     {required MotionSpec motion,
-    TextPainter? outline,
-    TextPainter? soft,
+    LaidOutWords? outline,
+    LaidOutWords? soft,
     TextDrawSpec? draw,
     TextEchoSpec? echo,
     EffectSpec? effect,
@@ -764,7 +744,7 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
         // Copies carry the outline and shadow too.
         if (phase.drawsOutline) soft?.paint(canvas, offset);
         if (phase.drawsOutline) outline?.paint(canvas, offset);
-        if (phase.drawsLetters) painter.paint(canvas, offset);
+        if (phase.drawsLetters) words.paint(canvas, offset);
         canvas.restore();
         canvas.restore();
       }
@@ -801,7 +781,7 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
         () {
       if (phase.drawsOutline) soft?.paint(canvas, offset);
       if (phase.drawsOutline) outline?.paint(canvas, offset);
-      if (phase.drawsLetters) painter.paint(canvas, offset);
+      if (phase.drawsLetters) words.paint(canvas, offset);
     });
   } else if (preset.motion == TextMotion.strokeOn) {
     // The pen writes the outline along words already there, or fading in
@@ -810,24 +790,24 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     if (phase.drawsOutline) soft?.paint(canvas, offset);
     if (phase.drawsLetters) {
       if (start == TextDrawStart.fadeText) {
-        _fade(canvas, box, p, () => painter.paint(canvas, offset));
+        _fade(canvas, box, p, () => words.paint(canvas, offset));
       } else {
-        painter.paint(canvas, offset);
+        words.paint(canvas, offset);
       }
     }
     if (phase.drawsOutline && outline != null) {
-      _writeOutline(canvas, painter, outline, offset, box, p, restricted);
+      _writeOutline(canvas, words, outline, offset, box, p, restricted);
     }
   } else if (alpha >= 1) {
     if (phase.drawsOutline) soft?.paint(canvas, offset);
     if (phase.drawsOutline) outline?.paint(canvas, offset);
-    if (phase.drawsLetters) painter.paint(canvas, offset);
+    if (phase.drawsLetters) words.paint(canvas, offset);
   } else {
     canvas.saveLayer(box.inflate(box.height * 2),
         Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
     if (phase.drawsOutline) soft?.paint(canvas, offset);
     if (phase.drawsOutline) outline?.paint(canvas, offset);
-    if (phase.drawsLetters) painter.paint(canvas, offset);
+    if (phase.drawsLetters) words.paint(canvas, offset);
     canvas.restore();
   }
   canvas.restore();
@@ -853,7 +833,7 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
 /// left to right. Flutter gives no letter paths, so the stroke is uncovered
 /// by a moving clip, each line taking its share of time in turn.
 /// [restricted] (some of the words) is written as one sweep.
-void _writeOutline(ui.Canvas canvas, TextPainter painter, TextPainter ink,
+void _writeOutline(ui.Canvas canvas, LaidOutWords words, LaidOutWords ink,
     Offset offset, Rect box, double at, bool restricted) {
   if (at <= 0) return;
   if (at >= 1) {
@@ -863,7 +843,7 @@ void _writeOutline(ui.Canvas canvas, TextPainter painter, TextPainter ink,
 
   var rows = <Rect>[];
   if (!restricted) {
-    for (var line in painter.computeLineMetrics()) {
+    for (var line in words.lines) {
       var top = offset.dy + line.baseline - line.ascent;
       var row = Rect.fromLTWH(offset.dx + line.left, top,
           math.max(1, line.width), math.max(1, line.height));
@@ -909,15 +889,17 @@ void _fade(ui.Canvas canvas, Rect box, double alpha, void Function() what) {
   canvas.restore();
 }
 
-/// _paintScramble resolves each letter from a random one. The only motion
-/// that lays its text out again: same length and spaces, so the words do not
-/// jump while they settle.
-void _paintScramble(ui.Canvas canvas, String text, TextSpec spec, Offset offset,
-    TextAnimation animation, double reveal,
+/// _paintScramble resolves each letter of [words] from a random one. The
+/// only motion that lays its text out again: same length and spaces, so the
+/// words do not jump while they settle, and in the same parts, counted in
+/// the words themselves.
+void _paintScramble(ui.Canvas canvas, LaidOutWords words, TextSpec spec,
+    Offset offset, TextAnimation animation, double reveal,
     {required double maxWidth,
 
     /// range scrambles only those letters, for a part animated on its own.
     (int, int)? range}) {
+  var text = words.text;
   const pool = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#\$%&@";
   var letters = 0;
   for (var i = 0; i < text.length; i++) {
@@ -952,7 +934,10 @@ void _paintScramble(ui.Canvas canvas, String text, TextSpec spec, Offset offset,
     }
   }
 
-  var painter =
-      layoutText(buffer.toString(), spec, maxWidth: maxWidth, fillWidth: true);
-  painter.paint(canvas, offset);
+  layOutWords(buffer.toString(), spec,
+          parts: words.parts,
+          partsIn: text,
+          maxWidth: maxWidth,
+          fillWidth: true)
+      .paint(canvas, offset);
 }

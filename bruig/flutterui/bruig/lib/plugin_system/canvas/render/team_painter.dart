@@ -801,8 +801,10 @@ void _paintLabels(
         _ring(e, math.max(1, r * 0.05)));
   }
   var inner = Offset(painter.width / 2, painter.height / 2);
-  softFor(text, spec, maxWidth: math.max(40, r * 8), fillWidth: false)
-      ?.paint(canvas, -inner);
+  softFor(text, spec,
+      maxWidth: math.max(40, r * 8),
+      fillWidth: false,
+      parts: const [])?.paint(canvas, -inner);
   if (spec.outlineWidth > 0 && !plate) {
     layoutText(text, spec, maxWidth: math.max(40, r * 8), outline: true)
         .paint(canvas, -inner);

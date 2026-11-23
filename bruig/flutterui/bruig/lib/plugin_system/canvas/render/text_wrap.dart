@@ -29,18 +29,18 @@ class WrappedLine {
   final int from;
   final int to;
   final Rect box;
-  final TextPainter painter;
+  final LaidOutWords words;
 
   /// outline is the line laid out as an outline, where the type has one.
   /// Laid out here because a line's styled runs depend on the words before
   /// it, a fact of setting, not painting.
-  final TextPainter? outline;
+  final LaidOutWords? outline;
 
   /// soft is this line's shadow and glow, laid out on their own: drawn
   /// behind everything and never written on by the pen (see softFor).
-  final TextPainter? soft;
+  final LaidOutWords? soft;
 
-  const WrappedLine(this.from, this.to, this.box, this.painter,
+  const WrappedLine(this.from, this.to, this.box, this.words,
       {this.outline, this.soft});
 }
 
@@ -266,9 +266,11 @@ List<(double, double)> freeRuns(Rect box, List<WrapShape> blocked, double top,
 /// put the text. Where not, it is laid out the ordinary way and drawn over
 /// the obstacle: visibly wrong rather than silently deleted.
 bool wrapFits(String text, TextSpec spec, Rect box, List<WrapShape> blocked,
-        TextWrap wrap) =>
+        TextWrap wrap, {required List<TextPart> parts}) =>
     text.trim().isEmpty ||
-    layoutWrapped(text, spec, box, blocked, wrap).lines.isNotEmpty;
+    layoutWrapped(text, spec, box, blocked, wrap, parts: parts)
+        .lines
+        .isNotEmpty;
 
 /// layoutWrapped sets [text] inside [box] around [blocked], greedily a line
 /// at a time with Flutter's line-breaking rule, so a box with nothing in
@@ -279,7 +281,7 @@ WrappedText layoutWrapped(
   Rect box,
   List<WrapShape> blocked,
   TextWrap wrap, {
-  List<TextPart> parts = const [],
+  required List<TextPart> parts,
   double scale = 1,
 
   /// outlineSpec is the type the outline is drawn in, or null for none (see
@@ -291,8 +293,9 @@ WrappedText layoutWrapped(
   }
 
   // A line's height, measured once: every line shares it, the words on a
-  // line sharing one baseline.
-  var probe = layoutText("Ag", spec, maxWidth: double.infinity, scale: scale);
+  // line sharing one baseline. The type's own: no part is in the probe.
+  var probe = layOutWords("Ag", spec,
+      parts: const [], maxWidth: double.infinity, scale: scale);
   var lineHeight = math.max(1.0, probe.height);
 
   var lines = <WrappedLine>[];
@@ -325,7 +328,7 @@ WrappedText layoutWrapped(
       if (at >= text.length) break;
       var width = run.$2 - run.$1;
 
-      var (end, painter) = _fit(text, at, spec, width, parts, words, scale);
+      var (end, laid) = _fit(text, at, spec, width, parts, words, scale);
       if (end <= at) {
         // Not one word fits in this run. Another run may be wider; if none
         // is, the line is skipped, which is how words get past a picture
@@ -334,16 +337,16 @@ WrappedText layoutWrapped(
       }
 
       lines.add(WrappedLine(
-          at, end, Rect.fromLTWH(run.$1, y, width, lineHeight), painter,
+          at, end, Rect.fromLTWH(run.$1, y, width, lineHeight), laid,
           outline: outlineSpec == null
               ? null
               : _line(text.substring(at, end).trimRight(), outlineSpec, parts,
-                  words, scale, outline: true),
+                  words, scale, pass: WordsPass.outline),
           soft: !spec.softPasses
               ? null
               : _line(text.substring(at, end).trimRight(), spec, parts, words,
                   scale,
-                  soft: true)));
+                  pass: WordsPass.soft)));
       words += wordsIn(text.substring(at, end));
       at = end;
       placedOnLine = true;
@@ -369,11 +372,11 @@ WrappedText layoutWrapped(
 /// _fit is the longest run of words from [at] that fits in [width], and its
 /// paragraph. Word by word, not bisection: the answer is usually a few
 /// words in, and measurements are cached.
-(int, TextPainter) _fit(String text, int at, TextSpec spec, double width,
+(int, LaidOutWords) _fit(String text, int at, TextSpec spec, double width,
     List<TextPart> parts, int wordsBefore, double scale) {
   var end = at;
   var best = at;
-  TextPainter? bestPainter;
+  LaidOutWords? bestLine;
 
   while (end < text.length) {
     var next = end;
@@ -390,33 +393,31 @@ WrappedText layoutWrapped(
     if (next == end) break;
 
     var candidate = text.substring(at, next).trimRight();
-    var painter = _line(candidate, spec, parts, wordsBefore, scale);
-    if (painter.width > width + 0.5 && best > at) break;
+    var line = _line(candidate, spec, parts, wordsBefore, scale);
+    if (line.width > width + 0.5 && best > at) break;
 
     best = next;
-    bestPainter = painter;
+    bestLine = line;
     end = next;
-    if (painter.width > width + 0.5) break;
+    if (line.width > width + 0.5) break;
   }
 
   // Nothing fits: the run is narrower than the first word. The caller tries
   // the next run.
-  if (bestPainter == null) {
+  if (bestLine == null) {
     return (at, _line("", spec, parts, wordsBefore, scale));
   }
-  return (best, bestPainter);
+  return (best, bestLine);
 }
 
 /// _line lays one line out, with whatever styled runs fall inside it.
-TextPainter _line(String text, TextSpec spec, List<TextPart> parts,
-        int wordsBefore, double scale,
-        {bool outline = false, bool soft = false}) =>
-    layoutText(text, spec,
+LaidOutWords _line(String text, TextSpec spec, List<TextPart> parts,
+        int wordsBefore, double scale, {WordsPass pass = WordsPass.letters}) =>
+    layOutWords(text, spec,
+        parts: parts.isEmpty ? const [] : partsFrom(parts, wordsBefore),
         maxWidth: double.infinity,
         scale: scale,
-        outline: outline,
-        soft: soft,
-        parts: parts.isEmpty ? const [] : partsFrom(parts, wordsBefore));
+        pass: pass);
 
 /// paintWrapped draws what layoutWrapped worked out.
 ///
@@ -454,7 +455,7 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
       canvas.clipRect(Rect.fromLTRB(
           layerRoom.left,
           layerRoom.top,
-          at.dx + (line.painter.width + line.box.height) * share,
+          at.dx + (line.words.width + line.box.height) * share,
           layerRoom.bottom));
       return true;
     }
@@ -477,7 +478,7 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
     if (phase.drawsLetters) {
       // The words stay put while the stroke is drawn on, unless told to
       // arrive with it (TextDrawStart).
-      half(layerRoom, fillAlpha ?? 1, () => line.painter.paint(canvas, at));
+      half(layerRoom, fillAlpha ?? 1, () => line.words.paint(canvas, at));
     }
     if (written != null) stroke();
   }
@@ -486,7 +487,7 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
 /// _lineAt is where [line] is drawn: [TextSpec.align] applies inside each
 /// run, so a centred paragraph beside a picture centres in its room.
 Offset _lineAt(WrappedLine line, TextSpec spec) {
-  var room = line.box.width - line.painter.width;
+  var room = line.box.width - line.words.width;
   var dx = switch (spec.align) {
     TextAlignSpec.left => 0.0,
     TextAlignSpec.justify => 0.0,
@@ -514,14 +515,7 @@ void paintWrappedMarks(ui.Canvas canvas, WrappedText wrapped, String text,
         lineTimings.add(i < timings.length ? timings[i] : PartTiming.there);
       }
     }
-    paintPartMarks(
-        canvas,
-        line.painter,
-        text.substring(line.from, line.to).trimRight(),
-        lineParts,
-        spec,
-        _lineAt(line, spec),
-        behind: behind,
-        timings: lineTimings);
+    paintPartMarks(canvas, line.words, lineParts, spec, _lineAt(line, spec),
+        behind: behind, timings: lineTimings);
   }
 }

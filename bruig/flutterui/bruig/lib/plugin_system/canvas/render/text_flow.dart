@@ -1,6 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui' as ui;
-
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -222,7 +219,7 @@ int _blankRun(String text) {
 int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
     {bool tidy = false,
     List<WrapShape> blocked = const [],
-    List<TextPart> parts = const []}) {
+    required List<TextPart> parts}) {
   if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
 
   // Wrapped, the room a box has is what is left once the things in the way
@@ -230,7 +227,7 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
   // and the canvas agree.
   if (e.wrap.on &&
       blocked.isNotEmpty &&
-      wrapFits(text, spec, inner, blocked, e.wrap)) {
+      wrapFits(text, spec, inner, blocked, e.wrap, parts: parts)) {
     return layoutWrapped(text, spec, inner, blocked, e.wrap, parts: parts)
         .consumed;
   }
@@ -239,33 +236,9 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
       e.columns.isSingle ? inner.width : e.columns.columnWidth(inner.width);
   if (width <= 0) return 0;
 
-  var painter =
-      layoutText(text, spec, maxWidth: width, fillWidth: true, parts: parts);
-  var metrics = painter.computeLineMetrics();
-  if (metrics.isEmpty) return 0;
-
   // How many lines fit: the same packing the columns use, so a box with three
   // columns passes on what would not fit in the third rather than what would
   // not fit in one.
-  var runs = columnRuns(metrics, inner.height, math.max(1, e.columns.count),
-      noBlankStart: tidy);
-  var lines = runs.isEmpty ? 0 : runs.last.$2;
-  if (lines >= metrics.length) return text.length;
-  if (lines <= 0) return 0;
-
-  // The character the last line drawn ends at. Asked of the paragraph rather
-  // than counted, because where a line breaks is the paragraph's business.
-  var last = metrics[lines - 1];
-  var end = painter
-      .getPositionForOffset(ui.Offset(width + 1000, last.baseline))
-      .offset;
-  if (end <= 0) return 0;
-
-  // Whitespace at the break belongs to the line that broke, or the next box
-  // starts with a crooked first line.
-  while (end < text.length && text[end].trim().isEmpty && text[end] != "\n") {
-    end++;
-  }
-  if (end < text.length && text[end] == "\n") end++;
-  return math.min(end, text.length);
+  return layOutWords(text, spec, parts: parts, maxWidth: width, fillWidth: true)
+      .charactersIn(inner.height, columns: e.columns.count, tidy: tidy);
 }

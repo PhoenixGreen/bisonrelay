@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +20,9 @@ import 'package:flutter/services.dart';
 // over them is see-through: only its caret and selection show, so opening it
 // changes nothing on the page (showWords false). That needs the field to lay
 // the words out exactly as the painter does: the same style (textStyleOf),
-// the same width to wrap in, and room on the right for the caret, which a
-// TextField keeps out of the width it wraps in (_caretRoom).
+// each part styled as the painter styles it (partStyle), the same width to
+// wrap in, and room on the right for the caret, which a TextField keeps out
+// of the width it wraps in (_caretRoom).
 //
 // Where the painter sets the words some other way -- along a line, in
 // columns, round something in the way -- the field cannot follow, so it
@@ -188,6 +192,10 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
     var scale = widget.scale;
     var fills = item == null && !bodyIsBlock(e);
     var style = textStyleOf(spec, scale: scale);
+    // The runs the canvas draws differently, so the letters are where they
+    // are drawn; a piece has none.
+    _text.setParts(item == null ? e.drawnParts : const [], spec, scale,
+        clear: !widget.showWords);
     if (!widget.showWords) {
       // See-through: the canvas draws the words, the field its caret.
       // A fade is a foreground paint, which a style cannot have beside a
@@ -290,11 +298,29 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
 /// _CasedController shows the words in the element's case (TextCase), as
 /// the canvas draws them, so the caret falls between the letters drawn. Not
 /// where the case would change the length (a German ß made SS), where the
-/// caret could not be placed by the letters shown.
+/// caret could not be placed by the letters shown. Each of the parts is
+/// styled as the painter styles it (partStyle), inside whatever the writing
+/// tools mark: their underlines stay, on letters of the part's size.
 class _CasedController extends WritingTextEditingController {
   final TextCase textCase;
 
   _CasedController({super.text, required this.textCase});
+
+  List<TextPart> _parts = const [];
+  TextSpec _spec = const TextSpec();
+  double _scale = 1;
+  bool _clear = false;
+
+  /// setParts is what the words are drawn with: [parts] in [spec] at
+  /// [scale], their letters [clear] where the canvas draws them under a
+  /// see-through field. Set as the field is built, so a zoom is kept up.
+  void setParts(List<TextPart> parts, TextSpec spec, double scale,
+      {required bool clear}) {
+    _parts = parts;
+    _spec = spec;
+    _scale = scale;
+    _clear = clear;
+  }
 
   @override
   TextSpan buildTextSpan({
@@ -304,33 +330,56 @@ class _CasedController extends WritingTextEditingController {
   }) {
     var span = super.buildTextSpan(
         context: context, style: style, withComposing: withComposing);
-    if (textCase == TextCase.none) return span;
     var shown = textCase.apply(text);
-    if (shown.length != text.length) return span;
+    var cased = textCase != TextCase.none && shown.length == text.length;
+    if (!cased && _parts.isEmpty) return span;
+    if (!cased) shown = text;
+    var runs = _parts.isEmpty ? const <PartRun>[] : partRuns(shown, _parts);
     // Cut from the whole cased text, as title case depends on where each
-    // word starts, which a run on its own cannot tell.
+    // word starts, which a run on its own cannot tell; and the parts counted
+    // in the whole, as the painter counts them.
     var at = 0;
-    TextSpan cased(TextSpan s) {
+    TextSpan rebuilt(TextSpan s, TextStyle? over) {
+      var mine = over == null ? s.style : over.merge(s.style);
       String? t;
+      var split = <InlineSpan>[];
       if (s.text case var own?) {
-        t = shown.substring(at, at + own.length);
+        var from = at;
         at += own.length;
+        t = shown.substring(from, at);
+        var crossing = [
+          for (var run in runs)
+            if (run.end > from && run.start < at) run,
+        ];
+        if (mine != null && crossing.any((run) => run.part != null)) {
+          for (var run in crossing) {
+            split.add(TextSpan(
+                text: shown.substring(
+                    math.max(run.start, from), math.min(run.end, at)),
+                style: partStyle(mine, _spec, run.part,
+                    pass: WordsPass.letters,
+                    colorOverride: _clear ? const Color(0x00000000) : null,
+                    scale: _scale)));
+          }
+          t = null;
+        }
       }
       return TextSpan(
         text: t,
         style: s.style,
         recognizer: s.recognizer,
         mouseCursor: s.mouseCursor,
-        children: s.children == null
+        children: s.children == null && split.isEmpty
             ? null
             : [
-                for (var c in s.children!)
-                  if (c is TextSpan) cased(c) else c,
+                ...split,
+                for (var c in s.children ?? const <InlineSpan>[])
+                  if (c is TextSpan) rebuilt(c, mine) else c,
               ],
       );
     }
 
-    return cased(span);
+    return rebuilt(span, null);
   }
 }
 
