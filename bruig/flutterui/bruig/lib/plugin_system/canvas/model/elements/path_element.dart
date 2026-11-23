@@ -116,7 +116,7 @@ class PathFollow {
       };
 
   factory PathFollow.fromJson(Map<String, dynamic> json) => PathFollow(
-        elementId: jsonString(json["id"], ""),
+        elementId: jsonId(json["id"], ""),
         playerIndex:
             json["player"] is num ? (json["player"] as num).toInt() : null,
       );
@@ -496,12 +496,13 @@ class PathElement extends CanvasElement {
             ? GradientSpec.fromJson(
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
-        strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
+        strokeWidth: jsonLength(json["sw"], _defaults.strokeWidth),
         cap: json["strokeCap"] is String
             ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
             : LineStrokeCap.round,
         startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
-        endSize: jsonDouble(json["endSize"], _defaults.endSize),
+        endSize: jsonDouble(json["endSize"], _defaults.endSize)
+            .clamp(0.0, maxEndSize),
         // The writer leaves the end out when it is the arrow a path starts
         // with, so no "endEnd" is an arrow.
         endEnd: json.containsKey("endEnd")

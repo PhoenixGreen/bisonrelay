@@ -1,14 +1,19 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
@@ -100,6 +105,7 @@ List<(String, CanvasElement)> filledSamples() {
     ),
     ("Text, filled", text.copyWith(text: "$long " * 60)),
     ("Text, every part used", fullText(text)),
+    ...fullStrokes(doc),
     (
       "Play task, filled",
       task.copyWith(text: "$long " * 4, checks: [
@@ -107,6 +113,97 @@ List<(String, CanvasElement)> filledSamples() {
           PlayCheck(k, "$long step $i " * 3,
               steps: "C2 C3+E3+G3 F#4 Bb5", count: 3, percent: 90),
       ])
+    ),
+  ];
+}
+
+/// fullStrokes are a shape, a line and a path with every field set away
+/// from what a new one has: a speech bubble, a star, a labelled shape with
+/// its own corners and padding, painted and faded; a line with both ends, a
+/// dash, a bow and a fade, flipped; an open and a closed path with handles,
+/// timed points, ends, a dash, a fade and a follower. A received file may
+/// hold any of it, and a panel must open on all of it.
+List<(String, CanvasElement)> fullStrokes(CanvasDocument doc) {
+  var shape = newElement(ElementKind.shape, doc) as ShapeElement;
+  var line = newElement(ElementKind.line, doc) as LineElement;
+  var path = newElement(ElementKind.path, doc) as PathElement;
+  const fade = GradientSpec(to: Color(0xFFE53935), angle: 30);
+  var openPath = path.copyWith(
+    nodes: PathElement.defaultNodes(frames: doc.frames),
+    color: const Color(0xFF66BB6A),
+    fade: fade,
+    strokeWidth: 5,
+    cap: LineStrokeCap.square,
+    startEnd: LineEnd.circle,
+    endEnd: LineEnd.openArrow,
+    endSize: 1.8,
+    dash: 9,
+    follow: const PathFollow(elementId: "a-follower"),
+  );
+  return [
+    (
+      "Shape, speech bubble with every field set",
+      shape.copyWith(
+          shape: ShapeKind.speechBubble,
+          bubble: const SpeechBubbleSpec(
+              body: BubbleBody.cloud,
+              tail: BubbleTail.curved,
+              tailAngle: 200,
+              tailLength: 0.8,
+              tailWidth: 0.5,
+              curl: -0.7)),
+    ),
+    (
+      "Shape, star",
+      shape.copyWith(shape: ShapeKind.star, points: 7, innerRatio: 0.6),
+    ),
+    (
+      "Shape, every part used",
+      shape.copyWith(
+        text: "A label in the shape",
+        textSpec: const TextSpec(fontSize: 20, weight: 600, letterSpacing: 1),
+        padding: 6,
+        padL: 4,
+        padT: 10,
+        padR: 14,
+        padB: 8,
+        cornerRadius: 12,
+        radTL: 2,
+        radTR: 8,
+        radBR: 16,
+        radBL: 24,
+        painted: const TextFill(
+            kind: TextFillKind.pattern,
+            pattern: ProceduralSpec(style: ProceduralStyle.crosshatch),
+            zoom: 1.5),
+        fillFade: fade,
+        strokeWidth: 3,
+        strokeColor: const Color(0xFFFFA726),
+        strokeFade: const GradientSpec(to: Color(0xFF3D7EFF), angle: 90),
+      ),
+    ),
+    (
+      "Line, every part used",
+      line.copyWith(
+        color: const Color(0xFFFFA726),
+        fade: fade,
+        strokeWidth: 6,
+        cap: LineStrokeCap.round,
+        startEnd: LineEnd.arrow,
+        endEnd: LineEnd.hollowDiamond,
+        endSize: 1.6,
+        dash: 10,
+        curvature: 0.3,
+        flipped: true,
+      ),
+    ),
+    ("Path, open, every part used", openPath),
+    (
+      "Path, closed, every part used",
+      openPath.copyWith(
+          closed: true,
+          guide: true,
+          follow: const PathFollow(elementId: "a-team", playerIndex: 2)),
     ),
   ];
 }

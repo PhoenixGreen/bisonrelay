@@ -124,8 +124,8 @@ Path shapePath(ShapeKind kind, Rect rect,
       _regular(path, c, rx, ry, 6);
 
     case ShapeKind.star:
-      var n = points.clamp(3, 24);
-      var ratio = inner.clamp(0.05, 0.95).toDouble();
+      var n = points.clamp(minStarPoints, maxStarPoints);
+      var ratio = inner.clamp(minStarDepth, maxStarDepth).toDouble();
       for (var i = 0; i < n * 2; i++) {
         var a = -math.pi / 2 + i * math.pi / n;
         var r = i.isEven ? 1.0 : ratio;

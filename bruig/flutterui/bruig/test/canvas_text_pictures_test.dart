@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,6 +24,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+
+import 'support/kept_pictures.dart';
 
 // canvas_text_pictures_test.dart keeps what the renderer draws of a text
 // element, to the byte, in each of about a hundred and fifty states: the
@@ -620,52 +620,10 @@ void main() {
   Future<void> keep(String name, CanvasDocument doc) async {
     var recorder = ui.PictureRecorder();
     paintCanvasDocument(ui.Canvas(recorder), doc, images: pictures);
-    var image = await recorder.endRecording().toImage(_w, _h);
-    var raw = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!
-        .buffer
-        .asUint8List();
-    var png = (await image.toByteData(format: ui.ImageByteFormat.png))!
-        .buffer
-        .asUint8List();
-    image.dispose();
-    var numbers = _numbers(doc);
-
-    var dir = Platform.environment["TEXT_PICTURES"];
-    if (dir == null || dir.isEmpty) return;
-    Directory(dir).createSync(recursive: true);
-    var kept = File("$dir/$name.rgba");
-    var keptNumbers = File("$dir/$name.txt");
-    if (!kept.existsSync()) {
-      kept.writeAsBytesSync(raw);
-      File("$dir/$name.png").writeAsBytesSync(png);
-      keptNumbers.writeAsStringSync(numbers);
-      return;
-    }
-    var fresh = File("$dir/$name.new.png");
-    if (fresh.existsSync()) fresh.deleteSync();
-    var was = kept.readAsBytesSync();
-    if (!_same(was, raw)) {
-      fresh.writeAsBytesSync(png);
-      var changed = 0;
-      int? left, top, right, bottom;
-      for (var i = 0; i < raw.length && i < was.length; i += 4) {
-        if (raw[i] == was[i] &&
-            raw[i + 1] == was[i + 1] &&
-            raw[i + 2] == was[i + 2] &&
-            raw[i + 3] == was[i + 3]) {
-          continue;
-        }
-        changed++;
-        var x = (i ~/ 4) % _w, y = (i ~/ 4) ~/ _w;
-        left = left == null || x < left ? x : left;
-        right = right == null || x > right ? x : right;
-        top = top == null || y < top ? y : top;
-        bottom = bottom == null || y > bottom ? y : bottom;
-      }
-      fail("$name: $changed pixels differ, within x $left..$right, "
-          "y $top..$bottom (see $name.new.png)");
-    }
-    expect(numbers, keptNumbers.readAsStringSync(), reason: name);
+    var (raw, png) =
+        await imageBytes(await recorder.endRecording().toImage(_w, _h));
+    keepOrCompare("TEXT_PICTURES", name,
+        raw: raw, png: png, width: _w, numbers: _numbers(doc));
   }
 
   var states = _states();
@@ -677,12 +635,4 @@ void main() {
   for (var (name, doc) in states) {
     test(name, () => keep(name, doc));
   }
-}
-
-bool _same(Uint8List a, Uint8List b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

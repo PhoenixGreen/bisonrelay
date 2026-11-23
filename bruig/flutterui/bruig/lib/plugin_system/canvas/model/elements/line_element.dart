@@ -27,6 +27,12 @@ enum LineStrokeCap {
 /// upright one's: see LineElement.withEnds.
 const double lineSliver = 0.01;
 
+/// maxEndSize and maxCurvature are the largest end size (a line's or a
+/// path's) and bow a line is read with: ten times what the panels offer, so
+/// nothing made here is changed, while a received canvas cannot draw an
+/// arrowhead or a bow a billion times the page.
+const double maxEndSize = 80, maxCurvature = 10;
+
 /// snapLineAngle is [moving] swung about [fixed] onto the nearest multiple of
 /// 45 degrees, when it is within [within] degrees of it or [always] is set.
 Offset snapLineAngle(Offset fixed, Offset moving,
@@ -260,13 +266,15 @@ class LineElement extends CanvasElement {
               ? GradientSpec.fromJson(
                   (json["fade"] as Map).cast<String, dynamic>())
               : null,
-          strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
+          strokeWidth: jsonLength(json["sw"], _defaults.strokeWidth),
           cap: LineStrokeCap.fromName(jsonStr(json["strokeCap"])),
           startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
           endEnd: LineEnd.fromName(jsonStr(json["endEnd"])),
-          endSize: jsonDouble(json["endSize"], _defaults.endSize),
+          endSize: jsonDouble(json["endSize"], _defaults.endSize)
+              .clamp(0.0, maxEndSize),
           dash: jsonDouble(json["dash"], _defaults.dash).clamp(0.0, 400.0),
-          curvature: jsonDouble(json["curve"], _defaults.curvature),
+          curvature: jsonDouble(json["curve"], _defaults.curvature)
+              .clamp(-maxCurvature, maxCurvature),
           flipped: jsonBool(json["flipped"], false),
           animation: jsonSpec(
               json["anim"], ElementAnimation.fromJson, _defaults.animation));

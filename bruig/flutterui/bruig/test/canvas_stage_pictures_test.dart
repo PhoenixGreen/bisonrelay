@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -36,6 +35,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/stage_transform.dart';
 
 import 'support/canvas_app.dart';
 import 'support/canvas_audio_fake.dart';
+import 'support/kept_pictures.dart';
 
 // canvas_stage_pictures_test.dart keeps what the stage's painter draws, to
 // the byte, in each of a few dozen states that between them reach every
@@ -99,52 +99,13 @@ void main() {
     await tester.runAsync(() async {
       var recorder = ui.PictureRecorder();
       painter.paint(ui.Canvas(recorder), _viewport);
-      var image = await recorder
+      (raw, png) = await imageBytes(await recorder
           .endRecording()
-          .toImage(_viewport.width.round(), _viewport.height.round());
-      raw = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!
-          .buffer
-          .asUint8List();
-      png = (await image.toByteData(format: ui.ImageByteFormat.png))!
-          .buffer
-          .asUint8List();
-      image.dispose();
+          .toImage(_viewport.width.round(), _viewport.height.round()));
     });
     expect(tester.takeException(), isNull);
-
-    var dir = Platform.environment["STAGE_PICTURES"];
-    if (dir == null || dir.isEmpty) return;
-    Directory(dir).createSync(recursive: true);
-    var kept = File("$dir/$name.rgba");
-    if (!kept.existsSync()) {
-      kept.writeAsBytesSync(raw);
-      File("$dir/$name.png").writeAsBytesSync(png);
-      return;
-    }
-    var was = kept.readAsBytesSync();
-    var fresh = File("$dir/$name.new.png");
-    if (fresh.existsSync()) fresh.deleteSync();
-    if (listEqualsBytes(was, raw)) return;
-    fresh.writeAsBytesSync(png);
-    var width = _viewport.width.round();
-    var changed = 0;
-    int? left, top, right, bottom;
-    for (var i = 0; i < raw.length && i < was.length; i += 4) {
-      if (raw[i] == was[i] &&
-          raw[i + 1] == was[i + 1] &&
-          raw[i + 2] == was[i + 2] &&
-          raw[i + 3] == was[i + 3]) {
-        continue;
-      }
-      changed++;
-      var x = (i ~/ 4) % width, y = (i ~/ 4) ~/ width;
-      left = left == null || x < left ? x : left;
-      right = right == null || x > right ? x : right;
-      top = top == null || y < top ? y : top;
-      bottom = bottom == null || y > bottom ? y : bottom;
-    }
-    fail("$name: $changed pixels differ, within x $left..$right, "
-        "y $top..$bottom (see $name.new.png)");
+    keepOrCompare("STAGE_PICTURES", name,
+        raw: raw, png: png, width: _viewport.width.round());
   }
 
   /// withInputs is [i] with the values given in place of its own.
@@ -1075,13 +1036,4 @@ void main() {
       await keep(tester, "helpers_hidden");
     });
   });
-}
-
-/// listEqualsBytes is whether [a] and [b] hold the same bytes.
-bool listEqualsBytes(Uint8List a, Uint8List b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

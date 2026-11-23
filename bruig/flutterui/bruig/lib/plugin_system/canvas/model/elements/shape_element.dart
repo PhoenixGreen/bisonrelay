@@ -46,6 +46,12 @@ enum ShapeKind {
       this == ShapeKind.speechBubble;
 }
 
+/// minStarPoints, maxStarPoints, minStarDepth and maxStarDepth are the
+/// points and depth a star is drawn with whatever it holds: the panel's
+/// range, and what a received one is read within.
+const int minStarPoints = 3, maxStarPoints = 24;
+const double minStarDepth = 0.05, maxStarDepth = 0.95;
+
 /// BubbleBody is the outline of a speech bubble.
 enum BubbleBody {
   rounded("Rounded"),
@@ -139,12 +145,16 @@ class SpeechBubbleSpec {
       SpeechBubbleSpec(
         body: BubbleBody.fromName(jsonStr(json["body"])),
         tail: BubbleTail.fromName(jsonStr(json["tail"])),
-        tailAngle: jsonDouble(json["angle"], _defaults.tailAngle),
+        // A turn either way is every angle there is; a curl is held to ten
+        // times what the panel offers, so a received one cannot fling the
+        // tail across the page.
+        tailAngle:
+            jsonDouble(json["angle"], _defaults.tailAngle).clamp(-360.0, 360.0),
         tailLength:
             jsonDouble(json["length"], _defaults.tailLength).clamp(0.0, 2.0),
         tailWidth:
             jsonDouble(json["width"], _defaults.tailWidth).clamp(0.02, 2.0),
-        curl: jsonDouble(json["curl"], _defaults.curl),
+        curl: jsonDouble(json["curl"], _defaults.curl).clamp(-15.0, 15.0),
       );
 }
 
@@ -183,7 +193,9 @@ class ShapeElement extends CanvasElement {
   final double? padR;
   final double? padB;
 
-  /// points and innerRatio shape a star: spikes, and how deep between.
+  /// points and innerRatio shape a star: spikes, and how deep between. It is
+  /// drawn, and read, within [minStarPoints]..[maxStarPoints] and
+  /// [minStarDepth]..[maxStarDepth].
   final int points;
   final double innerRatio;
 
@@ -393,38 +405,34 @@ class ShapeElement extends CanvasElement {
           shape: ShapeKind.fromName(jsonStr(json["shape"])),
           fill: colorFromJson(json["fill"], _defaults.fill),
           painted: json["painted"] is Map
-              ? TextFill.fromJson((json["painted"] as Map).cast<String,
-                  dynamic>())
+              ? TextFill.fromJson(
+                  (json["painted"] as Map).cast<String, dynamic>())
               : const TextFill(),
-          fillFade:
-              json[
-                      "fillFade"] is Map
-                  ? GradientSpec
-                      .fromJson((json[
-                              "fillFade"] as Map)
-                          .cast<String, dynamic>())
-                  : null,
-          strokeFade:
-              json[
-                      "strokeFade"] is Map
-                  ? GradientSpec
-                      .fromJson(
-                          (json["strokeFade"] as Map).cast<String, dynamic>())
-                  : null,
+          fillFade: json["fillFade"] is Map
+              ? GradientSpec.fromJson(
+                  (json["fillFade"] as Map).cast<String, dynamic>())
+              : null,
+          strokeFade: json["strokeFade"] is Map
+              ? GradientSpec.fromJson(
+                  (json["strokeFade"] as Map).cast<String, dynamic>())
+              : null,
           strokeColor: colorFromJson(json["sc"]),
-          strokeWidth: jsonDouble(json["sw"], _defaults.strokeWidth),
-          cornerRadius: jsonDouble(json["cr"], _defaults.cornerRadius),
-          radTL: json["rTL"] == null ? null : jsonDouble(json["rTL"], 0),
-          radTR: json["rTR"] == null ? null : jsonDouble(json["rTR"], 0),
-          radBR: json["rBR"] == null ? null : jsonDouble(json["rBR"], 0),
-          radBL: json["rBL"] == null ? null : jsonDouble(json["rBL"], 0),
-          padding: jsonDouble(json["pad"], _defaults.padding),
-          padL: json["padL"] == null ? null : jsonDouble(json["padL"], 0),
-          padT: json["padT"] == null ? null : jsonDouble(json["padT"], 0),
-          padR: json["padR"] == null ? null : jsonDouble(json["padR"], 0),
-          padB: json["padB"] == null ? null : jsonDouble(json["padB"], 0),
-          points: jsonInt(json["points"], _defaults.points),
-          innerRatio: jsonDouble(json["inner"], _defaults.innerRatio),
+          strokeWidth: jsonLength(json["sw"], _defaults.strokeWidth),
+          cornerRadius: jsonLength(json["cr"], _defaults.cornerRadius),
+          radTL: json["rTL"] == null ? null : jsonLength(json["rTL"], 0),
+          radTR: json["rTR"] == null ? null : jsonLength(json["rTR"], 0),
+          radBR: json["rBR"] == null ? null : jsonLength(json["rBR"], 0),
+          radBL: json["rBL"] == null ? null : jsonLength(json["rBL"], 0),
+          padding: jsonLength(json["pad"], _defaults.padding),
+          padL: json["padL"] == null ? null : jsonLength(json["padL"], 0),
+          padT: json["padT"] == null ? null : jsonLength(json["padT"], 0),
+          padR: json["padR"] == null ? null : jsonLength(json["padR"], 0),
+          padB: json["padB"] == null ? null : jsonLength(json["padB"], 0),
+          points: jsonInt(json["points"], _defaults.points)
+              .clamp(minStarPoints, maxStarPoints),
+          innerRatio:
+              jsonDouble(json["inner"], _defaults.innerRatio).clamp(minStarDepth,
+                  maxStarDepth),
           text: jsonString(json["text"], _defaults.text),
           textSpec:
               jsonSpec(json["textSpec"], TextSpec.fromJson, _defaults.textSpec),
