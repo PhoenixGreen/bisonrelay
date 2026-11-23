@@ -234,4 +234,20 @@ extension CanvasCodes on CanvasController {
     _codeScroll.clear();
     _codeRanNow.clear();
   }
+
+  /// _forgetCodePicksOffScene lets go of the picks of the panels no longer
+  /// on screen once the scene is turned: each names a place in a scene not
+  /// shown, and coming back to it is a playhead put there anew. A panel on
+  /// the master, shown on every scene, keeps its own.
+  void _forgetCodePicksOffScene() {
+    var shown = {
+      for (var e in _document.elements) e.id,
+      if (!_document.editingMaster)
+        for (var e in _document.masterScene?.elements ?? const []) e.id,
+    };
+    bool gone(String id) => !shown.contains(id);
+    _codePicked.removeWhere((id, _) => gone(id));
+    _codeScroll.removeWhere((id, _) => gone(id));
+    _codeRanNow.removeWhere(gone);
+  }
 }

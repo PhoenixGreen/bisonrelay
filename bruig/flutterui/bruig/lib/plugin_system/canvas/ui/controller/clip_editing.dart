@@ -124,7 +124,7 @@ extension CanvasClipEditing on CanvasController {
       notifyListeners();
       return;
     }
-    var at = playing ? _sessionNow : _sessionStart();
+    var at = canvasLive ? _sessionNow : _sessionStart();
     unawaited(_startClip(t.channel, t.row!, clip, at));
   }
 

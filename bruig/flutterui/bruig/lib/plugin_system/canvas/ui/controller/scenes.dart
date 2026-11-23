@@ -46,7 +46,6 @@ extension CanvasScenes on CanvasController {
     // one arriving, so the eye has something to compare the transition with.
     var lead = math.max(6, (document.frameRate * 0.4).round());
     var end = math.min(document.sequenceFrames - 1, start + over.frames + lead);
-    _playbackState.runEnd = end;
     _playheadOn = OnJoin(
         at: math.max(0, start - over.overlap - lead),
         end: end,
@@ -64,13 +63,13 @@ extension CanvasScenes on CanvasController {
     var doc = _document;
     if (join < 0 || join >= doc.allScenes.length - 1) return false;
     switch (_playheadOn.showing) {
-      case OnJoin(at: int(), join: var watched) when watched == join:
+      case OnJoin(join: var watched) when watched == join:
         return true;
-      case OnRun(:var at) || OnJoin(at: var at?):
+      case OnRun(:var at) || OnJoin(:var at):
         var start = doc.startOfScene(join + 1);
         var over = doc.transitionAfter(join);
         return at >= start - over.overlap && at < start + over.frames;
-      case OnTimeline() || OnJoin(at: null):
+      case OnTimeline():
         break;
     }
     if (gameChange case (var left, _, _, _, _)?) {
@@ -85,7 +84,7 @@ extension CanvasScenes on CanvasController {
     var wasMaster = false;
     switch (_playheadOn.showing) {
       // Showing the scene: no frame of the run to stop showing.
-      case OnTimeline() || OnJoin(at: null):
+      case OnTimeline():
         return;
       // A run of every scene stays on the scene it got to.
       case OnRun():
@@ -95,19 +94,20 @@ extension CanvasScenes on CanvasController {
         back = from;
         wasMaster = fromMaster;
     }
-    _playheadOn = _playheadOn.withShowing(const OnTimeline());
+    _playheadOn = const OnTimeline();
     pause();
-    // Back to the canvas it was started from: playing the document walks the
-    // editor through the scenes (see _stepRun).
-    if (back != null && back != _document.at) {
-      _turnScene(_document.goToScene(back),
+    // Back to the canvas it was started from, and onto the shared canvas
+    // where that is where it started: playing the document walks the editor
+    // through the scenes (see _stepRun). A turn, so the sounds and the mix
+    // are the scene's gone back to.
+    if (back != null &&
+        (back != _document.at || (wasMaster && !_document.editingMaster))) {
+      var next = _document.goToScene(back);
+      if (wasMaster) next = next.copyWith(onMaster: true);
+      _turnScene(next,
           keepLeft: false, toKept: false, letGo: false, asChange: false);
       _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
-    }
-    // And back onto the shared canvas where that is where it started.
-    if (wasMaster && !_document.editingMaster) {
-      _document = _document.copyWith(onMaster: true);
-      _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+      _syncTimeline();
     }
     notifyListeners();
   }
@@ -498,8 +498,10 @@ extension CanvasScenes on CanvasController {
     _turnScene(next, keepLeft: true, toKept: true, letGo: true, asChange: true);
     // A stop's label is the scene left's, at whatever frame this one is on.
     _playbackState.stoppedAt = null;
-    _syncTimeline();
+    // Held to the scene before the media are told: the frame it was left on
+    // can be past the end of a scene shortened since.
     _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+    _syncTimeline();
     notifyListeners();
   }
 
@@ -522,10 +524,11 @@ extension CanvasScenes on CanvasController {
   ///   the scene shown), autosaved and told at once; by hand only, as
   ///   playing and a join going back are not edits.
   ///
-  /// The caller then settles the frame and tells, once it has (goToScene
-  /// holds the frame to the scene; _stepRun puts it on the run's frame and
-  /// tells as a frame of play does; stopPreview first goes back onto the
-  /// master, if it was watched from there).
+  /// The Code panels' picks on the scene left go, whichever way it turned
+  /// (see _forgetCodePicksOffScene). The caller then settles the frame and
+  /// tells, once it has (goToScene holds the frame to the scene; _stepRun
+  /// puts it on the run's frame and tells as a frame of play does;
+  /// stopPreview holds it to the scene, or the master, gone back to).
   void _turnScene(CanvasDocument next,
       {required bool keepLeft,
       required bool toKept,
@@ -549,6 +552,7 @@ extension CanvasScenes on CanvasController {
       _backgroundSelected = false;
       _focusedPlayer = null;
     }
+    _forgetCodePicksOffScene();
     _audioFollowsPage(turned: true);
   }
 

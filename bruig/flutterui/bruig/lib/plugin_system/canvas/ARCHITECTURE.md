@@ -195,21 +195,29 @@ controller.
 is running). What plays is one value, `_playheadOn`, a sealed `PlayheadOn`
 (`controller/playhead_on.dart`) whose cases each hold what that activity
 needs: `OnTimeline`, the scene's own timeline, playing or stopped (a canvas
-opens on a bare one); `OnRun`, a frame of the run of every scene, to its
-end; `OnJoin`, a join's transition watched, with the scene to go back to;
+opens on one); `OnRun`, a frame of the run of every scene, which plays to
+the run's end as the document has it then; `OnJoin`, a frame of a join's
+transition watched, to its end, with the scene to go back to (a playhead
+put by hand off the transition ends the watching where it was put);
 `OnElement`, one element's animation previewed; and `OnSlots`, the clip
 slots alone on their own clock. The first three are `Showing`, what the
-canvas shows, and each may carry a range to stop at; the last two play
-only while the timer runs, each over the `Showing` that was there, which
-shows again on `pause`. The questions asked of it are named once, on the
-value (`isPreview`: an element or a join, when the metronome is quiet) or
-in `playback.dart`: `timelinePlaying` (the timer runs for anything but the
-slots alone: Play shows as pressed), `canvasLive` (playing, or a game on
-its own timer), `showingScene` (no frame of the run, no element
+canvas shows; the last two play only while the timer runs, always over the
+scene, as each starts by ending a join watched or a frame of the run held,
+and the scene shows on `pause`. A range a play stops at (a button's Play to
+frame, a lesson, a sheet's bars) is the timer's, beside it in
+`_PlaybackState.rangeEnd`, and `pause` lets go of it. A change, an undo or
+a redo that shortens the run lets go of a frame of the run held past its
+end. The questions asked of it are named once, on the value (`isPreview`:
+an element or a join, when the metronome is quiet) or in `playback.dart`:
+`timelinePlaying` (the timer runs for anything but the slots alone: Play
+shows as pressed), `canvasLive` (playing, or a game on its own timer: what
+a slot's launch asks), `showingScene` (no frame of the run, no element
 previewed) and `_runHeld` (a frame of the run that stopping, or moving the
 playhead by hand, lets go of). The scene is turned in one place,
 `_turnScene` (`scenes.dart`), for a turn by hand, by every scene playing
-and by a join going back. A new kind of playing is a new case: the
+and by a join going back; the sounds on the page follow it there, and each
+caller holds the frame to the scene before it tells the timeline's media
+and the mix where the playhead is. A new kind of playing is a new case: the
 compiler then lists every `switch` over the value that has to say what it
 does.
 

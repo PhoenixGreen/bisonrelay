@@ -856,6 +856,7 @@ class CanvasController extends ChangeNotifier {
     _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
 
     if (_frame >= _document.frames) _frame = _document.frames - 1;
+    _letGoOfRunPastEnd();
 
     // A sound whose element has gone goes with it, and one on the timeline
     // goes where its new settings put it.
@@ -918,10 +919,21 @@ class CanvasController extends ChangeNotifier {
     _redo.add(_document);
     var before = _document;
     _document = _undo.removeLast();
+    _afterHistoryStep(before);
+  }
+
+  /// _afterHistoryStep follows an undo or redo that replaced [before], as
+  /// apply follows a change: the selection pruned, the playhead and a frame
+  /// of the run held inside the document, and the sounds and the mix told
+  /// what it holds now.
+  void _afterHistoryStep(CanvasDocument before) {
     _edits++;
     scheduleAutosave();
     _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
     if (_frame >= _document.frames) _frame = _document.frames - 1;
+    _letGoOfRunPastEnd();
+    _audioFollowsPage(turned: false);
+    _syncTimeline();
     _followEdits(before);
     notifyListeners();
   }
@@ -933,12 +945,7 @@ class CanvasController extends ChangeNotifier {
     _undo.add(_document);
     var before = _document;
     _document = _redo.removeLast();
-    _edits++;
-    scheduleAutosave();
-    _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
-    if (_frame >= _document.frames) _frame = _document.frames - 1;
-    _followEdits(before);
-    notifyListeners();
+    _afterHistoryStep(before);
   }
 
   /// _beforePreview is the real document while tryElement shows a setting.
@@ -1071,9 +1078,10 @@ class CanvasController extends ChangeNotifier {
   // What is playing: the timer, which says whether, and _playheadOn, which
   // says what (controller/playhead_on.dart: the scene's timeline, the run of
   // every scene, a join watched, one element previewed, the slots alone).
-  // Beside them the switch to play every scene, the session's clock while
-  // the timeline plays, recording, and the clock a test stands in. Played
-  // in controller/playback.dart. A sheet slowed or practised keeps its own
+  // Beside them the switch to play every scene, the frame a play stops at
+  // (_PlaybackState.rangeEnd), the session's clock while the timeline
+  // plays, recording, and the clock a test stands in. Played in
+  // controller/playback.dart. A sheet slowed or practised keeps its own
   // (_slowSheet with the instruments, _practice under Practising), and a
   // game its own timer.
 

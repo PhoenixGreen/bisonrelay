@@ -393,8 +393,12 @@ extension CanvasSession on CanvasController {
   /// (so a launch with nothing playing is heard at once): where it started.
   double _sessionStart() {
     // The slots on their own, from nought: the timeline stays where it is,
-    // and silent -- see sessionOnly.
-    _playheadOn = OnSlots(seconds: 0, over: _playheadOn.showing);
+    // and silent -- see sessionOnly. Over the scene: a join paused or a
+    // frame of the run held ends here, as launching a slot is not watching
+    // the transition any more, and stopping the slots would let go of a
+    // held frame anyway (see pause). No turn back to where a join was
+    // watched from: the slot launched is the scene in front's.
+    _playheadOn = const OnSlots(seconds: 0);
     _startTimer();
     _syncTimeline();
     notifyListeners();

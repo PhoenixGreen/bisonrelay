@@ -265,8 +265,7 @@ extension CanvasKeyframes on CanvasController {
     pause();
     stopPreview();
     var (from, to) = previewSpanOf(element);
-    _playheadOn =
-        OnElement(id: id, frame: from, end: to, over: _playheadOn.showing);
+    _playheadOn = OnElement(id: id, frame: from, end: to);
     _startTimer();
     notifyListeners();
   }

@@ -50,27 +50,36 @@ extension CanvasPlayback on CanvasController {
     var place = placeInSequence(document, run);
     if (place.scene != document.at) goToScene(place.scene);
     frame = place.frame;
-    var showing = place.changing ? run : null;
-    if (showing != _playheadOn.runFrame) {
-      _showRunFrame(showing);
+    // The slots alone, or one element previewed, play over the scene: the
+    // playhead moves along it, and no frame of the run shows under them.
+    if (_playheadOn case Showing shown) {
+      var next = _shownByHand(shown, run, place);
+      if (next.runFrame == shown.runFrame &&
+          next.runtimeType == shown.runtimeType) {
+        return;
+      }
+      // A join playing ends as stopPreview would end it, the timer with it.
+      if (shown is OnJoin && next is! OnJoin && playing) pause();
+      _playheadOn = next;
       notifyListeners();
     }
   }
 
-  /// _showRunFrame puts what shows on frame [run] of the whole run, or back
-  /// on the scene (null). A join watched keeps the scene it goes back to,
-  /// even off its transition. A run put by hand from the scene plays to
-  /// where the last run or join was to stop (see _PlaybackState.runEnd).
-  void _showRunFrame(int? run) {
-    _playheadOn = _playheadOn.withShowing(switch (_playheadOn.showing) {
-      OnJoin join => join.movedTo(run),
-      OnRun on =>
-        run == null ? OnTimeline(rangeEnd: on.rangeEnd) : on.movedTo(run),
-      OnTimeline line => run == null
-          ? line
-          : OnRun(at: run, end: _playbackState.runEnd, rangeEnd: line.rangeEnd),
-    });
-  }
+  /// _shownByHand is what shows once the playhead is put by hand on frame
+  /// [run] of the run, at [place], where [shown] showed. Every scene
+  /// playing plays on from there, transition or not. A join watched is
+  /// still watched inside its own transition; off it, the watching ends
+  /// where the playhead was put, without going back to where it was
+  /// watched from, as the person has gone somewhere else on purpose.
+  /// Otherwise a transition's frame is held (see _runHeld), and the scene
+  /// shows anywhere else.
+  Showing _shownByHand(Showing shown, int run, SequencePlace place) =>
+      switch (shown) {
+        OnRun on when playing => on.movedTo(run),
+        OnJoin join when place.changing && place.scene == join.join =>
+          join.movedTo(run),
+        _ => place.changing ? OnRun(run) : const OnTimeline(),
+      };
 
   // ------------------------------------------------------------ what plays
 
@@ -99,19 +108,27 @@ extension CanvasPlayback on CanvasController {
   /// itself (see stopPreview). Let go when playing stops, and, stopped,
   /// when the playhead is moved by hand; a playhead moved while the run
   /// plays is the run's to move on from.
-  bool get _runHeld => _playAll && _playheadOn.showing is OnRun;
+  bool get _runHeld => _playAll && _playheadOn is OnRun;
 
   /// _letGoOfRun puts what shows back on the scene from a frame of the run.
   void _letGoOfRun() {
-    if (_playheadOn.showing case OnRun on) {
-      _playheadOn = _playheadOn.withShowing(OnTimeline(rangeEnd: on.rangeEnd));
+    if (_playheadOn is OnRun) _playheadOn = const OnTimeline();
+  }
+
+  /// _letGoOfRunPastEnd lets go of a frame of the run held past the run's
+  /// end, after a change that shortened the run: the scene shows, at the
+  /// playhead the change held to it. Playing, the next step stops at the
+  /// end of the run, worked out afresh (see _step).
+  void _letGoOfRunPastEnd() {
+    if (playing) return;
+    if (_playheadOn case OnRun(:var at) when at >= _document.playFrames) {
+      _letGoOfRun();
     }
   }
 
   /// _setRangeEnd stops what is playing at frame [end] of the scene it was
-  /// asked on (see Showing.rangeEnd), or at nothing (null).
-  void _setRangeEnd(int? end) => _playheadOn =
-      _playheadOn.withShowing(_playheadOn.showing.withRangeEnd(end));
+  /// asked on (see _PlaybackState.rangeEnd), or at nothing (null).
+  void _setRangeEnd(int? end) => _playbackState.rangeEnd = end;
 
   /// playsEveryScene is whether Play runs along every scene, one after
   /// another, rather than the scene in front: Play all, on a canvas with
@@ -136,11 +153,11 @@ extension CanvasPlayback on CanvasController {
     _codeFull.clear();
     // Playing only the slots: Play is the timeline's -- the slots stop, and
     // the piece plays from its playhead.
-    if (_playheadOn case OnSlots(:var over)) {
+    if (_playheadOn is OnSlots) {
       _haltClips();
       _playback?.cancel();
       _playback = null;
-      _playheadOn = over;
+      _playheadOn = const OnTimeline();
     }
     if (playing) return;
     _playbackState.playedFrom = (_document.at, _frame);
@@ -170,15 +187,13 @@ extension CanvasPlayback on CanvasController {
         _frame = 0;
         from = 0;
       }
-      _playbackState.runEnd = end;
-      _playheadOn = _playheadOn.withShowing(switch (_playheadOn.showing) {
+      _playheadOn = switch (_playheadOn) {
         // A join watched and paused plays on from here, to the run's end,
         // and still goes back to where it was watched from.
         OnJoin join => join.playedTo(from, end),
-        OnTimeline(:var rangeEnd) ||
-        OnRun(:var rangeEnd) =>
-          OnRun(at: from, end: end, rangeEnd: rangeEnd),
-      });
+        // Stopped, nothing else plays: the slots alone were stopped above.
+        _ => OnRun(from),
+      };
       _playbackState.loopCounts.clear();
       _startTimer();
       notifyListeners();
@@ -404,10 +419,10 @@ extension CanvasPlayback on CanvasController {
         return;
       // Watching a join: back on the scene it was watched from, as its own
       // end would put it, not where an earlier Play began.
-      case OnJoin(at: int()):
+      case OnJoin():
         stopPreview();
         return;
-      case OnTimeline() || OnRun() || OnJoin(at: null):
+      case OnTimeline() || OnRun():
         break;
     }
     var from = _playbackState.playedFrom;
@@ -549,10 +564,13 @@ extension CanvasPlayback on CanvasController {
     }
     // A join watched, or every scene playing: along the whole run.
     switch (_playheadOn.showing) {
-      case OnRun(:var at, :var end) || OnJoin(at: var at?, :var end):
+      case OnRun(:var at):
+        _stepRun(at, _document.playFrames - 1);
+        return;
+      case OnJoin(:var at, :var end):
         _stepRun(at, end);
         return;
-      case OnTimeline() || OnJoin(at: null):
+      case OnTimeline():
         break;
     }
 
@@ -591,8 +609,7 @@ extension CanvasPlayback on CanvasController {
     if (wrapped) next = 0;
     var was = _frame;
     // Playing a sheet's range of bars: it stops at the end of the last.
-    if (_playheadOn.showing.rangeEnd case var end?
-        when next >= end || next < was) {
+    if (_playbackState.rangeEnd case var end? when next >= end || next < was) {
       _frame = math.max(0, end - 1);
       pause();
       return;
@@ -634,15 +651,18 @@ extension CanvasPlayback on CanvasController {
 
   /// _stepRun moves the playhead a frame on along the whole run, from frame
   /// [at], rather than along the scene: a join watched, or every scene
-  /// playing. It stops at [end], the end of the stretch asked for, rather
-  /// than looping.
+  /// playing. It stops at [end], the end of the stretch asked for (the
+  /// run's, or a join's own), rather than looping.
   void _stepRun(int at, int end) {
     var next = at + 1;
     if (next > end) {
       stopPreview();
       return;
     }
-    _showRunFrame(next);
+    _playheadOn = switch (_playheadOn) {
+      OnJoin join => join.movedTo(next),
+      _ => OnRun(next),
+    };
     var turned = false;
 
     // Playing the document, not one join: the editor walks along with the
@@ -651,7 +671,7 @@ extension CanvasPlayback on CanvasController {
       var place = placeInSequence(_document, next);
       // A range to play on the scene it was asked on (a button's Play to
       // frame, a sheet's bars): it stops at its end.
-      if (_playheadOn.showing.rangeEnd case var stop?
+      if (_playbackState.rangeEnd case var stop?
           when place.scene == _document.at && place.frame >= stop) {
         pause();
         return;
@@ -765,12 +785,10 @@ class _PlaybackState {
   /// playedFrom is the scene and frame the last Play started from.
   (int, int)? playedFrom;
 
-  /// runEnd is where the last run of every scene, or the last join watched,
-  /// was to stop (nought on a canvas just opened). A frame of the run put
-  /// by hand from the scene is given it as its end: Play all sets its own
-  /// before playing, so it is reached only when the timer steps such a
-  /// frame without Play setting one.
-  int runEnd = 0;
+  /// rangeEnd is the frame of the scene that playing stops at (a button's
+  /// Play to frame, a Code panel's lesson, a sheet's bars), or null: the
+  /// timer's, whatever the playhead is on. Pausing lets go of it.
+  int? rangeEnd;
 
   /// metronome is the play bar's switch: see CanvasPlayback.metronome.
   bool metronome = false;

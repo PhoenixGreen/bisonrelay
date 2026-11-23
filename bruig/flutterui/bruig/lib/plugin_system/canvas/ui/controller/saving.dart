@@ -81,7 +81,13 @@ extension CanvasSaving on CanvasController {
     // What the playhead was on, which pause keeps for a join watched:
     // frames of that canvas's run, and the scene to go back to.
     _playheadOn = const OnTimeline();
-    _playbackState.runEnd = 0;
+    _playbackState.rangeEnd = null;
+    // Its Code panels' picks, scrolls and runs shown, the panels showing
+    // all their code, and the pane pressed or edited, by their ids.
+    _forgetCodePicks();
+    _codeFull.clear();
+    _codePane.clear();
+    _codeEditing = null;
     // The editor's loop, round a stretch of that canvas's frames.
     _playbackState.looping = false;
     _playbackState.loop = null;

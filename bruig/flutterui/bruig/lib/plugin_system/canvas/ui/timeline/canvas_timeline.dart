@@ -262,9 +262,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   }
 
   /// _runs is whether the timeline is laid along the whole run, as while Play
-  /// runs every scene: the ruler and scene strip share one scale, and the
-  /// scene edited is its stretch of the run. See CanvasSceneStrip.
-  bool get _runs => controller.playAll && controller.document.hasScenes;
+  /// runs every scene (CanvasController.playsEveryScene): the ruler and scene
+  /// strip share one scale, and the scene edited is its stretch of the run.
+  /// See CanvasSceneStrip.
+  bool get _runs => controller.playsEveryScene;
 
   /// _origin is where the scene being edited starts in the run, in frames:
   /// nought unless the timeline runs, and on the master, whose frames are the
