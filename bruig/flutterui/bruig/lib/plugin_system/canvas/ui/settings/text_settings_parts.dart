@@ -301,7 +301,7 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
           // drawn mark's look, the timing), not a few.
           if (part.animation.on)
             ..._animationBits(
-              part.animation.asAnimation,
+              part.animation.arrival,
               textColor: part.color ?? e.textSpec.color,
               live: (next) {
                 begin();
@@ -309,7 +309,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
                     parts: replacing(
                         i,
                         part.copyWith(
-                            animation: part.animation.fromAnimation(next)))));
+                            animation:
+                                part.animation.copyWith(arrival: next)))));
               },
               done: commit,
             ),
@@ -342,7 +343,8 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
 TextPartAnimation _partPreset(
         TextPartAnimation animation, TextAnimationPreset preset) =>
     animation.copyWith(
-        preset: preset, ease: preset.wants, effect: preset.effect);
+        arrival: animation.arrival.copyWith(
+            preset: preset, ease: preset.wants, effect: preset.effect));
 
 /// _animationBits are a part's preset-dependent settings (drawn mark, echo,
 /// timing). [live] writes; [done] commits, so a drag is one undo step.

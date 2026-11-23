@@ -228,22 +228,18 @@ class PartUnderline {
 /// from the start of the element's arrival, so a word can land after (or
 /// before) its line.
 class TextPartAnimation {
-  final TextAnimationPreset preset;
+  /// arrival is how these words move: a text's own arrival, so whatever a
+  /// text's can be set to, a part's can. Only its timing is the part's own
+  /// ([offset], [length]); see [toJson] for what of it a part saves.
+  final TextAnimation arrival;
 
   /// offset is frames after the arrival starts; negative brings it forward.
   final int offset;
 
   /// length is how many frames it takes, or 0 for as long as the arrival.
+  /// [arrival]'s own length, the frames a new arrival is laid down with,
+  /// means nothing for a part.
   final int length;
-
-  final double gap;
-  final double scale;
-  final TextEchoSpec echo;
-  final TextDrawSpec draw;
-  final ChartEase ease;
-
-  /// effect is how a cutting preset cuts this part's words (see EffectSpec).
-  final EffectSpec effect;
 
   /// marks is whether this part's highlight and underline are drawn on, with
   /// their own timing, so a word can arrive and then be underlined.
@@ -252,15 +248,9 @@ class TextPartAnimation {
   final int markLength;
 
   const TextPartAnimation({
-    this.preset = TextAnimationPreset.none,
+    this.arrival = const TextAnimation(),
     this.offset = 0,
     this.length = 0,
-    this.gap = 0.35,
-    this.scale = 0,
-    this.echo = const TextEchoSpec(),
-    this.draw = const TextDrawSpec(),
-    this.ease = ChartEase.easeOut,
-    this.effect = const EffectSpec(),
     this.marks = false,
     this.markOffset = 0,
     this.markLength = 0,
@@ -270,96 +260,77 @@ class TextPartAnimation {
   /// field out.
   static const _defaults = TextPartAnimation();
 
-  bool get on => preset != TextAnimationPreset.none;
+  bool get on => arrival.on;
 
-  TextAnimation get asAnimation => TextAnimation(
-        preset: preset,
-        gap: gap,
-        scale: scale,
-        echo: echo,
-        draw: draw,
-        ease: ease,
-        effect: effect,
-      );
-
-  /// fromAnimation takes back settings-panel changes to [asAnimation],
-  /// keeping this part's own timing.
-  TextPartAnimation fromAnimation(TextAnimation a) => copyWith(
-        preset: a.preset,
-        gap: a.gap,
-        scale: a.scale,
-        echo: a.echo,
-        draw: a.draw,
-        ease: a.ease,
-        effect: a.effect,
-      );
+  /// preset is [arrival]'s, which is most of what is asked of a part.
+  TextAnimationPreset get preset => arrival.preset;
 
   TextPartAnimation copyWith({
-    TextAnimationPreset? preset,
+    TextAnimation? arrival,
     int? offset,
     int? length,
-    double? gap,
-    double? scale,
-    TextEchoSpec? echo,
-    TextDrawSpec? draw,
-    ChartEase? ease,
-    EffectSpec? effect,
     bool? marks,
     int? markOffset,
     int? markLength,
   }) =>
       TextPartAnimation(
-        preset: preset ?? this.preset,
+        arrival: arrival ?? this.arrival,
         offset: offset ?? this.offset,
         length: length ?? this.length,
-        gap: gap ?? this.gap,
-        scale: scale ?? this.scale,
-        echo: echo ?? this.echo,
-        draw: draw ?? this.draw,
-        ease: ease ?? this.ease,
-        effect: effect ?? this.effect,
         marks: marks ?? this.marks,
         markOffset: markOffset ?? this.markOffset,
         markLength: markLength ?? this.markLength,
       );
 
   TextPartAnimation mapColours(ColourMap f) {
-    var next = draw.mapColours(f);
-    return identical(next, draw) ? this : copyWith(draw: next);
+    var next = arrival.mapColours(f);
+    return identical(next, arrival) ? this : copyWith(arrival: next);
   }
 
-  Map<String, dynamic> toJson() => {
-        if (on) "preset": preset.name,
-        if (offset != _defaults.offset) "offset": offset,
-        if (length != _defaults.length) "length": length,
-        if (gap != _defaults.gap) "gap": gap,
-        if (scale > 0) "scale": scale,
-        if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
-        if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
-        if (ease != _defaults.ease) "ease": ease.name,
-        if (effect != _defaults.effect) "effect": effect.toJson(),
-        if (marks) "marks": true,
-        if (markOffset != _defaults.markOffset) "markOffset": markOffset,
-        if (markLength != _defaults.markLength) "markLength": markLength,
-      };
+  /// toJson writes of [arrival] only what a part's panel sets (see
+  /// _animationBits): the preset with its gap, size, copies, drawn mark,
+  /// curve and cut. A part has no way out of its own (it goes with its
+  /// text) and no control for a direction, a strength, a loop or pieces in
+  /// turn, so those are not kept: they read back as a text's defaults. Each
+  /// is written only where it differs from the default, unlike a text's own.
+  Map<String, dynamic> toJson() {
+    var a = arrival, none = _defaults.arrival;
+    return {
+      if (on) "preset": a.preset.name,
+      if (offset != _defaults.offset) "offset": offset,
+      if (length != _defaults.length) "length": length,
+      if (a.gap != none.gap) "gap": a.gap,
+      if (a.scale > 0) "scale": a.scale,
+      if (a.echo.toJson().isNotEmpty) "echo": a.echo.toJson(),
+      if (a.draw.toJson().isNotEmpty) "draw": a.draw.toJson(),
+      if (a.ease != none.ease) "ease": a.ease.name,
+      if (a.effect != none.effect) "effect": a.effect.toJson(),
+      if (marks) "marks": true,
+      if (markOffset != _defaults.markOffset) "markOffset": markOffset,
+      if (markLength != _defaults.markLength) "markLength": markLength,
+    };
+  }
 
   factory TextPartAnimation.fromJson(Map<String, dynamic> json) =>
       TextPartAnimation(
-        preset: TextAnimationPreset.fromName(jsonStr(json["preset"])),
+        arrival: TextAnimation(
+          preset: TextAnimationPreset.fromName(jsonStr(json["preset"])),
+          gap: jsonDouble(json["gap"], _defaults.arrival.gap).clamp(0.0, 4.0),
+          scale: jsonDouble(json["scale"], _defaults.arrival.scale)
+              .clamp(0.0, 8.0),
+          echo: json["echo"] is Map<String, dynamic>
+              ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
+              : const TextEchoSpec(),
+          draw: json["draw"] is Map<String, dynamic>
+              ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
+              : const TextDrawSpec(),
+          ease: ChartEase.fromName(jsonStr(json["ease"])),
+          effect: json["effect"] is Map<String, dynamic>
+              ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
+              : const EffectSpec(),
+        ),
         offset: jsonInt(json["offset"], _defaults.offset),
         length: jsonInt(json["length"], _defaults.length).clamp(0, 100000),
-        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, 4.0),
-        scale: jsonDouble(json["scale"], _defaults.scale).clamp(0.0, 8.0),
-        echo: json["echo"] is Map<String, dynamic>
-            ? TextEchoSpec.fromJson(json["echo"] as Map<String, dynamic>)
-            : const TextEchoSpec(),
-        draw: json["draw"] is Map<String, dynamic>
-            ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
-            : const TextDrawSpec(),
-        ease: ChartEase.fromName(jsonStr(json["ease"])),
-        effect: json["effect"] is Map<String, dynamic>
-            ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
-            : const EffectSpec(),
         marks: jsonBool(json["marks"], false),
         markOffset: jsonInt(json["markOffset"], _defaults.markOffset),
         markLength:
@@ -581,7 +552,9 @@ class TextPart {
         outlineWidth: outlineWidth == null ? null : outlineWidth! * by,
         highlight: highlight?.scaledBy(by),
         underline: underline?.scaledBy(by),
-        animation: animation.copyWith(draw: animation.draw.scaledBy(by)),
+        animation: animation.copyWith(
+            arrival: animation.arrival
+                .copyWith(draw: animation.arrival.draw.scaledBy(by))),
       );
 
   /// mapColours maps the part's own colour and outline colour (none is the

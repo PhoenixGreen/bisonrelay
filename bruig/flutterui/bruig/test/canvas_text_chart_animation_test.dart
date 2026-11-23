@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/arrival.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';

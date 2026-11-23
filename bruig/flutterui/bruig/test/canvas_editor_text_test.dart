@@ -527,8 +527,9 @@ void main() {
           TextPart(
               from: 1,
               to: 2,
-              animation:
-                  TextPartAnimation(preset: TextAnimationPreset.highlight)),
+              animation: TextPartAnimation(
+                  arrival:
+                      TextAnimation(preset: TextAnimationPreset.highlight))),
         ],
       );
       await panel(tester, element: element);

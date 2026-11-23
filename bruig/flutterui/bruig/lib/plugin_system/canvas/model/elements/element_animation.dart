@@ -1,6 +1,5 @@
-import 'dart:math' as math;
-
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/arrival.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -10,7 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 // placed and sized on the timeline as a text element's arrival is. Not a
 // second animation system: the motions are the text animator's (MotionSpec),
 // the easing a chart's, on the same reveal and close channels. Only the
-// list is its own, shorter: nothing scoped to letters, lines or parts.
+// list is its own, shorter: nothing scoped to letters, lines or parts. All
+// it has beyond the list it shares with a text's arrival, in Arrival.
 
 /// ElementAnimationFamily groups the presets, so choosing is "what kind"
 /// then "which one" rather than one list of twenty.
@@ -28,7 +28,7 @@ enum ElementAnimationFamily {
 
 /// ElementAnimationPreset is a shape's or picture's list, named as text's
 /// where the movement is the same, so they can arrive alike.
-enum ElementAnimationPreset {
+enum ElementAnimationPreset implements ArrivalPreset {
   none("None", ElementAnimationFamily.fade, TextMotion.fade),
 
   fadeIn("Fade in", ElementAnimationFamily.fade, TextMotion.fade),
@@ -78,10 +78,15 @@ enum ElementAnimationPreset {
 
   final String label;
   final ElementAnimationFamily family;
+  @override
   final TextMotion motion;
+  @override
   final double dx;
+  @override
   final double dy;
+  @override
   final double from;
+  @override
   final double turns;
   final EffectSpec? effect;
   final ChartEase? wants;
@@ -98,8 +103,12 @@ enum ElementAnimationPreset {
     this.wants,
   });
 
+  @override
   MotionSpec get spec =>
       MotionSpec(motion, dx: dx, dy: dy, from: from, turns: turns);
+
+  @override
+  bool get isNone => this == none;
 
   /// cuts is whether this preset draws the element in pieces.
   bool get cuts => motion.cuts;
@@ -116,181 +125,35 @@ enum ElementAnimationPreset {
       ];
 }
 
-/// AnimationDirection is where a moving arrival comes in from, or a wipe
-/// starts, in place of the preset's own: one control, not a preset for
-/// every way round. [dx] and [dy] point from where the element ends up
-/// toward where it starts.
-enum AnimationDirection {
-  left("From the left", -1, 0),
-  right("From the right", 1, 0),
-  above("From above", 0, -1),
-  below("From below", 0, 1),
-  aboveLeft("From top left", -1, -1),
-  aboveRight("From top right", 1, -1),
-  belowLeft("From bottom left", -1, 1),
-  belowRight("From bottom right", 1, 1);
-
-  final String label;
-  final double dx;
-  final double dy;
-  const AnimationDirection(this.label, this.dx, this.dy);
-
-  static AnimationDirection? fromName(String? name) =>
-      values.where((d) => d.name == name).firstOrNull;
-
-  /// of is the direction [dx], [dy] points in, to the nearest of the eight,
-  /// or null where it points nowhere.
-  static AnimationDirection? of(double dx, double dy) {
-    if (dx == 0 && dy == 0) return null;
-    int sign(double v, double other) =>
-        v.abs() * 2.4 < other.abs() ? 0 : v.sign.toInt();
-    var x = sign(dx, dy), y = sign(dy, dx);
-    return values.firstWhere((d) => d.dx == x && d.dy == y);
-  }
-}
-
-class ElementAnimation {
-  final ElementAnimationPreset preset;
-
-  /// exit is how it leaves: the same presets played backwards, so Build up
-  /// reversed is a thing coming apart.
-  final ElementAnimationPreset exit;
-
-  /// scale is where a growing preset starts from, or 0 for the preset's own.
-  final double scale;
-
-  final EffectSpec effect;
-  final ChartEase ease;
-
-  /// length is the frames a new arrival is laid down with, or 0 for two
-  /// seconds; see CanvasController.elementAnimationSpan.
-  final int length;
-
-  /// loop is what it does after arriving, or instead: see ElementLoop.
-  final ElementLoop loop;
-
-  /// direction is where a moving arrival comes in from, or a wipe starts, or
-  /// null for the preset's own.
-  final AnimationDirection? direction;
-
-  /// strength is how far it moves, how much it grows or how far it turns,
-  /// against the preset's own: 1 is the preset as it is.
-  final double strength;
-
-  /// exitDirection and exitStrength are the same for the way out, so a thing
-  /// can come in from the left and go out to the right.
-  final AnimationDirection? exitDirection;
-  final double exitStrength;
-
+/// ElementAnimation is how a shape, a picture and most other kinds arrive
+/// and leave (a text and a chart have their own): an Arrival with this list
+/// of presets, eased as one piece.
+class ElementAnimation
+    extends Arrival<ElementAnimationPreset, ElementAnimation> {
   const ElementAnimation({
-    this.preset = ElementAnimationPreset.none,
-    this.exit = ElementAnimationPreset.none,
-    this.scale = 0,
-    this.effect = const EffectSpec(),
-    this.ease = ChartEase.easeOut,
-    this.length = 0,
-    this.loop = const ElementLoop(),
-    this.direction,
-    this.strength = 1,
-    this.exitDirection,
-    this.exitStrength = 1,
+    super.preset = ElementAnimationPreset.none,
+    super.exit = ElementAnimationPreset.none,
+    super.scale,
+    super.effect,
+    super.ease,
+    super.length,
+    super.loop,
+    super.direction,
+    super.strength,
+    super.exitDirection,
+    super.exitStrength,
   });
 
   /// _defaults is one as made: what a saved one means by leaving a
   /// field out.
   static const _defaults = ElementAnimation();
 
-  bool get on => preset != ElementAnimationPreset.none;
-  bool get closes => exit != ElementAnimationPreset.none;
-
-  /// any is whether there is anything to it (an arrival, an exit or a loop):
-  /// whether it is worth saving.
-  bool get any => on || closes || loop.on;
-
-  /// cuts is whether the effect settings mean anything for what is chosen.
-  bool get cuts => preset.cuts || exit.cuts;
-
-  /// scatters is whether how far the pieces are thrown means anything: a
-  /// mosaic's blocks and a glitch's slices stay where they are.
-  bool get scatters =>
-      preset.motion == TextMotion.pieces || exit.motion == TextMotion.pieces;
-
-  /// scales is whether the size setting means anything for what is chosen.
-  bool get scales =>
-      preset.motion == TextMotion.grow || exit.motion == TextMotion.grow;
-
-  /// scaleFor is where [preset] starts from: as set, or its own number.
-  double scaleFor(ElementAnimationPreset preset) =>
-      scale > 0 ? scale : preset.from;
-
-  /// directed is whether a direction means anything for what is chosen: a
-  /// thing that slides in, or is wiped on or out.
-  bool get directed => _directs(preset) || _directs(exit);
-
-  /// arrivalDirected, arrivalStrengthens, exitDirected and exitStrengthens
-  /// are [directed] and [strengthens] for the way in or the way out alone.
-  bool get arrivalDirected => _directs(preset);
-  bool get exitDirected => _directs(exit);
-  static bool _directs(ElementAnimationPreset p) =>
-      p != ElementAnimationPreset.none &&
-      ((p.motion == TextMotion.rise && (p.dx != 0 || p.dy != 0)) ||
-          p.motion == TextMotion.wipe);
-
-  /// strengthens is whether strength means anything for what is chosen: a
-  /// thing that slides, grows or turns.
-  bool get strengthens => _strengthens(preset) || _strengthens(exit);
-  static bool _strengthens(ElementAnimationPreset p) =>
-      p != ElementAnimationPreset.none &&
-      ((p.motion == TextMotion.rise && (p.dx != 0 || p.dy != 0)) ||
-          p.motion == TextMotion.grow ||
-          p.motion == TextMotion.spin);
-
-  /// directionOf is the way [p] goes as this animation has it: its own
-  /// direction where one is set, or the preset's.
-  AnimationDirection? directionOf(ElementAnimationPreset p) =>
-      direction ??
-      (p.motion == TextMotion.wipe
-          ? AnimationDirection.left
-          : AnimationDirection.of(p.dx, p.dy));
-
-  /// specFor is [p]'s motion as this animation plays it: turned to its
-  /// direction, and moved, grown and turned as far as its strength says.
-  MotionSpec specFor(ElementAnimationPreset p) {
-    var dx = p.dx, dy = p.dy;
-    var way = direction;
-    if (way != null && p.motion == TextMotion.wipe) {
-      // A wipe goes nowhere: what it takes is the edge it starts from.
-      dx = way.dx;
-      dy = way.dy;
-    } else if (way != null && (dx != 0 || dy != 0)) {
-      var far = math.sqrt(dx * dx + dy * dy);
-      var unit = math.sqrt(way.dx * way.dx + way.dy * way.dy);
-      dx = way.dx / unit * far;
-      dy = way.dy / unit * far;
-    }
-    var s = p.motion == TextMotion.wipe ? 1.0 : strength;
-    return MotionSpec(p.motion,
-        dx: dx * s,
-        dy: dy * s,
-        from: 1 + (scaleFor(p) - 1) * strength,
-        turns: p.turns * strength);
-  }
-
-  MotionSpec get spec => specFor(preset);
-
   /// progressAt eases [reveal] the way this animation asks for. No stagger:
   /// the cutting presets stagger their own pieces from EffectSpec.stagger.
   double progressAt(double reveal) =>
       on ? ease.apply(reveal.clamp(0.0, 1.0)) : reveal.clamp(0.0, 1.0);
 
-  /// leaving is this animation as played on the way out, with the way out's
-  /// own direction and strength.
-  ElementAnimation get leaving => copyWith(
-      preset: exit,
-      direction: exitDirection,
-      clearDirection: exitDirection == null,
-      strength: exitStrength);
-
+  @override
   ElementAnimation copyWith({
     ElementAnimationPreset? preset,
     ElementAnimationPreset? exit,

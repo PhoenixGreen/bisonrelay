@@ -136,7 +136,7 @@ List<_Layer> _layersFor(LaidOutWords words, List<PartTiming> timings) {
     if (!part.animation.on) continue;
     var range = rangeOf(words.text, part);
     if (range == null) continue;
-    out.add(_Layer((range.start, range.end), part.animation.asAnimation,
+    out.add(_Layer((range.start, range.end), part.animation.arrival,
         i < timings.length ? timings[i].words : 1));
   }
   return out;
@@ -399,9 +399,10 @@ Rect motionRoom(Rect box, TextAnimation animation) {
   var room = Rect.fromLTRB(
       box.left - dx, box.top - dy, box.right + dx, box.bottom + dy);
 
-  // A grow is at its largest on the first frame.
+  // A grow is at its largest on the first frame, as large as its strength
+  // makes it.
   if (preset.motion == TextMotion.grow) {
-    var scale = math.max(1.0, animation.scaleFor(preset));
+    var scale = math.max(1.0, way.from);
     room = Rect.fromCenter(
         center: box.center,
         width: room.width * scale,
@@ -543,7 +544,7 @@ MotionFrame applyMotionSpec(
 
     case TextMotion.wipe:
       // From the left unless dx and dy name another edge or corner, as a
-      // shape's wipe does (ElementAnimation.specFor).
+      // shape's wipe does (Arrival.specFor).
       var w = preset.dx == 0 && preset.dy != 0 ? box.width : box.width * p;
       var h = preset.dy == 0 ? box.height : box.height * p;
       clip = Rect.fromLTWH(preset.dx > 0 ? box.right - w : box.left,
@@ -684,7 +685,7 @@ void _paintPiece(ui.Canvas canvas, LaidOutWords words, Offset offset,
     var trail = preset.motion == TextMotion.trail;
     // A trail comes the way the words do, turned to a chosen direction; an
     // echo's fan is its preset's own, a direction meaning nothing to it
-    // (TextAnimation.arrivalDirected).
+    // (Arrival.arrivalDirected).
     var dx = trail ? motion.dx : preset.dx;
     var dy = trail ? motion.dy : preset.dy;
     // A trail's copies lie back along its path, so its step is the distance
@@ -699,8 +700,7 @@ void _paintPiece(ui.Canvas canvas, LaidOutWords words, Offset offset,
                 ? box.height * spec2.spacing
                 : dy * box.height * spec2.spacing,
           );
-    // An echo's turns flag means copies on both sides ("Both ways").
-    var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
+    var ways = preset.bothWays ? const [1.0, -1.0] : const [1.0];
 
     // A resolved echo fans out over the first half, then carries on and
     // fades, leaving the words alone. Unresolved, the copies stay.

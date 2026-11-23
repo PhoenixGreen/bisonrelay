@@ -1,8 +1,7 @@
-import 'dart:math' as math;
 import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/arrival.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
@@ -227,7 +226,7 @@ class EffectSpec {
   int get hashCode => Object.hash(pieces, scatter, spin, stagger, seed);
 }
 
-enum TextAnimationPreset {
+enum TextAnimationPreset implements ArrivalPreset {
   none("None", TextAnimationFamily.fade, TextAnimationScope.block,
       TextMotion.fade),
 
@@ -355,7 +354,7 @@ enum TextAnimationPreset {
       dy: -1),
   echoBoth("Echo both ways", TextAnimationFamily.special,
       TextAnimationScope.block, TextMotion.echo,
-      turns: 1),
+      bothWays: true),
   echoRight("Echo to the right", TextAnimationFamily.special,
       TextAnimationScope.block, TextMotion.echo,
       dx: 1),
@@ -390,15 +389,20 @@ enum TextAnimationPreset {
   final String label;
   final TextAnimationFamily family;
   final TextAnimationScope scope;
+  @override
   final TextMotion motion;
 
+  @override
   final double dx;
+  @override
   final double dy;
 
   /// from is the scale a growing piece starts at; above one it arrives too
   /// large and settles, which is a slam.
+  @override
   final double from;
 
+  @override
   final double turns;
 
   /// clipped keeps a moving piece inside its own line, so it rises out of
@@ -411,6 +415,9 @@ enum TextAnimationPreset {
   /// scrambled shuffles the order the pieces arrive in, so a scatter does
   /// not read as a row being dealt.
   final bool scrambled;
+
+  /// bothWays puts an echo's copies on both sides of the words, not one.
+  final bool bothWays;
 
   /// effect is how a cutting preset cuts, where it is one; written in as a
   /// starting point when the preset is chosen, like [wants].
@@ -432,10 +439,12 @@ enum TextAnimationPreset {
     this.clipped = false,
     this.stretch = false,
     this.scrambled = false,
+    this.bothWays = false,
     this.effect,
     this.wants,
   });
 
+  @override
   MotionSpec get spec => MotionSpec(motion,
       dx: dx,
       dy: dy,
@@ -443,6 +452,9 @@ enum TextAnimationPreset {
       turns: turns,
       clipped: clipped,
       stretch: stretch);
+
+  @override
+  bool get isNone => this == none;
 
   bool get cuts => motion.cuts;
 
@@ -650,15 +662,11 @@ class TextEchoSpec {
       );
 }
 
-/// TextAnimation is the preset, the stagger and the ease. The length is
-/// where the arrival sits on the timeline, as with a chart's.
-class TextAnimation {
-  final TextAnimationPreset preset;
-
-  /// exit is how it leaves, the same presets played backwards; identical by
-  /// design to ChartAnimation.exit.
-  final TextAnimationPreset exit;
-
+/// TextAnimation is how a text arrives and leaves: an Arrival with the
+/// text's presets, and what only words have beside it (the stagger between
+/// pieces, a drawn mark, an echo's copies, the pieces of a card in turn).
+/// The length is where the arrival sits on the timeline, as with a chart's.
+class TextAnimation extends Arrival<TextAnimationPreset, TextAnimation> {
   /// exitInOrder empties the words the way they arrived rather than
   /// unwinding. See ChartAnimation.exitInOrder.
   final bool exitInOrder;
@@ -671,32 +679,9 @@ class TextAnimation {
 
   final TextEchoSpec echo;
 
-  final EffectSpec effect;
-
-  /// scale is where a growing preset starts, as a fraction (0.6 a little
-  /// small, 2 twice the size); on the way out it is where the words go. Zero
-  /// means the preset's own number (see [scaleFor]).
-  final double scale;
-
-  final ChartEase ease;
-
-  /// length is the frames a new arrival is laid down with, or 0 for two
-  /// seconds. Dragging it on the timeline deliberately does not write back.
-  final int length;
-
   /// flipOrder is set on the copy the painter draws the way out with, and is
   /// never saved. See ChartAnimation.flipOrder.
   final bool flipOrder;
-
-  /// direction and strength turn and size a moving arrival, as a shape's do
-  /// (see ElementAnimation.specFor); the exit pair does the same going out.
-  final AnimationDirection? direction;
-  final double strength;
-  final AnimationDirection? exitDirection;
-  final double exitStrength;
-
-  /// loop is what the words do after arriving, or instead: see ElementLoop.
-  final ElementLoop loop;
 
   /// piecesInTurn brings the box's pieces (see TextItem) in one after
   /// another, words first then layers in order, each starting [piecesGap]
@@ -706,22 +691,22 @@ class TextAnimation {
   final double piecesGap;
 
   const TextAnimation({
-    this.preset = TextAnimationPreset.none,
-    this.exit = TextAnimationPreset.none,
+    super.preset = TextAnimationPreset.none,
+    super.exit = TextAnimationPreset.none,
     this.exitInOrder = false,
     this.gap = 0.35,
-    this.scale = 0,
+    super.scale,
     this.draw = const TextDrawSpec(),
     this.echo = const TextEchoSpec(),
-    this.effect = const EffectSpec(),
-    this.ease = ChartEase.easeOut,
-    this.length = 0,
+    super.effect,
+    super.ease,
+    super.length,
     this.flipOrder = false,
-    this.direction,
-    this.strength = 1,
-    this.exitDirection,
-    this.exitStrength = 1,
-    this.loop = const ElementLoop(),
+    super.direction,
+    super.strength,
+    super.exitDirection,
+    super.exitStrength,
+    super.loop,
     this.piecesInTurn = false,
     this.piecesGap = 0.5,
   });
@@ -729,8 +714,6 @@ class TextAnimation {
   /// _defaults is one as made: what a saved one means by leaving a
   /// field out.
   static const _defaults = TextAnimation();
-
-  bool get on => preset != TextAnimationPreset.none;
 
   /// pieceReveal is how far layer [index] of [count] (words 0, then each
   /// piece) has got when the arrival is [reveal] through; in turn (see
@@ -741,10 +724,6 @@ class TextAnimation {
     var share = 1 / (1 + (count - 1) * g);
     return (reveal / share - index * g).clamp(0.0, 1.0).toDouble();
   }
-
-  /// scaleFor is where [preset] starts: the set scale, or its own number.
-  double scaleFor(TextAnimationPreset preset) =>
-      scale > 0 ? scale : preset.from;
 
   /// echoes is whether the copy settings mean anything for what is chosen.
   bool get echoes =>
@@ -767,66 +746,12 @@ class TextAnimation {
   /// draws is whether the mark settings mean anything for what is chosen.
   bool get draws => preset.motion.keeps || exit.motion.keeps;
 
-  /// cuts is whether the effect settings mean anything for what is chosen.
-  bool get cuts => preset.cuts || exit.cuts;
+  /// leaving is the way out as every arrival plays it, the words emptying
+  /// in the order they came where [exitInOrder] says so.
+  @override
+  TextAnimation get leaving => super.leaving.copyWith(flipOrder: exitInOrder);
 
-  /// scatters is whether the throw distance matters: a mosaic's blocks and
-  /// a glitch's slices stay put.
-  bool get scatters =>
-      preset.motion == TextMotion.pieces || exit.motion == TextMotion.pieces;
-
-  /// scales is whether the size setting means anything for what is chosen.
-  bool get scales =>
-      preset.motion == TextMotion.grow || exit.motion == TextMotion.grow;
-  bool get closes => exit != TextAnimationPreset.none;
-
-  TextAnimation get leaving => copyWith(
-      preset: exit,
-      flipOrder: exitInOrder,
-      direction: exitDirection,
-      clearDirection: exitDirection == null,
-      strength: exitStrength);
-
-  /// any is whether there is anything to it: an arrival, an exit or a loop.
-  bool get any => on || closes || loop.on;
-
-  static bool _directs(TextAnimationPreset p) =>
-      p != TextAnimationPreset.none &&
-      ((p.motion == TextMotion.rise || p.motion == TextMotion.trail) &&
-              (p.dx != 0 || p.dy != 0) ||
-          p.motion == TextMotion.wipe);
-
-  /// arrivalDirected and the rest are whether a direction or strength
-  /// means anything for the way in or out.
-  bool get arrivalDirected => _directs(preset);
-  bool get exitDirected => _directs(exit);
-
-  /// spec is the arrival's motion turned to its direction and scaled by its
-  /// strength. The way out's is [leaving]'s.
-  MotionSpec get spec {
-    var p = preset;
-    var base = p.spec;
-    var dx = base.dx, dy = base.dy;
-    var way = direction;
-    if (way != null && base.motion == TextMotion.wipe) {
-      dx = way.dx;
-      dy = way.dy;
-    } else if (way != null && (dx != 0 || dy != 0)) {
-      var far = math.sqrt(dx * dx + dy * dy);
-      var unit = math.sqrt(way.dx * way.dx + way.dy * way.dy);
-      dx = way.dx / unit * far;
-      dy = way.dy / unit * far;
-    }
-    var k = base.motion == TextMotion.wipe ? 1.0 : strength;
-    return MotionSpec(base.motion,
-        dx: dx * k,
-        dy: dy * k,
-        from: 1 + (scaleFor(p) - 1) * strength,
-        turns: base.turns * strength,
-        clipped: base.clipped,
-        stretch: base.stretch);
-  }
-
+  @override
   TextAnimation copyWith({
     TextAnimationPreset? preset,
     TextAnimationPreset? exit,

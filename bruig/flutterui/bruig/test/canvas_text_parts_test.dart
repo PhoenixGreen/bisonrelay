@@ -450,8 +450,9 @@ void main() {
                 to: 5,
                 animation: onItsOwn
                     ? const TextPartAnimation(
-                        preset: TextAnimationPreset.fadeIn,
-                        ease: ChartEase.linear)
+                        arrival: TextAnimation(
+                            preset: TextAnimationPreset.fadeIn,
+                            ease: ChartEase.linear))
                     : const TextPartAnimation()),
           ],
           animation: onItsOwn
@@ -488,7 +489,9 @@ void main() {
 
     test("and it survives being saved", () {
       var back = TextPartAnimation.fromJson(const TextPartAnimation(
-              preset: TextAnimationPreset.echoDown, offset: 6, length: 12)
+              arrival: TextAnimation(preset: TextAnimationPreset.echoDown),
+              offset: 6,
+              length: 12)
           .toJson());
       expect(back.preset, TextAnimationPreset.echoDown);
       expect(back.offset, 6);

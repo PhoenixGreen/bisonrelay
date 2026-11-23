@@ -146,10 +146,10 @@ void paintTextOnPath(
   bool asOne = false,
   CanvasImageSource? images,
 
-  /// outlineOnly and fillOnly are the two passes for a filled run: the
-  /// outlines in their own colour, then the letters inside the fill's layer.
-  bool outlineOnly = false,
-  bool fillOnly = false,
+  /// phase is which of the two passes for a filled run this is: the
+  /// outlines and marks in their own colours (behind), then the letters
+  /// inside the fill's layer. See TextDrawPhase.
+  TextDrawPhase phase = TextDrawPhase.all,
 }) {
   var glyphs =
       placeTextOnPath(text, spec, curve, on, scale: scale, parts: parts);
@@ -172,13 +172,12 @@ void paintTextOnPath(
         timings: timings,
         asOne: asOne,
         images: images,
-        outlineOnly: outlineOnly,
-        fillOnly: fillOnly);
+        phase: phase);
     canvas.restore();
     return;
   }
 
-  if (spec.fill.on && !outlineOnly && !fillOnly) {
+  if (spec.fill.on && phase == TextDrawPhase.all) {
     var box = textOnPathBounds(glyphs, on) ?? _boundsOf(curve);
     paintTextOnPath(canvas, text, spec, curve, on,
         scale: scale,
@@ -187,7 +186,7 @@ void paintTextOnPath(
         parts: parts,
         timings: timings,
         asOne: asOne,
-        outlineOnly: true);
+        phase: TextDrawPhase.behind);
     paintThroughText(
         canvas,
         box,
@@ -200,7 +199,7 @@ void paintTextOnPath(
             parts: parts,
             timings: timings,
             asOne: asOne,
-            fillOnly: true));
+            phase: TextDrawPhase.letters));
     return;
   }
 
@@ -208,7 +207,7 @@ void paintTextOnPath(
   // does and a line's own fade runs across its bounds. Each letter is laid
   // out turned on its own, so the fade is laid over the letters once drawn
   // rather than set in each; outlines and marks keep their own colours.
-  if (spec.fade != null && !spec.fill.on && !outlineOnly && !fillOnly) {
+  if (spec.fade != null && !spec.fill.on && phase == TextDrawPhase.all) {
     var box = textOnPathBounds(glyphs, on) ?? _boundsOf(curve);
     paintTextOnPath(canvas, text, spec, curve, on,
         scale: scale,
@@ -217,7 +216,7 @@ void paintTextOnPath(
         parts: parts,
         timings: timings,
         asOne: asOne,
-        outlineOnly: true);
+        phase: TextDrawPhase.behind);
     canvas.saveLayer(null, Paint());
     // Solid letters, so a see-through colour is the fade's own, not twice.
     paintTextOnPath(canvas, text,
@@ -228,7 +227,7 @@ void paintTextOnPath(
         parts: parts,
         timings: timings,
         asOne: asOne,
-        fillOnly: true);
+        phase: TextDrawPhase.letters);
     canvas.drawPaint(PaintSpec(spec.color, gradient: spec.fade)
         .into(Paint()..blendMode = ui.BlendMode.srcIn, box));
     canvas.restore();
@@ -246,7 +245,7 @@ void paintTextOnPath(
 
   // animationOf is what moves a layer and revealOf how far through it is.
   TextAnimation? animationOf(int of) =>
-      of < 0 ? (moving ? animation : null) : parts[of].animation.asAnimation;
+      of < 0 ? (moving ? animation : null) : parts[of].animation.arrival;
   double revealOf(int of) =>
       of < 0 ? reveal : (of < timings.length ? timings[of].words : 1);
 
@@ -316,12 +315,12 @@ void paintTextOnPath(
     // Only on the pass outside the fill's layer: a band laid once, own colour.
     if (anim != null &&
         anim.preset.motion == TextMotion.highlight &&
-        !fillOnly) {
+        phase.drawsMarks) {
       _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: false);
     }
     // The parts' own highlights, behind the letter, as the letter moves.
     var advance = g.size.width + on.spacing * scale;
-    if (!fillOnly) {
+    if (phase.drawsMarks) {
       _paintCurvePartMarks(
           canvas, local, advance, text, g, parts, timings, frame.alpha, spec,
           behind: true);
@@ -333,7 +332,7 @@ void paintTextOnPath(
         (anim.preset.motion == TextMotion.echo ||
             anim.preset.motion == TextMotion.trail)) {
       _paintCurveCopies(canvas, g, spec, dy, scale, local, anim, p,
-          outlineOnly: outlineOnly, fillOnly: fillOnly);
+          phase: phase);
     }
 
     // Stroke-on: the outline is written letter after letter (applyMotionSpec
@@ -346,17 +345,14 @@ void paintTextOnPath(
       fillAlpha = anim.draw.start == TextDrawStart.fadeText ? p : null;
     }
     _paintGlyph(canvas, g, spec, dy, scale, frame.alpha,
-        outlineOnly: outlineOnly,
-        fillOnly: fillOnly,
-        outlineAlpha: outlineAlpha,
-        fillAlpha: fillAlpha);
+        phase: phase, outlineAlpha: outlineAlpha, fillAlpha: fillAlpha);
 
     if (anim != null &&
         anim.preset.motion == TextMotion.underline &&
-        !fillOnly) {
+        phase.drawsMarks) {
       _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: true);
     }
-    if (!fillOnly) {
+    if (phase.drawsMarks) {
       _paintCurvePartMarks(
           canvas, local, advance, text, g, parts, timings, frame.alpha, spec,
           behind: false);
@@ -417,8 +413,7 @@ Rect _boundsOf(List<Offset> curve) {
 /// and the fill separately, for stroke-on; null for every other preset.
 void _paintGlyph(ui.Canvas canvas, PlacedGlyph g, TextSpec spec, double dy,
     double scale, double alpha,
-    {bool outlineOnly = false,
-    bool fillOnly = false,
+    {TextDrawPhase phase = TextDrawPhase.all,
     double? outlineAlpha,
     double? fillAlpha}) {
   var at = Offset(-g.size.width / 2, dy);
@@ -443,18 +438,18 @@ void _paintGlyph(ui.Canvas canvas, PlacedGlyph g, TextSpec spec, double dy,
     canvas.saveLayer(
         room, Paint()..color = Color.fromRGBO(0, 0, 0, alpha.clamp(0.0, 1.0)));
   }
-  if (!fillOnly && spec.softPasses) {
+  if (phase.drawsOutline && spec.softPasses) {
     layOutGlyph(g.glyph, spec, part: g.part, scale: scale, pass: WordsPass.soft)
         .paint(canvas, at);
   }
-  if ((g.part?.outlineWidth ?? spec.outlineWidth) > 0 && !fillOnly) {
+  if ((g.part?.outlineWidth ?? spec.outlineWidth) > 0 && phase.drawsOutline) {
     half(
         outlineAlpha ?? 1,
         () => layOutGlyph(g.glyph, spec,
                 part: g.part, scale: scale, pass: WordsPass.outline)
             .paint(canvas, at));
   }
-  if (!outlineOnly) {
+  if (phase.drawsLetters) {
     half(
         fillAlpha ?? 1,
         () => layOutGlyph(g.glyph, spec, part: g.part, scale: scale)
@@ -532,7 +527,7 @@ void _paintCurvePartMarks(
 /// _paintCurveCopies draws an echo's or a trail's copies of one letter.
 void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, TextSpec spec,
     double dy, double scale, Rect local, TextAnimation animation, double p,
-    {bool outlineOnly = false, bool fillOnly = false}) {
+    {TextDrawPhase phase = TextDrawPhase.all}) {
   var echo = animation.echo;
   var preset = animation.preset;
   var trail = preset.motion == TextMotion.trail;
@@ -549,7 +544,7 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, TextSpec spec,
               ? local.height * echo.spacing
               : way.dy * local.height * echo.spacing,
         );
-  var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
+  var ways = preset.bothWays ? const [1.0, -1.0] : const [1.0];
 
   // See the same two halves in _paintPiece: fan out, then go.
   var resolving = echo.resolve && !trail;
@@ -576,7 +571,7 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, TextSpec spec,
       if (size != 1) canvas.scale(size, size);
       _paintGlyph(
           canvas, g, spec, dy, scale, (strength * arrived).clamp(0.0, 1.0),
-          outlineOnly: outlineOnly, fillOnly: fillOnly);
+          phase: phase);
       canvas.restore();
     }
   }

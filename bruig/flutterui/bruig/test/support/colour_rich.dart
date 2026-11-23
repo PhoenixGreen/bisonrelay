@@ -190,7 +190,8 @@ List<(String, CanvasElement)> colourRichElements() {
           outlineColor: c.next(),
           highlight: c.highlight(),
           underline: c.underline(),
-          animation: TextPartAnimation(draw: TextDrawSpec(color: c.next()))),
+          animation: TextPartAnimation(
+              arrival: TextAnimation(draw: TextDrawSpec(color: c.next())))),
     ],
     highlight: c.highlight(),
     underline: c.underline(),
@@ -692,7 +693,7 @@ List<Color> _part(TextPart p) => [
       if (p.outlineColor case var x?) x,
       ..._highlight(p.highlight),
       ..._underline(p.underline),
-      if (p.animation.draw.color case var x?) x,
+      if (p.animation.arrival.draw.color case var x?) x,
     ];
 
 List<Color> _base(ElementBase b) => [

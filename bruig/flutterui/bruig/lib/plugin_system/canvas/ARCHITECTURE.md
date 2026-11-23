@@ -208,6 +208,16 @@ element's own track and are kept as keyframes. `render/motion_document.dart`
 works out where everything is at a frame (`motionTimesOf`). An element's
 arrival and exit are its own clips (`model/own_motion.dart`).
 
+**Arrivals** are three types over one: an element's (`ElementAnimation`) and
+a text's (`TextAnimation`) are both an `Arrival` (`model/elements/arrival.dart`),
+which holds what they share (the preset in and out, direction and strength,
+size, cut, curve, length, loop) and turns a preset's motion by them
+(`specFor`, which everything that moves the thing reads). A part of a text's
+words (`TextPartAnimation`) holds a whole `TextAnimation` beside its own
+timing. So a setting both kinds have goes in `Arrival`, a text's alone in
+`TextAnimation`, and parts get either with nothing more written, except a
+key in the part's `toJson` if a part should keep it.
+
 ### Text: how a paragraph is laid out
 
 A text's words are laid out in one place: `layOutWords`

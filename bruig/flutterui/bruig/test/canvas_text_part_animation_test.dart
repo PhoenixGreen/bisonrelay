@@ -125,9 +125,9 @@ void main() {
           from: 5,
           to: 5,
           animation: TextPartAnimation(
-              preset: TextAnimationPreset.fadeIn,
-              offset: offset,
-              ease: ChartEase.linear),
+              arrival: const TextAnimation(
+                  preset: TextAnimationPreset.fadeIn, ease: ChartEase.linear),
+              offset: offset),
         );
 
     testWidgets("lands after the line it is in", (tester) async {
@@ -184,15 +184,17 @@ void main() {
       // moment as a ten-frame one.
       var part = const TextPart(
           from: 1,
-          animation:
-              TextPartAnimation(preset: TextAnimationPreset.fadeIn, length: 6));
+          animation: TextPartAnimation(
+              arrival: TextAnimation(preset: TextAnimationPreset.fadeIn),
+              length: 6));
       expect(timingOf(part, frame: 3, from: 0, span: 10).words, 0.5);
       expect(timingOf(part, frame: 6, from: 0, span: 10).words, 1);
 
       // And without one it takes as long as the arrival.
       var same = const TextPart(
           from: 1,
-          animation: TextPartAnimation(preset: TextAnimationPreset.fadeIn));
+          animation: TextPartAnimation(
+              arrival: TextAnimation(preset: TextAnimationPreset.fadeIn)));
       expect(timingOf(same, frame: 5, from: 0, span: 10).words, 0.5);
     });
 
@@ -205,8 +207,8 @@ void main() {
           partsAnimate(const [
             TextPart(
                 from: 1,
-                animation:
-                    TextPartAnimation(preset: TextAnimationPreset.fadeIn))
+                animation: TextPartAnimation(
+                    arrival: TextAnimation(preset: TextAnimationPreset.fadeIn)))
           ]),
           isTrue);
     });
@@ -329,9 +331,10 @@ void main() {
                   from: 5,
                   to: 5,
                   animation: TextPartAnimation(
-                      preset: TextAnimationPreset.maskUp,
-                      offset: 6,
-                      ease: ChartEase.linear)),
+                      arrival: TextAnimation(
+                          preset: TextAnimationPreset.maskUp,
+                          ease: ChartEase.linear),
+                      offset: 6)),
             ]),
             10,
             within: start));
@@ -357,8 +360,9 @@ void main() {
                   from: 5,
                   to: 5,
                   animation: TextPartAnimation(
-                      preset: TextAnimationPreset.scramble,
-                      ease: ChartEase.linear)),
+                      arrival: TextAnimation(
+                          preset: TextAnimationPreset.scramble,
+                          ease: ChartEase.linear))),
             ]),
             5,
             within: start));
@@ -633,8 +637,9 @@ void main() {
                 to: 5,
                 animation: partly
                     ? const TextPartAnimation(
-                        preset: TextAnimationPreset.fadeIn,
-                        ease: ChartEase.linear)
+                        arrival: TextAnimation(
+                            preset: TextAnimationPreset.fadeIn,
+                            ease: ChartEase.linear))
                     : const TextPartAnimation()),
           ],
           animation: const TextAnimation(
@@ -712,21 +717,23 @@ void main() {
   });
 
   group("a part's cutting effect", () {
-    // The panel edits a part's arrival as a text animation and takes it back
-    // (asAnimation, fromAnimation): whatever the round trip drops, the
+    // The panel edits a part's arrival as the text animation the part holds
+    // and puts it back whole: whatever the part drops on the way, the
     // controls offered for it cannot change.
-    const part = TextPartAnimation(preset: TextAnimationPreset.shatter);
-    TextPartAnimation edited() => part.fromAnimation(part.asAnimation
-        .copyWith(effect: const EffectSpec(pieces: 30, scatter: 0.9)));
+    const part = TextPartAnimation(
+        arrival: TextAnimation(preset: TextAnimationPreset.shatter));
+    TextPartAnimation edited() => part.copyWith(
+        arrival: part.arrival
+            .copyWith(effect: const EffectSpec(pieces: 30, scatter: 0.9)));
 
     test("is kept when the panel changes it", () {
-      expect(edited().asAnimation.effect.pieces, 30);
-      expect(edited().asAnimation.effect.scatter, 0.9);
+      expect(edited().arrival.effect.pieces, 30);
+      expect(edited().arrival.effect.scatter, 0.9);
     });
 
     test("and survives being saved", () {
       var back = TextPartAnimation.fromJson(edited().toJson());
-      expect(back.asAnimation.effect.pieces, 30);
+      expect(back.arrival.effect.pieces, 30);
       expect(
           TextPartAnimation.fromJson(part.toJson()).toJson()..remove("preset"),
           isEmpty,

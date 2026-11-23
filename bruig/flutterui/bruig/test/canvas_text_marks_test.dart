@@ -451,8 +451,9 @@ void main() {
                   to: 5,
                   animation: onItsOwn
                       ? const TextPartAnimation(
-                          preset: TextAnimationPreset.echoDown,
-                          ease: ChartEase.linear)
+                          arrival: TextAnimation(
+                              preset: TextAnimationPreset.echoDown,
+                              ease: ChartEase.linear))
                       : const TextPartAnimation()),
             ],
             animation: onItsOwn

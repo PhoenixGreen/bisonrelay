@@ -375,14 +375,15 @@ void main() {
         parts: const [
           TextPart(
               animation: TextPartAnimation(
-                  preset: TextAnimationPreset.highlight, draw: drawn)),
+                  arrival: TextAnimation(
+                      preset: TextAnimationPreset.highlight, draw: drawn))),
         ],
       );
       var twice = card.scaledBy(2) as TextElement;
       expect(twice.animation.draw.padLeft, 20);
       expect(twice.animation.draw.padTop, 6);
       expect(twice.animation.draw.radius, 8);
-      var part = twice.parts.single.animation.draw;
+      var part = twice.parts.single.animation.arrival.draw;
       expect(part.padLeft, 20);
       expect(part.radius, 8);
     });

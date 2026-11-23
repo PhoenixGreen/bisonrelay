@@ -152,7 +152,8 @@ TextElement fullText(TextElement text) => text.copyWith(
             highlight: PartHighlight(radius: 3),
             underline: PartUnderline(away: 4),
             animation: TextPartAnimation(
-                preset: TextAnimationPreset.highlight, offset: 6)),
+                arrival: TextAnimation(preset: TextAnimationPreset.highlight),
+                offset: 6)),
       ],
       highlight: const PartHighlight(padLeft: 6),
       underline: const PartUnderline(width: 2),

@@ -491,7 +491,8 @@ List<_State> _states() {
         from: 3,
         to: 5,
         color: _red,
-        animation: TextPartAnimation(preset: TextAnimationPreset.pop)),
+        animation: TextPartAnimation(
+            arrival: TextAnimation(preset: TextAnimationPreset.pop))),
     TextPart(
         from: 8,
         to: 10,
