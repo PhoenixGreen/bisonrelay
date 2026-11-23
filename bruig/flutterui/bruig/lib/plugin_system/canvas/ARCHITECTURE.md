@@ -176,6 +176,20 @@ keeps what several parts share, its statics and its overrides. A change goes
 through `apply` or one of the helpers built on it (`replaceElement`,
 `addElement`...), which records undo and notifies.
 
+A part holds one subject, and is named for it: `playback.dart` is the
+player and nothing else; the zoom is with the rest of the view
+(`view_settings.dart`), the mixer's layout has a part of its own
+(`mixer_layout.dart`), the timeline's row folds and following the playhead
+are with its lanes (`lanes.dart`), and what a button element does is
+`button_actions.dart`, whose head is the one table of what each action does
+in the editor and in a published book, and where the two differ. What needs
+nothing of the controller is a library beside the parts rather than a part,
+handed what it reads and what to tell: `view_types.dart`, and
+`counter_clock.dart`, the live counters' clock, which the controller holds
+one of (`counters.dart` is the controller's side of it: a game's counts).
+`test/canvas_layers_test.dart` holds those two to not importing the
+controller.
+
 Two rules for whatever is added to it:
 
 - **State about the open canvas is forgotten in `_forgetDocument`**
@@ -458,8 +472,12 @@ To add a mark:
 the app on this machine, as against what is saved in a canvas: whether the
 feature is on, the canvas last open, how the panels were left, and the
 rulers along the stage (`CanvasRulers`, in `model/canvas_rulers.dart`: which
-edges, and whether they show). The rulers are the person's, so a canvas sent
-to somebody does not turn them on for them; the grid, the guides and the
+edges, and whether they show), and how the mixer and the Slots panel are laid
+out (`MixerLayout`, in `model/mixer_layout.dart`: the bands, the returns, the
+cue columns, the slots' size, the rail, each limit on them held by the value
+itself). The rulers and the mixer's layout are the person's, so a canvas sent
+to somebody does not change them for them, while which mixer strips are
+narrow is the canvas's own view; the grid, the guides and the
 snap switches are the canvas's, saved in its `CanvasGuides`. What the
 controller holds of these (the frame, the rulers, the cues, the mixer, the
 play bar's snapping, scrubbing and place, the panels) is handed to it as

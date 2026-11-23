@@ -576,7 +576,7 @@ extension _MixerDesk on _CanvasMixerState {
               bands: bands,
               // At its least in a narrow room: the arrows alone.
               width: box.maxWidth < 480
-                  ? CanvasController.cueColumnLeast
+                  ? MixerLayout.cueColumnLeast
                   : controller.cueColumnWidth,
               slots: _SceneBand(
                   controller: controller,

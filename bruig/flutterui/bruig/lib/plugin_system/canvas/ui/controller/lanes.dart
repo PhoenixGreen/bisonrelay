@@ -1,9 +1,10 @@
 part of '../canvas_controller.dart';
 
 // Part of CanvasController: the timeline's lanes -- the effects strip they
-// open, cues on the ruler, their heights and header -- and what is drawn in
-// them: waveforms and ducking. Its state is _LaneState, at the end of this
-// file.
+// open, cues on the ruler, their heights, folds and header, whether they
+// scroll to follow the playhead, and a locator put on the ruler -- and what
+// is drawn in them: waveforms and ducking. Its state is _LaneState, at the
+// end of this file.
 
 extension CanvasLanes on CanvasController {
   /// effectsOf is the strip whose chain of effects the effects panel shows,
@@ -58,6 +59,52 @@ extension CanvasLanes on CanvasController {
     if (next == _headerWidth) return;
     _headerWidth = next;
     notifyListeners();
+  }
+
+  /// rowFolded is whether timeline row [key] (an element's id, a channel's
+  /// key, "scenes") is folded to one line: as the channel height says (S
+  /// folds every row) unless its own arrow turned it. The height button, or
+  /// another canvas (whose rows may share keys), puts them all back.
+  bool rowFolded(String key) {
+    _foldsNow();
+    return (laneSize == 0) != _laneState.flippedRows.contains(key);
+  }
+
+  /// toggleRowFold is row [key]'s fold arrow.
+  void toggleRowFold(String key) {
+    _foldsNow();
+    if (!_laneState.flippedRows.remove(key)) {
+      _laneState.flippedRows.add(key);
+    }
+    notifyListeners();
+  }
+
+  void _foldsNow() {
+    var at = (folder, name, laneSize);
+    if (_laneState.flippedRowsAt == at) return;
+    _laneState.flippedRowsAt = at;
+    _laneState.flippedRows.clear();
+  }
+
+  /// followsAtFirst is whether a session starts following the playhead.
+  static const followsAtFirst = true;
+
+  /// followPlayhead is whether the timeline scrolls to follow the playhead.
+  bool get followPlayhead => _laneState.followPlayhead;
+
+  set followPlayhead(bool on) {
+    if (_laneState.followPlayhead == on) return;
+    _laneState.followPlayhead = on;
+    notifyListeners();
+  }
+
+  /// addLocator puts a named locator under the playhead, unless a marker is
+  /// there: see markerAdded.
+  void addLocator() {
+    var doc = _document;
+    var next = markerAdded(doc.actions, _frame, TimelineActionKind.locator,
+        id: motionId("m"));
+    if (next != null) apply(doc.copyWith(actions: next));
   }
 
   /// waveformOf is [assetId]'s peaks (0 to 1) across the file, or null until
@@ -350,6 +397,17 @@ extension CanvasLanes on CanvasController {
 /// set through CanvasLanes's getters and setters above, which say what each is.
 class _LaneState {
   bool cuesShown = true;
+
+  /// flippedRows are the timeline rows whose own arrow turned their fold
+  /// from what the channel height says, and flippedRowsAt what they were
+  /// turned under (folder, name and channel height): any other, and they
+  /// are let go. See rowFolded.
+  final Set<String> flippedRows = {};
+
+  (String?, String?, int)? flippedRowsAt;
+
+  /// followPlayhead is whether the timeline scrolls with the playhead.
+  bool followPlayhead = CanvasLanes.followsAtFirst;
 
   CanvasDocument? duckFor;
 

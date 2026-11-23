@@ -284,7 +284,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     var scenes = controller.document.allScenes.length;
     var narrow = controller.slotsPanelNarrow;
     var cueW = box.maxWidth < 480
-        ? CanvasController.cueColumnLeast
+        ? MixerLayout.cueColumnLeast
         : controller.slotsCueWidth;
     var avail = math.max(0.0, box.maxWidth - cueW - 1);
     var count = columns.length + (scenes > 1 ? 1 : 0);

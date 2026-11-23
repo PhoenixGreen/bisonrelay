@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/mixer_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_library.dart';
@@ -157,10 +158,9 @@ class CanvasPreferences extends ChangeNotifier {
       fromJson: _jsonMap, toJson: (v) => v);
   final _timeline = _SavedBool("canvasTimeline", false);
   final _cuesShown = _SavedBool("canvasCuesShown", true);
-  final _mixerBands = _SavedText<List<String>>("canvasMixerBands", const [],
-      read: (t) => t.split(","), write: (v) => v.join(","), byText: true);
-  final _mixerLook = _SavedText.string("canvasMixerLook");
-  final _returnsShown = _SavedBool("canvasReturnsShown", true);
+  final _mixerLayout = _SavedText.json<MixerLayout>(
+      "canvasMixerLayout", MixerLayout(),
+      fromJson: MixerLayout.fromJson, toJson: (v) => v.toJson());
   final _timelineSnap = _SavedBool("canvasTimelineSnap", false);
   final _timelineTrackpad = _SavedBool("canvasTimelineTrackpad", false);
   final _barBelow = _SavedBool("canvasTimelineBarBelow", false);
@@ -232,9 +232,7 @@ class CanvasPreferences extends ChangeNotifier {
     _panels,
     _timeline,
     _cuesShown,
-    _mixerBands,
-    _mixerLook,
-    _returnsShown,
+    _mixerLayout,
     _timelineSnap,
     _timelineTrackpad,
     _barBelow,
@@ -436,19 +434,10 @@ class CanvasPreferences extends ChangeNotifier {
   bool get cuesShown => _cuesShown.value;
   set cuesShown(bool value) => _change(_cuesShown, value);
 
-  /// mixerBands is how each mixer band was left: shown, minimised or
-  /// hidden, by name. The mixer writes and reads it.
-  List<String> get mixerBands => _mixerBands.value;
-  set mixerBands(List<String> value) => _change(_mixerBands, value);
-
-  /// mixerLook is the rest of how the mixer and the Slots were left, as the
-  /// mixer writes it (CanvasController.mixerLook).
-  String get mixerLook => _mixerLook.value;
-  set mixerLook(String value) => _change(_mixerLook, value);
-
-  /// returnsShown is whether the mixer's return strips are showing.
-  bool get returnsShown => _returnsShown.value;
-  set returnsShown(bool value) => _change(_returnsShown, value);
+  /// mixerLayout is how the mixer and the Slots panel were left: its bands,
+  /// returns, cue columns, slots and rail (CanvasController.mixerLayout).
+  MixerLayout get mixerLayout => _mixerLayout.value;
+  set mixerLayout(MixerLayout value) => _change(_mixerLayout, value);
 
   /// timelineSnap is whether a sound dragged on the timeline snaps
   /// (CanvasController.snapping).

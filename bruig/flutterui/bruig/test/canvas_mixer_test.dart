@@ -57,6 +57,14 @@ Future<void> chooseBand(
   await tester.pump(const Duration(milliseconds: 200));
 }
 
+/// _bands is a mixer layout with its bands, in the rail's order, as named;
+/// a band not named is shown.
+MixerLayout _bands(List<String> names, {bool returns = true}) =>
+    MixerLayout(bands: {
+      for (var (i, name) in names.indexed)
+        MixerSection.values[i]: BandState.values.byName(name),
+    }, returnsShown: returns);
+
 void main() {
   group("the EQ means one thing", () {
     test("flat is flat, and off is off", () {
@@ -925,7 +933,7 @@ void main() {
               ]),
               audioEngine: engine,
               frameSource: FakeFrames(4));
-          c.restoreMixer([for (var b in combo) b.name], returns: true);
+          c.restoreMixerLayout(_bands([for (var b in combo) b.name]));
           var least = mixerLeastHeight(c);
           tester.view.physicalSize = const Size(1200, 700);
           tester.view.devicePixelRatio = 1.0;
@@ -969,20 +977,27 @@ void main() {
       addTearDown(c.dispose);
       var all = mixerLeastHeight(c);
       // Only the devices: a slot of them, scrolled.
-      c.restoreMixer(["hidden", "shown", "hidden"], returns: true);
+      c.restoreMixerLayout(_bands(["hidden", "shown", "hidden"]));
       var devices = mixerLeastHeight(c);
       expect(devices, lessThan(all));
       // The mixer minimised is shorter than whole.
-      c.restoreMixer(["hidden", "hidden", "minimised"], returns: true);
+      c.restoreMixerLayout(_bands(["hidden", "hidden", "minimised"]));
       var mini = mixerLeastHeight(c);
-      c.restoreMixer(["hidden", "hidden", "shown"], returns: true);
+      c.restoreMixerLayout(_bands(["hidden", "hidden", "shown"]));
       expect(mini, lessThan(mixerLeastHeight(c)));
       // Never every band hidden: the mixer comes back.
-      c.restoreMixer(["hidden", "hidden", "hidden"], returns: false);
+      c.restoreMixerLayout(
+          _bands(["hidden", "hidden", "hidden"], returns: false));
       expect(c.bandState(MixerSection.mixer), BandState.shown);
       expect(c.returnsShown, isFalse);
-      expect(c.mixerBandNames, ["hidden", "hidden", "shown", "shown"],
-          reason: "a list kept before the sends had a band leaves them shown");
+      expect([
+        for (var s in MixerSection.values) c.bandState(s).name
+      ], [
+        "hidden",
+        "hidden",
+        "shown",
+        "shown"
+      ], reason: "a band not given is shown");
     });
 
     testWidgets("picking a strip shows its effects", (tester) async {
@@ -1981,7 +1996,7 @@ void main() {
       await tester.drag(
           find.byKey(const ValueKey("cueColumnGrip")), const Offset(-400, 0));
       await tester.pump();
-      expect(c.cueColumnWidth, CanvasController.cueColumnLeast);
+      expect(c.cueColumnWidth, MixerLayout.cueColumnLeast);
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("scene-0")),

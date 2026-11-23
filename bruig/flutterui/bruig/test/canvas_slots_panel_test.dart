@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -175,7 +177,7 @@ void main() {
     await tester.drag(
         find.byKey(const ValueKey("slotsCueGrip")), const Offset(-200, 0));
     await tester.pump();
-    expect(c.slotsCueWidth, CanvasController.cueColumnLeast);
+    expect(c.slotsCueWidth, MixerLayout.cueColumnLeast);
     expect(tester.takeException(), isNull);
   });
 
@@ -201,21 +203,22 @@ void main() {
     c.slotsPanelSize = 3;
     c.slotsPanelNarrow = true;
     c.mixerRailFolded = true;
-    var look = c.mixerLook;
+    var look = MixerLayout.fromJson(jsonDecode(jsonEncode(c.mixerLayout)))!;
     var d = CanvasController(CanvasDocument(frames: 10),
         audioEngine: FakeEngine(const {}));
     addTearDown(d.dispose);
-    d.restoreMixerLook(look);
+    d.restoreMixerLayout(look);
     expect(d.motionSlots, BandState.minimised);
     expect(d.cueColumnWidth, 150);
     expect(d.slotsCueWidth, 60);
     expect(d.slotsPanelSize, 3);
     expect(d.slotsPanelNarrow, isTrue);
     expect(d.mixerRailFolded, isTrue);
-    d.restoreMixerLook("cue=9999;what=1;motion=sideways");
-    expect(d.cueColumnWidth, CanvasController.cueColumnMost,
+    d.restoreMixerLayout(
+        MixerLayout.fromJson({"cue": 9999, "what": 1, "motion": "sideways"})!);
+    expect(d.cueColumnWidth, MixerLayout.cueColumnMost,
         reason: "held to its most; the rest passed by");
-    expect(d.motionSlots, BandState.minimised);
+    expect(d.motionSlots, BandState.shown);
   });
 
   // Ken, 2026-11-10: per-canvas cues. On a scene of a game whose master has

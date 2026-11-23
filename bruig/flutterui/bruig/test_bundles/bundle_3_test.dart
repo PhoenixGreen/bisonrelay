@@ -14,9 +14,9 @@ import '../test/canvas_image_brush_test.dart' as t8;
 import '../test/canvas_image_layers_editing_test.dart' as t9;
 import '../test/canvas_loop_test.dart' as t10;
 import '../test/canvas_mix_decode_test.dart' as t11;
-import '../test/canvas_own_tabs_test.dart' as t12;
-import '../test/canvas_panel_sweep_test.dart' as t13;
-import '../test/canvas_picture_import_test.dart' as t14;
+import '../test/canvas_panel_sweep_test.dart' as t12;
+import '../test/canvas_picture_import_test.dart' as t13;
+import '../test/canvas_responsive_bar_test.dart' as t14;
 import '../test/canvas_scene_bus_test.dart' as t15;
 import '../test/canvas_session_test.dart' as t16;
 import '../test/canvas_sheet_reshape_test.dart' as t17;
@@ -25,7 +25,7 @@ import '../test/canvas_stage_hits_test.dart' as t19;
 import '../test/canvas_studio_colors_test.dart' as t20;
 import '../test/canvas_surround_output_test.dart' as t21;
 import '../test/canvas_tiles_fold_narrow_test.dart' as t22;
-import '../test/epub_reader_test.dart' as t23;
+import '../test/canvas_timeline_clips_test.dart' as t23;
 import '../test/markdown_grid_test.dart' as t24;
 import '../test/markdown_image_test.dart' as t25;
 import '../test/markdown_title_test.dart' as t26;
@@ -79,15 +79,15 @@ void main() {
     setUpAll(betweenFiles);
     t11.main();
   });
-  group('canvas_own_tabs_test.dart', () {
+  group('canvas_panel_sweep_test.dart', () {
     setUpAll(betweenFiles);
     t12.main();
   });
-  group('canvas_panel_sweep_test.dart', () {
+  group('canvas_picture_import_test.dart', () {
     setUpAll(betweenFiles);
     t13.main();
   });
-  group('canvas_picture_import_test.dart', () {
+  group('canvas_responsive_bar_test.dart', () {
     setUpAll(betweenFiles);
     t14.main();
   });
@@ -123,7 +123,7 @@ void main() {
     setUpAll(betweenFiles);
     t22.main();
   });
-  group('epub_reader_test.dart', () {
+  group('canvas_timeline_clips_test.dart', () {
     setUpAll(betweenFiles);
     t23.main();
   });

@@ -52,16 +52,8 @@ class KeptView {
       keep: () => _prefs.cuesShown = _controller.cuesShown,
     ),
     (
-      put: () => _controller.restoreMixer(_prefs.mixerBands,
-          returns: _prefs.returnsShown),
-      keep: () {
-        _prefs.mixerBands = _controller.mixerBandNames;
-        _prefs.returnsShown = _controller.returnsShown;
-      },
-    ),
-    (
-      put: () => _controller.restoreMixerLook(_prefs.mixerLook),
-      keep: () => _prefs.mixerLook = _controller.mixerLook,
+      put: () => _controller.restoreMixerLayout(_prefs.mixerLayout),
+      keep: () => _prefs.mixerLayout = _controller.mixerLayout,
     ),
     (
       put: () => _controller.restoreSnapping(_prefs.timelineSnap),

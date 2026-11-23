@@ -179,7 +179,7 @@ void main() {
     expect(find.textContaining("how many devices"), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey("section-devices-minimised")));
     await tester.pumpAndSettle();
-    expect(c.mixerBandNames[MixerSection.devices.index], "minimised");
+    expect(c.bandState(MixerSection.devices), BandState.minimised);
     expect(find.byKey(const ValueKey("railPicker-devices")), findsNothing,
         reason: "a choice closes it");
     await tester.tap(find.byKey(const ValueKey("section-devices")));

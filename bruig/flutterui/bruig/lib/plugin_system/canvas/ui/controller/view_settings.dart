@@ -1,9 +1,10 @@
 part of '../canvas_controller.dart';
 
-// How the canvas is looked at and worked on: its framing, the band's switches
-// (overspill, helpers, bounds, joins, page lock), the 3D stage's tool and view
-// controls, snapping, steering the stage's camera, and the tool in hand. Part
-// of CanvasController: its fields and lifecycle are in canvas_controller.dart.
+// How the canvas is looked at and worked on: its framing and zoom, the band's
+// switches (overspill, helpers, bounds, joins, page lock), the 3D stage's tool
+// and view controls, snapping, steering the stage's camera, and the tool in
+// hand. Part of CanvasController: its fields and lifecycle are in
+// canvas_controller.dart.
 
 extension CanvasViewSettings on CanvasController {
   /// fit is how large the frame is drawn. See [CanvasFit].
@@ -17,6 +18,30 @@ extension CanvasViewSettings on CanvasController {
     _pan = Offset.zero;
     _notifyView();
   }
+
+  void resetZoom() {
+    _zoom = 1;
+    _pan = Offset.zero;
+    _notifyView();
+  }
+
+  /// showWhole and fitWidth are the band's two frame buttons; each clears
+  /// the zoom too.
+  void showWhole() {
+    fit = CanvasFit.whole;
+    resetZoom();
+  }
+
+  void fitWidth() {
+    fit = CanvasFit.width;
+    resetZoom();
+  }
+
+  void zoomBy(double factor) => zoom = _zoom * factor;
+
+  /// followPan is the view as scrolled by hand (scroll bars, two fingers,
+  /// the wheel), kept for the zoom to zoom about. Nothing is redrawn for it.
+  void followPan(Offset value) => _pan = value;
 
   /// rulers is which edges of the stage carry a ruler and whether they show:
   /// the person's own (CanvasPreferences.rulers), not the canvas's, so

@@ -109,6 +109,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/mixer_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart' show macroValue;
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show ClipTriggerKind, ElementMotion, MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart' show MotionPhase;
@@ -161,6 +162,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/controller/counter_clock.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_masking.dart';
@@ -182,6 +184,8 @@ import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 // The view's own types (CanvasTool, CanvasFit, the zoom's limits), so
 // whatever imports the controller has them.
 export 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
+// The mixer's layout and its bands, read through the controller's getters.
+export 'package:bruig/plugin_system/canvas/model/mixer_layout.dart';
 
 part 'controller/view_settings.dart';
 part 'controller/element_editing.dart';
@@ -201,6 +205,8 @@ part 'controller/pictures.dart';
 part 'controller/vectors.dart';
 part 'controller/scenes.dart';
 part 'controller/playback.dart';
+part 'controller/button_actions.dart';
+part 'controller/counters.dart';
 part 'controller/instruments.dart';
 part 'controller/session.dart';
 part 'controller/game.dart';
@@ -213,6 +219,7 @@ part 'controller/clip_editing.dart';
 part 'controller/piano_roll.dart';
 part 'controller/lanes.dart';
 part 'controller/mixer.dart';
+part 'controller/mixer_layout.dart';
 part 'controller/keyframes.dart';
 part 'controller/timeline_clips.dart';
 part 'controller/copies.dart';
@@ -696,8 +703,7 @@ class CanvasController extends ChangeNotifier {
     motionPlayer.clear();
     _triggeredOff.clear();
     stopHearing();
-    _counterTimer?.cancel();
-    _counterTimer = null;
+    _counters.stopTimer();
     for (var MapEntry(key: id, value: live) in _arps.entries) {
       live.timer?.cancel();
       if ((live.sounding, _instrumentHeld(id)) case (var k?, var e?)) {
@@ -1132,26 +1138,31 @@ class CanvasController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------------------
-  // The control bar's switches
+  // The mixer's layout
   // ------------------------------------------------------------------------
 
-  /// _mainBands are the bands one of which always shows: a mixer of send
-  /// dials alone, or of nothing, is only its names.
-  static const _mainBands = [
-    MixerSection.clips,
-    MixerSection.devices,
-    MixerSection.mixer,
-  ];
+  /// _mixerLayout is how the mixer and the Slots panel are laid out, the
+  /// person's own: see controller/mixer_layout.dart.
+  MixerLayout _mixerLayout = MixerLayout();
 
+  /// _narrowStrips are the mixer's narrow columns, the canvas's own: see
+  /// narrowStrips.
   final Set<String> _narrowStrips = {};
 
   // ------------------------------------------------------------------------
   // Live counters
   // ------------------------------------------------------------------------
 
-  final Map<String, DateTime> _countersSince = {};
-
-  Timer? _counterTimer;
+  /// _counters counts the live counters in real time: see
+  /// controller/counters.dart.
+  late final CounterClock _counters = CounterClock(
+      counters: () => _document.elements.whereType<CounterElement>(),
+      counterById: (id) => switch (_document.elementById(id)) {
+            CounterElement e => e,
+            _ => null,
+          },
+      changed: notifyListeners,
+      ticked: () => _notifyStep());
 
   // ------------------------------------------------------------------------
   // Sound
@@ -1719,10 +1730,6 @@ class CanvasController extends ChangeNotifier {
   /// _keyframes is the state keyframes.dart keeps: see _KeyframeState.
   final _KeyframeState _keyframes = _KeyframeState();
 
-  /// cueColumnLeast and cueColumnMost bound the mixer's cue column width.
-  static const double cueColumnLeast = 40;
-  static const double cueColumnMost = 240;
-
   /// _waveforms is each stored sound's shape, read once (see waveformOf).
   static final Map<String, Float32List?> _waveforms = {};
   static final Set<String> _readingWaveform = {};
@@ -1891,7 +1898,7 @@ class CanvasController extends ChangeNotifier {
     _disposedForWaveform = true;
     _autosave?.cancel();
     _playback?.cancel();
-    _counterTimer?.cancel();
+    _counters.dispose();
     _video?.removeListener(_notifyStep);
     _video?.dispose();
     _audio?.removeListener(notifyListeners);

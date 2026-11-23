@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/mixer_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_library.dart';
@@ -51,9 +52,7 @@ void main() {
     expect(prefs.panels, isEmpty);
     expect(prefs.timeline, isFalse);
     expect(prefs.cuesShown, isTrue);
-    expect(prefs.mixerBands, isEmpty);
-    expect(prefs.mixerLook, "");
-    expect(prefs.returnsShown, isTrue);
+    expect(prefs.mixerLayout, MixerLayout());
     expect(prefs.timelineSnap, isFalse);
     expect(prefs.timelineTrackpad, isFalse);
     expect(prefs.barBelow, isFalse);
@@ -96,9 +95,9 @@ void main() {
       "canvasPanels": jsonEncode({"mixer": true}),
       "canvasTimeline": true,
       "canvasCuesShown": false,
-      "canvasMixerBands": "shown,minimised,hidden",
-      "canvasMixerLook": "wide",
-      "canvasReturnsShown": false,
+      "canvasMixerLayout":
+          '{"bands":{"devices":"minimised","sends":"hidden"},"returns":false,'
+              '"cue":150}',
       // Under the keys the play bar wrote them to itself.
       "canvasTimelineSnap": true,
       "canvasTimelineTrackpad": true,
@@ -132,9 +131,12 @@ void main() {
     expect(prefs.panels, {"mixer": true});
     expect(prefs.timeline, isTrue);
     expect(prefs.cuesShown, isFalse);
-    expect(prefs.mixerBands, ["shown", "minimised", "hidden"]);
-    expect(prefs.mixerLook, "wide");
-    expect(prefs.returnsShown, isFalse);
+    expect(
+        prefs.mixerLayout,
+        MixerLayout(bands: {
+          MixerSection.devices: BandState.minimised,
+          MixerSection.sends: BandState.hidden,
+        }, returnsShown: false, cueColumnWidth: 150));
     expect(prefs.timelineSnap, isTrue);
     expect(prefs.timelineTrackpad, isTrue);
     expect(prefs.barBelow, isTrue);
@@ -182,7 +184,7 @@ void main() {
     prefs.setCanvasView("Books/Piano", {"zoom": 3});
     prefs.sidebars = const SidebarLayout(current: "assets");
     prefs.panels = {"timeline": true};
-    prefs.mixerBands = ["shown", "hidden"];
+    prefs.mixerLayout = MixerLayout(slotsPanelNarrow: true);
     prefs.studioLook = StudioLook.theme;
     prefs.setStudioColour(role, const Color(0xFF445566));
     prefs.publish = {"format": "gif"};
@@ -201,6 +203,7 @@ void main() {
     expect(stored.getString("canvasStockFilters"),
         '{"jamendo":{"order":"popular","speed":"high"}}');
     expect(stored.getString("canvasRulers"), '{"t":true,"r":true}');
+    expect(stored.getString("canvasMixerLayout"), '{"narrow":true}');
     expect(stored.getBool("canvasTimelineSnap"), isTrue);
     expect(stored.getBool("canvasTimelineTrackpad"), isTrue);
     expect(stored.getBool("canvasTimelineBarBelow"), isTrue);
@@ -215,7 +218,7 @@ void main() {
     expect(next.canvasView("Books/Piano"), {"zoom": 3});
     expect(next.sidebars.current, "assets");
     expect(next.panels, {"timeline": true});
-    expect(next.mixerBands, ["shown", "hidden"]);
+    expect(next.mixerLayout, MixerLayout(slotsPanelNarrow: true));
     expect(next.studioLook, StudioLook.theme);
     expect(next.studioOverrides, {role: const Color(0xFF445566)});
     expect(next.publish, {"format": "gif"});
@@ -276,6 +279,7 @@ void main() {
       "canvasStockLibrary": "neon",
       "canvasStockFilters": "{",
       "canvasRulers": "[true]",
+      "canvasMixerLayout": "wide",
     });
     expect(prefs.sidebars.current, "files");
     expect(prefs.dock, const DockLayout());
@@ -289,6 +293,7 @@ void main() {
     expect(prefs.stockLibrary, StockLibrary.initial);
     expect(prefs.stockFilters, isEmpty);
     expect(prefs.rulers, const CanvasRulers());
+    expect(prefs.mixerLayout, MixerLayout());
   });
 
   test("the rulers are stored as what differs from none, each edge alone",
@@ -312,6 +317,66 @@ void main() {
     expect(const CanvasRulers(top: true, shown: false).drawn, isFalse,
         reason: "hidden without forgetting the edge");
     expect(const CanvasRulers().drawn, isFalse, reason: "shown, but no edge");
+  });
+
+  test(
+      "the mixer's layout is stored as what differs from one as made, each "
+      "piece alone", () async {
+    // One value for every piece, read and written together; a piece left
+    // out is as a new one has it.
+    var alone = <String, MixerLayout>{
+      '{"bands":{"clips":"hidden"}}':
+          MixerLayout(bands: {MixerSection.clips: BandState.hidden}),
+      '{"bands":{"mixer":"minimised"}}':
+          MixerLayout(bands: {MixerSection.mixer: BandState.minimised}),
+      '{"returns":false}': MixerLayout(returnsShown: false),
+      '{"motion":"hidden"}': MixerLayout(motionSlots: BandState.hidden),
+      '{"cue":150}': MixerLayout(cueColumnWidth: 150),
+      '{"slotsCue":60}': MixerLayout(slotsCueWidth: 60),
+      '{"masterCue":200}': MixerLayout(masterCueColumnWidth: 200),
+      '{"slotsMasterCue":44}': MixerLayout(slotsMasterCueWidth: 44),
+      '{"size":3}': MixerLayout(slotsPanelSize: 3),
+      '{"narrow":true}': MixerLayout(slotsPanelNarrow: true),
+      '{"rail":true}': MixerLayout(railFolded: true),
+    };
+    for (var MapEntry(key: stored, value: layout) in alone.entries) {
+      expect(jsonEncode(layout.toJson()), stored);
+      var prefs = await loaded({"canvasMixerLayout": stored});
+      expect(prefs.mixerLayout, layout, reason: stored);
+    }
+    expect(MixerLayout().toJson(), isEmpty);
+    // The widths to the whole pixel, as dragged.
+    expect(MixerLayout(cueColumnWidth: 150.4).toJson(), {"cue": 150});
+
+    // Its limits are its own, however it is made or read.
+    expect(MixerLayout(cueColumnWidth: 9999).cueColumnWidth,
+        MixerLayout.cueColumnMost);
+    expect(MixerLayout.fromJson({"slotsCue": 1})!.slotsCueWidth,
+        MixerLayout.cueColumnLeast);
+    expect(
+        MixerLayout(slotsPanelSize: 9).slotsPanelSize, MixerLayout.slotsFill);
+    expect(
+        MixerLayout(bands: {MixerSection.sends: BandState.minimised})
+            .band(MixerSection.sends),
+        BandState.hidden,
+        reason: "the sends are never minimised");
+    var none = MixerLayout(bands: {
+      for (var s in MixerLayout.mainBands) s: BandState.hidden,
+    });
+    expect(none.band(MixerSection.mixer), BandState.shown,
+        reason: "one of the main bands always shows");
+    var one = MixerLayout(bands: {
+      MixerSection.clips: BandState.hidden,
+      MixerSection.devices: BandState.hidden,
+    });
+    expect(one.withBand(MixerSection.mixer, BandState.hidden), same(one),
+        reason: "the last showing is not hidden");
+    expect(
+        MixerLayout.fromJson({
+          "bands": {"gone": "hidden", "clips": "wide"}
+        }),
+        MixerLayout(),
+        reason: "a band or a state it does not know is passed by");
   });
 
   test("only what the menu, Settings or the app's frame shows notifies",

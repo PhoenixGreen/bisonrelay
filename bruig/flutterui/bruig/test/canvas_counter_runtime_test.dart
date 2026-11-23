@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controller/counter_clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
@@ -528,6 +529,68 @@ void main() {
       controller.tickCounters();
       expect(controller.counterValue(e), lessThan(1),
           reason: "ten a second, for no time since coming back");
+    });
+  });
+
+  group("the counter clock alone", () {
+    // Its own clock stood in for, so time passes only when the test says.
+    const counter = CounterElement(_base, keyed: false, to: 1000, rate: 2);
+    var now = DateTime(2026, 1, 1, 9);
+    var changed = 0, ticked = 0;
+    CounterClock clock({List<CounterElement> on = const [counter]}) {
+      changed = ticked = 0;
+      var c = CounterClock(
+          counters: () => on,
+          counterById: (id) => on.where((e) => e.id == id).firstOrNull,
+          changed: () => changed++,
+          ticked: () => ticked++,
+          now: () => now);
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test("counts by its clock, and tells of each move", () {
+      var c = clock();
+      c.press(counter, CounterButton.startStop);
+      expect((c.isRunning("c"), changed), (true, 1));
+      now = now.add(const Duration(seconds: 3));
+      c.tick();
+      expect(c.count(counter), 6, reason: "two a second for three seconds");
+      expect(ticked, 1);
+      c.tick();
+      expect(ticked, 1, reason: "no time has passed");
+    });
+
+    test("goes on from where it was, not by the time stopped", () {
+      var c = clock();
+      c.run(counter, true);
+      now = now.add(const Duration(seconds: 1));
+      c.tick();
+      c.stopTimer();
+      now = now.add(const Duration(minutes: 5));
+      c.start();
+      expect(c.isRunning("c"), isTrue, reason: "still running, set going");
+      now = now.add(const Duration(seconds: 1));
+      c.tick();
+      expect(c.count(counter), 4);
+    });
+
+    test("starts those set to start, and forgets all for another canvas", () {
+      const running = CounterElement(_base,
+          keyed: false, running: true, from: 5, to: 1000, rate: 1);
+      var c = clock(on: [running]);
+      c.start();
+      expect(c.isRunning("c"), isTrue);
+      c.set(running, 30);
+      expect(c.count(running), 30);
+      c.forget();
+      expect((c.isRunning("c"), c.count(running)), (false, 5));
+    });
+
+    test("tells the time of day by its clock", () {
+      var c = clock();
+      now = DateTime(2026, 1, 1, 13, 30, 15);
+      expect(c.secondsOfDay(), 13 * 3600 + 30 * 60 + 15);
     });
   });
 

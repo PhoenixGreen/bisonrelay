@@ -563,6 +563,37 @@ class TimelineAction {
       );
 }
 
+/// markerAdded is [markers] with a new marker of [kind], called [id], on
+/// [frame], or null where nothing is to change.
+///
+/// A locator is named by how many there are ("Locator 3") and goes in frame
+/// order; it is not put on a frame that has a marker, since Add a marker is
+/// pressed without seeing what is there and must not take a stop, a pause
+/// or a jump away. Any other kind takes the place of whatever is on the
+/// frame, and a loop or a jump aims at the start, so one with nothing to go
+/// back to is not useless.
+List<TimelineAction>? markerAdded(
+    List<TimelineAction> markers, int frame, TimelineActionKind kind,
+    {required String id}) {
+  if (kind != TimelineActionKind.locator) {
+    return [
+      ...markers.where((a) => a.frame != frame),
+      TimelineAction(id: id, frame: frame, kind: kind, target: 0),
+    ];
+  }
+  if (markers.any((a) => a.frame == frame)) return null;
+  var count =
+      markers.where((a) => a.kind == TimelineActionKind.locator).length + 1;
+  return [
+    ...markers,
+    TimelineAction(
+        id: id,
+        frame: frame,
+        kind: TimelineActionKind.locator,
+        label: "Locator $count"),
+  ]..sort((a, b) => a.frame.compareTo(b.frame));
+}
+
 /// KeyframeChannel names the extra properties a keyframe can pin, as
 /// constants so the writer and the reader cannot disagree on a spelling.
 class KeyframeChannel {

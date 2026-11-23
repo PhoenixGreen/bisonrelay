@@ -722,7 +722,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   /// _quietWhenOn are the settings on to begin with, not lit on the bar:
   /// Follow, as the controller starts it. Snap and Scrub start off, kept
   /// choices read back as off where none was made.
-  static const _quietWhenOn = {if (CanvasPlayback.followsAtFirst) "follow"};
+  static const _quietWhenOn = {if (CanvasLanes.followsAtFirst) "follow"};
 
   static String _trim(String n) =>
       n.contains(".") ? n.replaceFirst(RegExp(r"\.?0+$"), "") : n;

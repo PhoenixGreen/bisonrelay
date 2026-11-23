@@ -8,6 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 /// the canvas: a published canvas runs in a chat message or a page, and a
 /// button that could run, read or call anything outside it would make
 /// opening one a risk. The only way out is a link the viewer confirms.
+///
+/// The editor and a published book each carry out these actions in their
+/// own code: what each does, and where the two still differ, is one table
+/// at the head of ui/controller/button_actions.dart.
 enum ButtonActionKind {
   goToFrame("Go to frame", "Jump the playhead and hold there"),
   playFrom("Play from frame", "Jump there and start playing"),

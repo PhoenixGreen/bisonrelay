@@ -28,6 +28,14 @@ CanvasController _make() => CanvasController(
     ]),
     audioEngine: FakeEngine({"t": 2}));
 
+/// _bands is a mixer layout with its bands, in the rail's order, as named;
+/// a band not named is shown.
+MixerLayout _bands(List<String> names, {bool returns = true}) =>
+    MixerLayout(bands: {
+      for (var (i, name) in names.indexed)
+        MixerSection.values[i]: BandState.values.byName(name),
+    }, returnsShown: returns);
+
 void main() {
   group("kept", () {
     test("the panels, whatever canvas is open", () {
@@ -107,8 +115,8 @@ void main() {
       var c = _make();
       addTearDown(c.dispose);
       // Ken's bands: the mixer minimised, the others hidden.
-      c.restoreMixer(["hidden", "hidden", "minimised", "hidden"],
-          returns: false);
+      c.restoreMixerLayout(
+          _bands(["hidden", "hidden", "minimised", "hidden"], returns: false));
       setTestScreen(tester, const Size(1300, 400));
       Future<void> show() => tester.pumpWidget(
             canvasApp(Align(

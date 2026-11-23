@@ -187,6 +187,26 @@ void main() {
     }
   });
 
+  test("the controller's own libraries do not import the controller", () {
+    // The view's types and the live counters' clock are libraries beside the
+    // controller's parts, not parts of it: handed what they need, they can be
+    // read and tested without it.
+    var own = [
+      "ui/controller/view_types.dart",
+      "ui/controller/counter_clock.dart",
+    ];
+    for (var path in own) {
+      var file = File("$_canvas/$path");
+      expect(file.existsSync(), isTrue,
+          reason: "$path moved; update this test");
+      expect(_importsOf(file),
+          isNot(contains("${_package}ui/canvas_controller.dart")),
+          reason: path);
+      expect(file.readAsStringSync(), isNot(contains("part of ")),
+          reason: "$path is a library, not a part");
+    }
+  });
+
   test("every exception is still needed, and the folders are still there", () {
     var broken = _broken().toSet();
     expect(_exceptions.difference(broken), isEmpty,

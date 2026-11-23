@@ -106,9 +106,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(prefs.fit, CanvasFit.width);
     expect(prefs.cuesShown, isFalse);
-    expect(prefs.mixerBands, c.mixerBandNames);
-    expect(prefs.returnsShown, isTrue);
-    expect(prefs.mixerLook, c.mixerLook);
+    expect(prefs.mixerLayout, c.mixerLayout);
     expect(prefs.dock.switcher, DockSwitcher.tabs);
     expect(prefs.panels, c.panelState);
     expect(prefs.rulers, const CanvasRulers(top: true, bottom: true));
@@ -146,6 +144,67 @@ void main() {
     await show(tester, next, prefs);
     expectLeft(next);
     await leave(tester, next, prefs);
+  });
+
+  testWidgets("each piece of the mixer's look is found again in the next run",
+      (tester) async {
+    var c = _controller();
+    addTearDown(c.dispose);
+    var prefs = preferences();
+    await show(tester, c, prefs);
+
+    // Every piece away from how it starts.
+    c.setMixerSection(MixerSection.clips, BandState.hidden);
+    c.setMixerSection(MixerSection.devices, BandState.minimised);
+    c.setMixerSection(MixerSection.mixer, BandState.minimised);
+    c.setMixerSection(MixerSection.sends, BandState.hidden);
+    c.returnsShown = false;
+    c.motionSlots = BandState.minimised;
+    c.cueColumnWidth = 150;
+    c.slotsCueWidth = 60;
+    c.masterCueColumnWidth = 200;
+    c.slotsMasterCueWidth = 44;
+    c.slotsPanelSize = 3;
+    c.slotsPanelNarrow = true;
+    c.mixerRailFolded = true;
+    await leave(tester, c, prefs);
+
+    var next = _controller();
+    addTearDown(next.dispose);
+    await show(tester, next, prefs);
+    expect(next.bandState(MixerSection.clips), BandState.hidden);
+    expect(next.bandState(MixerSection.devices), BandState.minimised);
+    expect(next.bandState(MixerSection.mixer), BandState.minimised);
+    expect(next.bandState(MixerSection.sends), BandState.hidden);
+    expect(next.returnsShown, isFalse);
+    expect(next.motionSlots, BandState.minimised);
+    expect(next.cueColumnWidth, 150);
+    expect(next.slotsCueWidth, 60);
+    expect(next.masterCueColumnWidth, 200);
+    expect(next.slotsMasterCueWidth, 44);
+    expect(next.slotsPanelSize, 3);
+    expect(next.slotsPanelNarrow, isTrue);
+    expect(next.mixerRailFolded, isTrue);
+
+    // And each put back as it starts is kept so too.
+    next.setMixerSection(MixerSection.mixer, BandState.shown);
+    next.setMixerSection(MixerSection.clips, BandState.shown);
+    next.returnsShown = true;
+    next.cueColumnWidth = 96;
+    next.slotsPanelNarrow = false;
+    await leave(tester, next, prefs);
+
+    var last = _controller();
+    addTearDown(last.dispose);
+    await show(tester, last, prefs);
+    expect(last.bandState(MixerSection.clips), BandState.shown);
+    expect(last.bandState(MixerSection.mixer), BandState.shown);
+    expect(last.bandState(MixerSection.devices), BandState.minimised);
+    expect(last.returnsShown, isTrue);
+    expect(last.cueColumnWidth, 96);
+    expect(last.slotsPanelNarrow, isFalse);
+    expect(last.slotsPanelSize, 3);
+    await leave(tester, last, prefs);
   });
 
   testWidgets("coming back to the page in the same run changes nothing",

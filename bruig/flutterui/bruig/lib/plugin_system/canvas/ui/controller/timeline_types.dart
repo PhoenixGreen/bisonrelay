@@ -81,25 +81,6 @@ class TimelineChannel {
   bool get locked => lanes.every((l) => l.element.locked);
 }
 
-/// BandState is how one of the mixer's bands is shown.
-enum BandState { shown, minimised, hidden }
-
-/// MixerSection is one of the mixer's bands, in the rail's order: the
-/// sends, last, are drawn between the devices and the mixer, as Ableton's.
-enum MixerSection {
-  clips("C", "Clips"),
-  devices("D", "Devices"),
-  mixer("M", "Mixer"),
-
-  /// sends are the send dials, a band of their own -- shown or hidden,
-  /// never minimised: there is nothing smaller to show of a dial.
-  sends("S", "Sends");
-
-  final String letter;
-  final String label;
-  const MixerSection(this.letter, this.label);
-}
-
 /// TimelineTool is what a press on a sound does. See timelineTool.
 enum TimelineTool { select, knife }
 

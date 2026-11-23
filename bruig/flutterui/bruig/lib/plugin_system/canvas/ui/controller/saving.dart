@@ -91,13 +91,9 @@ extension CanvasSaving on CanvasController {
     // The stop played to, whose label shows while the playhead is on it.
     _playbackState.stoppedAt = null;
     // Rows folded by their own arrows: the rows are that canvas's.
-    _playbackState.flippedRows.clear();
+    _laneState.flippedRows.clear();
     // Its live counters' counts, by its elements' ids.
-    _playbackState.counters.clear();
-    _playbackState.countersRunning.clear();
-    _countersSince.clear();
-    _counterTimer?.cancel();
-    _counterTimer = null;
+    _counters.forget();
     _chainFocus = null;
     _sceneFrames.clear();
     _wordQuery = "";

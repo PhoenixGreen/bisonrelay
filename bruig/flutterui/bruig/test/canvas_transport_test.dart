@@ -199,6 +199,33 @@ void main() {
       c.pause();
     });
 
+    test("a marker is made from the markers there, without a controller", () {
+      const stop = TimelineAction(
+          id: "s", frame: 10, kind: TimelineActionKind.stop, label: "Hold");
+      const first = TimelineAction(
+          id: "l", frame: 40, kind: TimelineActionKind.locator, label: "One");
+      var markers = [stop, first];
+
+      // A locator: named by how many there are, put in frame order.
+      var added =
+          markerAdded(markers, 20, TimelineActionKind.locator, id: "n")!;
+      expect([for (var a in added) a.id], ["s", "n", "l"]);
+      expect(added[1].label, "Locator 2");
+      // Not on a frame with a marker: the stop there is kept.
+      expect(markerAdded(markers, 10, TimelineActionKind.locator, id: "n"),
+          isNull);
+
+      // Any other kind takes the place of what is there, aimed at the start.
+      var jump = markerAdded(markers, 10, TimelineActionKind.jump, id: "j")!;
+      expect([
+        for (var a in jump) (a.id, a.kind, a.target)
+      ], [
+        ("l", TimelineActionKind.locator, 0),
+        ("j", TimelineActionKind.jump, 0),
+      ]);
+      expect(markers, [stop, first], reason: "the list given is left alone");
+    });
+
     test("the metronome clicks while a piece of sound plays, and follows",
         () async {
       var engine = FakeEngine({});

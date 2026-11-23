@@ -31,27 +31,14 @@ Color markerColour(TimelineActionKind kind) => markerKinds
     .firstWhere((k) => k.$1 == kind, orElse: () => markerKinds[1])
     .$2;
 
-/// addMarker puts a marker of [kind] under the playhead, in place of any
-/// there. A locator is named as addLocator names it, and is not put on a
-/// frame that has a marker: the bar's Add a marker is pressed without
-/// seeing what is there, and must not take a stop, a pause or a jump away.
+/// addMarker puts a marker of [kind] under the playhead, as markerAdded
+/// says: a locator only on a frame with no marker, any other kind in place
+/// of whatever is there.
 void addMarker(CanvasController controller, TimelineActionKind kind) {
   var document = controller.document;
-  if (kind == TimelineActionKind.locator) {
-    controller.addLocator();
-    return;
-  }
-  controller.apply(document.copyWith(actions: [
-    ...document.actions.where((a) => a.frame != controller.frame),
-    TimelineAction(
-      id: motionId("m"),
-      frame: controller.frame,
-      kind: kind,
-      // A loop with nothing to loop back to is useless, so it defaults to
-      // the start.
-      target: 0,
-    ),
-  ]));
+  var next =
+      markerAdded(document.actions, controller.frame, kind, id: motionId("m"));
+  if (next != null) controller.apply(document.copyWith(actions: next));
 }
 
 void removeMarker(CanvasController controller, int frame) {
