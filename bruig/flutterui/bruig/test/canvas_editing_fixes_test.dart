@@ -10,18 +10,26 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 
 import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
+import 'support/colour_rich.dart';
 
 // canvas_editing_fixes_test.dart is a pass over the editor after a video was
 // made with it: several layers picked at once, the Colour section reaching
@@ -184,8 +192,8 @@ void main() {
     });
 
     test("a fade's second colour too", () {
-      // It is saved under "to", which is a plain number everywhere else (a
-      // counter's, a range's), so the walk over the saved form passed it by.
+      // A fade's colours after its first are the gradient's own, not the
+      // shape's: reached through the fade.
       var c = CanvasController(const CanvasDocument().addElement(
           const ShapeElement(ElementBase(id: "a"),
               fill: _teal, fillFade: GradientSpec(to: _teal))));
@@ -194,6 +202,122 @@ void main() {
       var shape = c.document.elements.single as ShapeElement;
       expect(shape.fill, _pink);
       expect(shape.fillFade!.to, _pink);
+    });
+
+    test("a colour keyed in a Design device too", () {
+      var teal = _teal.toARGB32().toDouble();
+      var c = CanvasController(const CanvasDocument()
+          .addElement(const ShapeElement(ElementBase(id: "a")).withBase(
+              motion: ElementMotion(devices: [
+        MotionDevice(MotionDeviceKind.design, id: "m0", keys: {
+          "fill": [DeviceKey(0, teal), DeviceKey(1, teal)],
+        }, values: {
+          "strokeColour": teal
+        }),
+      ]))));
+      addTearDown(c.dispose);
+      c.replaceColour(_teal, _pink);
+      var design = c.document.elements.single.base.motion.devices.single;
+      var pink = _pink.toARGB32().toDouble();
+      expect([for (var k in design.keys["fill"]!) k.v], [pink, pink]);
+      expect(design.values["strokeColour"], pink);
+    });
+
+    test("a 3D character's clothes too", () {
+      var doc = colourRichDocument();
+      Garment top(CanvasDocument d) => d.scene.elements
+          .whereType<Character3dElement>()
+          .single
+          .design
+          .outfit[WearSlot.top];
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.replaceColour(Color(0xFF000000 | top(doc).colour), _pink);
+      expect(top(c.document).colour, _pink.toARGB32() & 0xFFFFFF);
+    });
+
+    test("an outline's colour while it is off, seen once it is on", () {
+      var c = CanvasController(const CanvasDocument().addElement(
+          const TextElement(ElementBase(id: "t"),
+              text: "Hi", textSpec: TextSpec(outlineColor: _teal))));
+      addTearDown(c.dispose);
+      c.replaceColour(_teal, _pink);
+      var text = c.document.elements.single as TextElement;
+      var on = text.textSpec.copyWith(outlineWidth: 2);
+      expect(on.outlineColor, _pink);
+    });
+
+    test("a fully clear use too, staying clear", () {
+      var c = CanvasController(const CanvasDocument().addElement(ShapeElement(
+          const ElementBase(id: "a"),
+          fill: _teal.withValues(alpha: 0))));
+      addTearDown(c.dispose);
+      c.replaceColour(_teal, _pink);
+      var fill = (c.document.elements.single as ShapeElement).fill;
+      expect(fill, _pink.withValues(alpha: 0));
+    });
+
+    test("not a chroma key, a removal key, a handle or a row's colour", () {
+      var doc = colourRichDocument();
+      var kept = documentKept(doc);
+      for (var k in kept) {
+        Color colour = switch (k) {
+          Color c => c,
+          int v => Color(0xFF000000 | (v & 0xFFFFFF)),
+          _ => const Color(0x00000000),
+        };
+        if (colour.a == 0) continue;
+        var c = CanvasController(doc);
+        c.replaceColour(colour, _pink);
+        expect(documentKept(c.document), kept, reason: "$k");
+        c.dispose();
+      }
+    });
+
+    test("a flipped tile's word and a drawn text survive", () {
+      var doc = colourRichDocument();
+      var kept = documentKept(doc);
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      // A flipped tile from the first set has black's red, green and blue.
+      c.replaceColour(const Color(0xFF000000), _pink);
+      expect(documentKept(c.document), kept);
+      var drawing = c.document.scene.elements.whereType<VectorElement>().single;
+      var sig = drawing.shapes!.first.liveText!.signature;
+      c.replaceColour(Color(0xFF000000 | (sig & 0xFFFFFF)), _pink);
+      drawing = c.document.scene.elements.whereType<VectorElement>().single;
+      expect(drawing.shapes!.first.liveText?.signature, sig);
+      expect(documentKept(c.document), kept);
+    });
+
+    test("a colour that is nowhere changes nothing and makes no step", () {
+      var doc = colourRichDocument();
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      var before = c.document;
+      c.replaceColour(colourSentinel, _pink);
+      expect(identical(c.document, before), isTrue);
+      expect(c.canUndo, isFalse);
+    });
+
+    test("what is not saved while off keeps its value, and the rest its self",
+        () {
+      const shadow = Color(0xFF7A3B10);
+      var words = TextElement(const ElementBase(id: "t"),
+          text: "Hi", textSpec: const TextSpec(shadowColor: shadow));
+      var other = MetronomeElement(const ElementBase(id: "m"), body: _pink);
+      var c = CanvasController(const CanvasDocument()
+          .addElement(words)
+          .addElement(other)
+          .addElement(const ShapeElement(ElementBase(id: "s"), fill: _teal)));
+      addTearDown(c.dispose);
+      var untouched = c.document.elementById("t");
+      c.replaceColour(_teal, const Color(0xFF101010));
+      var text = c.document.elementById("t") as TextElement;
+      expect(text.textSpec.shadowColor, shadow,
+          reason: "a shadow's colour is not saved while there is no shadow");
+      expect(identical(c.document.elementById("t"), untouched), isTrue,
+          reason: "an element with no use of the colour is not remade");
     });
 
     testWidgets("from the picker: Replace, then the saved colour",

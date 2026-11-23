@@ -45,8 +45,8 @@ import 'support/element_samples.dart';
 
 // canvas_colour_map_test.dart holds the colour visitor (colour_map.dart) to
 // its promises: a map that changes nothing changes nothing, down to the
-// object; every colour a thing holds is reached and the four that must not
-// be are not; each is told truly whether it shows; and nothing else is
+// object; every colour a thing holds is reached and those that must not be
+// are not; each is told truly whether it shows; and nothing else is
 // disturbed on the way.
 
 Color _same(Color c, {required bool shown}) => c;
@@ -157,8 +157,8 @@ void main() {
         for (var (_, e) in colourRichElements()) ...keptColours(e),
       ];
       // A row colour, the two keys, the handles, an eraser's paint, a
-      // colour table and two tile words.
-      expect(kept.length, greaterThanOrEqualTo(8));
+      // colour table, a terrain's swatch and two tile words.
+      expect(kept.length, greaterThanOrEqualTo(9));
     });
   });
 
@@ -431,6 +431,24 @@ void main() {
               .mapColours(f),
           (f) => PaintStroke(on: "skin", radius: 1, colour: 0x5a6b7c)
               .mapColours(f));
+    });
+
+    test("a page shape's copy of the design is not what shows", () {
+      var plain = ShapeElement(const ElementBase(id: "s"), fill: p);
+      Map<String, dynamic> snapshot() => plain.toJson()
+        ..remove("layouts")
+        ..remove("shared");
+      var told = <bool>[];
+      plain.withBase(shared: snapshot(), layouts: {
+        "1:1": ElementLayout(x: 0, y: 0, width: 1, height: 1, own: snapshot()),
+      }).mapColours((c, {required bool shown}) {
+        if (c == p) told.add(shown);
+        return c;
+      });
+      // The element's own fill shows; the shared copy's and the page
+      // shape's are for other shapes of page.
+      expect(told..sort((a, b) => a == b ? 0 : (a ? -1 : 1)),
+          [true, false, false]);
     });
 
     test("scenes and the document", () {

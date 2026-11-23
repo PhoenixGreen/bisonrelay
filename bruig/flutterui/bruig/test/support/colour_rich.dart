@@ -439,7 +439,8 @@ List<(String, CanvasElement)> colourRichElements() {
   var vector = (fresh(ElementKind.vector) as VectorElement).copyWith(
     shapes: [
       VectorShape(
-        paths: const [],
+        paths: letterPaths,
+        text: VectorText(text: "A", signature: pathSignature(letterPaths)),
         fill: c.next(),
         stroke: c.next(),
         fillFade: c.fade(),
@@ -579,6 +580,16 @@ List<(String, CanvasElement)> colourRichElements() {
     ("Play task", playTask),
   ];
 }
+
+/// letterPaths are a drawn letter's runs. Its signature (pathSignature) is
+/// a hash, most often a number in a colour's range, and never a colour.
+const List<VectorPath> letterPaths = [
+  VectorPath([
+    VectorNode(0, 10),
+    VectorNode(5, 0),
+    VectorNode(10, 10),
+  ]),
+];
 
 /// flippedTile is a tile flipped across from set 0: its word's low 24 bits
 /// are black's, so a walk that took it for a colour would rewrite it.
@@ -864,9 +875,6 @@ List<Color> _ownColours(CanvasElement e) => switch (e) {
       StageElement s => [s.floor, s.wallColor, s.sky],
       SpriteElement s => [if (s.tint case var x?) x],
       TileMapElement t => [
-          for (var s in t.sources)
-            for (var set in s.terrains)
-              for (var terrain in set.terrains) terrain.color,
           for (var l in t.layers)
             if (l.tint case var x?) x,
           if (t.light case var x?) x,
@@ -927,9 +935,10 @@ List<Color> _image(ImageElement i) => [
       for (var s in i.retouch) s.colour,
     ];
 
-/// keptColours are the colours on [e] that are never mapped, with the
-/// numbers beside them that look like colours and are not (a flipped
-/// tile's word, a colour table).
+/// keptColours are the colours on [e] that are never mapped (a terrain's
+/// swatch among them, the editor's like a handle colour), with the numbers
+/// beside them that look like colours and are not (a flipped tile's word, a
+/// drawn text's signature, a colour table).
 List<Object> keptColours(CanvasElement e) => [
       if (e.base.rowColour case var x?) x,
       ...switch (e) {
@@ -941,10 +950,15 @@ List<Object> keptColours(CanvasElement e) => [
         VideoElement v => [v.key.color],
         VectorElement v => [
             v.handleColor,
-            for (var s in v.shapes ?? const <VectorShape>[])
+            for (var s in v.shapes ?? const <VectorShape>[]) ...[
               for (var t in s.erasures) ..._paint(t.paint),
+              if (s.text case var t?) t.signature,
+            ],
           ],
         TileMapElement t => [
+            for (var s in t.sources)
+              for (var set in s.terrains)
+                for (var terrain in set.terrains) terrain.color,
             for (var l in t.layers) ...l.cells.values,
           ],
         _ => const <Object>[],

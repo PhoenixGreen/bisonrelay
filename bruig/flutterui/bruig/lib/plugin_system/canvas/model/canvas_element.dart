@@ -389,15 +389,18 @@ class ElementBase {
   /// the copies of the whole design it keeps for other page shapes ([shared]
   /// and each layout's own), each read as an element of its kind, mapped and
   /// written back in the same form. Only a copy whose colours changed is
-  /// written again. [rowColour] is the editor's, and is left alone.
+  /// written again. The copies are for other shapes of page, so none of
+  /// their colours shows on this one. [rowColour] is the editor's, and is
+  /// left alone.
   ElementBase mapColours(ColourMap f) {
     var p = ColourPass(f);
     var motion = p.part(this.motion, (m) => m.mapColours(f));
-    var shared = p.partOrNone(this.shared, (s) => _mappedDesign(s, f));
+    var elsewhere = f.shownOnlyIf(false);
+    var shared = p.partOrNone(this.shared, (s) => _mappedDesign(s, elsewhere));
     var layouts = p.values(this.layouts, (_, l) {
       var own = l.own;
       if (own == null) return l;
-      var next = _mappedDesign(own, f);
+      var next = _mappedDesign(own, elsewhere);
       return identical(next, own) ? l : l.copyWith(own: next);
     });
     if (!p.changed) return this;

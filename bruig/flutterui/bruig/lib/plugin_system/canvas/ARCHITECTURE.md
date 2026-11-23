@@ -115,6 +115,37 @@ module, each chart type): read back as written, a wrong type at any key
 never throws, a 2 MB string or 400,000-entry list at any key comes back
 bounded. A new kind, or a new sort of one, belongs in those samples.
 
+### Colours
+
+Each thing in the document that holds colours says which they are, in its
+`mapColours` (an element's own in `mapOwnColours`): every colour it holds
+is put through one function (`ColourMap`, `model/colour_map.dart`), told
+whether it shows as things stand (an outline's colour while the outline has
+no width does not). Where nothing comes back changed the very same object is
+answered, all the way up to the document, so the controller's identity
+checks see no edit. Two features use it (`model/canvas_palette.dart`):
+
+- **Replace everywhere** (`CanvasController.replaceColour`) is
+  `apply(document.mapColours(replacing(from, to)))`: every colour with
+  `from`'s red, green and blue, shown or not, fully clear or not, becomes
+  `to`'s, keeping its own opacity. It reaches Design-keyed colours, a copy's
+  own Design value and a 3D character's colours. A colour that is nowhere
+  leaves the document identical, and no undo step is made.
+- **The colours in use** (`canvasColoursOf`, for a table matched to the
+  canvas) counts only colours that show, against the backdrop drawn behind
+  the current scene (its own, where it has one).
+
+Left alone on purpose, each with its reason at the field: a video's chroma
+key and a picture's removal key (they must match the footage), a drawing's
+handle colour, an element's row colour and a terrain's swatch (the
+editor's), an eraser's paint (a mask). `test/canvas_colour_map_test.dart`
+holds the visitor to reaching every colour of a fixture with one of each
+(`test/support/colour_rich.dart`); `test/canvas_colour_coverage_test.dart`
+maps every colour of every sample, built-in canvas and look (and, with
+`CANVAS_LIBRARY` naming a folder, every canvas in it) to a sentinel and
+fails on any colour-shaped number left as it was that is not on its short
+list of known non-colours.
+
 ### Adding an element kind
 
 Eight places, in this order. Four are asked for by the compiler (a `switch`
@@ -130,8 +161,11 @@ are not, and are marked.
    Its colours, in `mapOwnColours` (`model/colour_map.dart`): every colour
    of its own fields, and of the specs it holds, put through the function
    and told whether it shows, the element itself coming back where none
-   changed; one with no colour answers itself. *Asked for: the method is
-   abstract.*
+   changed; one with no colour answers itself. A number that looks like a
+   colour and is not (a packed word, a hash), or a colour that is the
+   editor's or must match footage, is left out, with the reason at the
+   field. *Asked for: the method is abstract;
+   `test/canvas_colour_coverage_test.dart` says if a field is missed.*
 3. **Reading it**: a case in `elementFromJson`
    (`model/element_reading.dart`).
 4. **Making one**: its starting size in `defaultSizeFor` and a new one in

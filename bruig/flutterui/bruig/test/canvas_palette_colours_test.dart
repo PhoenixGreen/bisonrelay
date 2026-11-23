@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -41,6 +43,38 @@ void main() {
     expect(
         canvasColours(const Color(0xFFFFFFFF), const []).ink.computeLuminance(),
         lessThan(0.1));
+  });
+
+  test("only what shows counts: not a row's colour, nor stripes put away", () {
+    const red = Color(0xFFE02020);
+    var c = canvasColours(_ground, [
+      ..._dressed(),
+      for (var i = 0; i < 6; i++)
+        ShapeElement(ElementBase(id: "r$i", rowColour: red.toARGB32()),
+            fill: _gold),
+      for (var i = 0; i < 6; i++)
+        TableElement(ElementBase(id: "z$i"), zebra: false, zebraFill: red),
+    ]);
+    expect(c.accent, _gold);
+  });
+
+  test("a table on a scene with a backdrop of its own matches that one", () {
+    // The document's ground is light; the scene's own is dark.
+    var document = CanvasDocument(
+      background: CanvasBackground(
+          spec: ProceduralSpec(background: const Color(0xFFFFFFFF))),
+      scenes: [
+        CanvasScene(
+            id: "a",
+            elements: _dressed(),
+            background:
+                CanvasBackground(spec: ProceduralSpec(background: _ground))),
+        const CanvasScene(id: "b"),
+      ],
+    );
+    var table = newElement(ElementKind.table, document) as TableElement;
+    expect(table.cellSpec.color, _ink);
+    expect(table.headerFill, _gold);
   });
 
   test("a new table arrives in the canvas's colours", () {

@@ -262,8 +262,7 @@ CanvasElement newElement(
                 ["Second", "185", "+11%"],
                 ["Third", "143", "-2%"],
               ]),
-          canvasColours(
-              document.background.spec.background, document.elements));
+          canvasColoursOf(document));
 
     case ElementKind.button:
       return ButtonElement(base,

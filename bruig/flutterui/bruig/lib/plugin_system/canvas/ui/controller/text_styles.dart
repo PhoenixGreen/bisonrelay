@@ -5,12 +5,13 @@ part of '../canvas_controller.dart';
 
 extension CanvasTextStyles on CanvasController {
   /// replaceColour makes every use of [from] in the document [to], as one
-  /// change, keeping each use's opacity.
-  void replaceColour(Color from, Color to) {
-    var next =
-        CanvasDocument.fromJson(recoloured(_document.toJson(), from, to));
-    apply(next);
-  }
+  /// change, keeping each use's opacity (see replacing): every scene, the
+  /// master, the cast, text styles, sheets, keyed Design colours and a 3D
+  /// character's, shown or not. What is the editor's or must match footage
+  /// is left alone (see mapColours). Where nothing matches the document is
+  /// the very same, and apply makes no undo step of it.
+  void replaceColour(Color from, Color to) =>
+      apply(_document.mapColours(replacing(from, to)));
 
   List<NamedTextStyle> get textStyles => _document.textStyles;
 

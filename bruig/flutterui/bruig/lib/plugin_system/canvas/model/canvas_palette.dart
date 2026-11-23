@@ -1,124 +1,31 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
-// canvas_palette.dart is one colour changed everywhere a document uses it,
-// by walking the document's JSON (the saved colours' Replace everywhere; see
-// CanvasController.replaceColour), and reading the colours a canvas already
-// uses. Colours stay plain values on each element.
+// canvas_palette.dart is one colour changed everywhere a document uses it
+// (the saved colours' Replace everywhere; see CanvasController.replaceColour),
+// and reading the colours a canvas already uses. Both go through the colour
+// visitor (colour_map.dart): each thing that holds colours says which they
+// are, so neither guesses from saved numbers.
 
-/// _notColours are keys whose numbers are never colours, however much they
-/// look like one: frames, lengths, counts, a chart's numbers, a counter's.
-///
-/// Replacing a colour walks the saved JSON and takes any whole number of
-/// 0x01000000 or more for a colour unless its key is here. So a new setting
-/// that can hold a number that large, and is not a colour, must be added,
-/// or Replace everywhere may change it. test/canvas_palette_keys_test.dart fails
-/// when one turns up in the sample elements.
-const _notColours = {
-  "frame",
-  "frames",
-  "at",
-  "seed",
-  "from",
-  "to",
-  "count",
-  "values",
-  "value",
-  "length",
-  "start",
-  "end",
-  "width",
-  "height",
-  "w",
-  "h",
-  "x",
-  "y",
-  "rows",
-  "exportWidth",
-  "loopFrames",
-  "passFrames",
-  "pauseAt",
-  "pauseFor",
-  "series",
-  "data",
-  "estimated",
-  "track",
-  "keys",
-  "vb",
-  "nodes",
-  "points",
-  "envelope",
-  "textStyles",
-  "cues",
-  "decimals",
-  "rate",
-  "params",
-};
-
-/// _rgb is a colour's red, green and blue, without its opacity.
-int _rgb(int argb) => argb & 0xFFFFFF;
-
-/// _looksLikeColour is whether [v] could be a colour: an int with opacity.
-bool _looksLikeColour(Object? v) =>
-    v is int && v >= 0x01000000 && v <= 0xFFFFFFFF;
-
-/// _ruledOut is whether what [map] holds under [key] is not a colour.
-///
-/// "to" is a number nearly everywhere (a counter's, a range's), and a
-/// colour in one place: a fade's second colour (GradientSpec), which is
-/// known by the angle saved beside it.
-bool _ruledOut(String key, Map<String, dynamic> map) {
-  if (key == "to" && map.containsKey("angle")) return false;
-  return _notColours.contains(key);
-}
-
-/// _walk visits every colour-shaped number in [json] that is not under a
-/// key that rules it out, handing it to [visit] and putting back whatever
-/// that returns.
-Object? _walk(Object? json, int Function(int) visit, {bool skip = false}) {
-  if (json is Map<String, dynamic>) {
-    return {
-      for (var e in json.entries)
-        e.key: _walk(e.value, visit, skip: _ruledOut(e.key, json)),
-    };
-  }
-  if (json is List) {
-    return [for (var v in json) _walk(v, visit, skip: skip)];
-  }
-  if (!skip && _looksLikeColour(json)) return visit(json as int);
-  return json;
-}
-
-/// colourKeysOf is the keys under which [json] holds a number that
-/// [recoloured] would take for a colour. For the test that holds
-/// [_notColours] to being complete: a new setting holding a large whole
-/// number shows up here, and is either a colour or belongs in that list.
-Set<String> colourKeysOf(Object? json, {String key = "", bool skip = false}) {
-  if (json is Map<String, dynamic>) {
-    return {
-      for (var e in json.entries)
-        ...colourKeysOf(e.value, key: e.key, skip: _ruledOut(e.key, json)),
-    };
-  }
-  if (json is List) {
-    return {for (var v in json) ...colourKeysOf(v, key: key, skip: skip)};
-  }
-  return {if (!skip && _looksLikeColour(json)) key};
-}
-
-/// recoloured is [json] -- a whole document's -- with every use of [from]
-/// made [to]. A use is any colour with [from]'s red, green and blue,
-/// whatever its opacity, which is kept.
-Map<String, dynamic> recoloured(
-    Map<String, dynamic> json, Color from, Color to) {
-  var old = _rgb(colorToJson(from));
-  var next = _rgb(colorToJson(to));
-  if (old == next) return json;
-  return _walk(json, (v) => _rgb(v) == old ? (v & 0xFF000000) | next : v)
-      as Map<String, dynamic>;
+/// replacing is the change Replace everywhere makes: every colour with
+/// [from]'s red, green and blue becomes [to]'s, each keeping its own
+/// opacity, so a half-clear use stays half clear. A fully clear use is
+/// replaced too, and stays clear: it is still the colour the person chose,
+/// and shows as the new one once it is made visible. So is a colour that is
+/// not showing (an outline's while the outline is off). [from]'s opacity
+/// and [to]'s play no part.
+ColourMap replacing(Color from, Color to) {
+  var old = from.toARGB32() & 0xFFFFFF;
+  var next = to.toARGB32() & 0xFFFFFF;
+  return (Color c, {required bool shown}) {
+    var v = c.toARGB32();
+    return v & 0xFFFFFF == old ? Color((v & 0xFF000000) | next) : c;
+  };
 }
 
 /// CanvasColours is what a canvas is already dressed in: the [ground]
@@ -131,24 +38,42 @@ class CanvasColours {
   const CanvasColours(this.ground, this.ink, this.accent);
 }
 
+/// canvasColoursOf is what the canvas on screen in [d] is dressed in: the
+/// backdrop drawn behind it (a scene's own, where it has one) and its
+/// elements, less [except] (the table being matched, which should not
+/// match itself).
+CanvasColours canvasColoursOf(CanvasDocument d, {String? except}) =>
+    canvasColours(d.drawnBackground.spec.background, [
+      for (var e in d.elements)
+        if (e.id != except) e
+    ]);
+
 /// canvasColours reads [ground] -- the background -- and the colours
-/// [elements] use most into a ground, an ink and an accent.
+/// [elements] use most into a ground, an ink and an accent. Only colours
+/// that show are counted (see ColourMap), and only those meant to be seen:
+/// a faint tint, under three quarters opaque, is a shade, not a choice.
 CanvasColours canvasColours(Color ground, Iterable<CanvasElement> elements) {
   var counts = <int, int>{};
+  Color count(Color c, {required bool shown}) {
+    var v = c.toARGB32();
+    if (shown && ((v >> 24) & 0xFF) >= 0xC0) {
+      var rgb = v | 0xFF000000;
+      counts[rgb] = (counts[rgb] ?? 0) + 1;
+    }
+    return c;
+  }
+
   for (var e in elements) {
-    _walk(e.toJson(), (v) {
-      // Only colours meant to be seen: a faint tint is a shade, not a choice.
-      if (((v >> 24) & 0xFF) >= 0xC0) {
-        var rgb = _rgb(v) | 0xFF000000;
-        counts[rgb] = (counts[rgb] ?? 0) + 1;
-      }
-      return v;
-    });
+    e.mapColours(count);
   }
   var groundLight = ground.computeLuminance();
-  var byUse = counts.entries.toList()..sort((a, b) => b.value - a.value);
+  // Most used first; of two used alike, the one met first.
+  var byUse = [...counts.entries.indexed]..sort((a, b) {
+      var more = b.$2.value - a.$2.value;
+      return more != 0 ? more : a.$1 - b.$1;
+    });
   Color? ink, accent;
-  for (var entry in byUse) {
+  for (var (_, entry) in byUse) {
     var c = Color(entry.key);
     var light = c.computeLuminance();
     // Words have to be read against the ground.

@@ -345,14 +345,9 @@ List<PanelBit> tableBits(
             icon: Icons.format_paint_outlined,
             label: "Match the canvas",
             onPressed: () {
-              var d = controller.document;
               begin();
               write(tableInColours(
-                  e,
-                  canvasColours(d.background.spec.background, [
-                    for (var other in d.elements)
-                      if (other.id != e.id) other
-                  ])));
+                  e, canvasColoursOf(controller.document, except: e.id)));
               commit();
             },
           ),

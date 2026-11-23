@@ -146,11 +146,6 @@ class TileSource {
         spacing: math.max(0, spacing ?? this.spacing),
       );
 
-  TileSource mapColours(ColourMap f) {
-    var next = mappedList(terrains, (t) => t.mapColours(f));
-    return identical(next, terrains) ? this : copyWith(terrains: next);
-  }
-
   Map<String, dynamic> toJson() => {
         "sheet": sheet,
         if (name.isNotEmpty) "name": name,
@@ -219,16 +214,13 @@ const List<(int, int)> tagStep = [(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 
 /// sample tile that is all of it.
 class Terrain {
   final String name;
+
+  /// color is the swatch that marks the terrain in the tile map's settings;
+  /// it is never drawn on the canvas. Not put through mapColours: like a
+  /// drawing's handle colour, it is the editor's, not the design's.
   final Color color;
   final int? sample;
   const Terrain(this.name, this.color, {this.sample});
-
-  /// mapColours maps the terrain's colour, never shown: it marks the terrain
-  /// in its settings, and is not drawn on the canvas.
-  Terrain mapColours(ColourMap f) {
-    var next = f(color, shown: false);
-    return next == color ? this : Terrain(name, next, sample: sample);
-  }
 
   Map<String, dynamic> toJson() => {"name": name, "color": colorToJson(color), if (sample != null) "sample": sample};
 
@@ -259,11 +251,6 @@ class TerrainSet {
   TerrainSet copyWith({String? name, TerrainMode? mode, List<Terrain>? terrains, Map<int, List<int>>? tags}) =>
       TerrainSet(name ?? this.name,
           mode: mode ?? this.mode, terrains: terrains ?? this.terrains, tags: tags ?? this.tags);
-
-  TerrainSet mapColours(ColourMap f) {
-    var next = mappedList(terrains, (t) => t.mapColours(f));
-    return identical(next, terrains) ? this : copyWith(terrains: next);
-  }
 
   /// tagged is this set with [tile]'s [place] set to terrain [t]; a tile with
   /// every place -1 is untagged.
@@ -751,18 +738,17 @@ class TileMapElement extends CanvasElement {
           light: noLight ? null : (light ?? this.light),
           lightTo: noLight || noLightTo ? null : (lightTo ?? this.lightTo));
 
-  /// mapOwnColours maps the tile sets' terrain colours, the layers' tints and
-  /// the light laid over the map (none is unlit, and stays none).
+  /// mapOwnColours maps the layers' tints and the light laid over the map
+  /// (none is unlit, and stays none). A terrain's swatch is the editor's and
+  /// is left alone (see Terrain.color).
   @override
   TileMapElement mapOwnColours(ColourMap f) {
     var p = ColourPass(f);
-    var sources = p.list(this.sources, (s) => s.mapColours(f));
     var layers = p.list(this.layers, (l) => l.mapColours(f));
     var light = p.orNone(this.light);
     var lightTo = p.orNone(this.lightTo);
     if (!p.changed) return this;
-    return copyWith(
-        sources: sources, layers: layers, light: light, lightTo: lightTo);
+    return copyWith(layers: layers, light: light, lightTo: lightTo);
   }
 
   TileMapElement withLayer(int i, TileLayer layer) =>

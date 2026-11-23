@@ -34,13 +34,7 @@ extension _TableWholePanel on _TableDesignState {
               tooltip:
                   "Colours taken from the canvas's background and what is on it",
               onPressed: () {
-            var d = c.document;
-            _set(tableInColours(
-                t,
-                canvasColours(d.background.spec.background, [
-                  for (var other in d.elements)
-                    if (other.id != t.id) other
-                ])));
+            _set(tableInColours(t, canvasColoursOf(c.document, except: t.id)));
           }),
         ], flex: [
           3,
