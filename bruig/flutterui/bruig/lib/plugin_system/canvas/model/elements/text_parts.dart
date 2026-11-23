@@ -110,6 +110,15 @@ class PartHighlight {
   PartHighlight withEvenPad(double pad) =>
       copyWith(padLeft: pad, padTop: pad, padRight: pad, padBottom: pad);
 
+  /// scaledBy sizes the padding and corners by [by].
+  PartHighlight scaledBy(double by) => copyWith(
+        padLeft: padLeft * by,
+        padTop: padTop * by,
+        padRight: padRight * by,
+        padBottom: padBottom * by,
+        radius: radius * by,
+      );
+
   Map<String, dynamic> toJson() => {
         "color": colorToJson(color),
         if (fade != null) "fade": fade!.toJson(),
@@ -178,6 +187,10 @@ class PartUnderline {
         away: away ?? this.away,
       );
 
+  /// scaledBy sizes the line and its distance under the letters by [by].
+  PartUnderline scaledBy(double by) =>
+      copyWith(width: width * by, away: away * by);
+
   /// mapColours maps the line's colour (none is the words', and stays none)
   /// and its fade.
   PartUnderline mapColours(ColourMap f) {
@@ -228,6 +241,9 @@ class TextPartAnimation {
   final TextDrawSpec draw;
   final ChartEase ease;
 
+  /// effect is how a cutting preset cuts this part's words (see EffectSpec).
+  final EffectSpec effect;
+
   /// marks is whether this part's highlight and underline are drawn on, with
   /// their own timing, so a word can arrive and then be underlined.
   final bool marks;
@@ -243,6 +259,7 @@ class TextPartAnimation {
     this.echo = const TextEchoSpec(),
     this.draw = const TextDrawSpec(),
     this.ease = ChartEase.easeOut,
+    this.effect = const EffectSpec(),
     this.marks = false,
     this.markOffset = 0,
     this.markLength = 0,
@@ -261,6 +278,7 @@ class TextPartAnimation {
         echo: echo,
         draw: draw,
         ease: ease,
+        effect: effect,
       );
 
   /// fromAnimation takes back settings-panel changes to [asAnimation],
@@ -272,6 +290,7 @@ class TextPartAnimation {
         echo: a.echo,
         draw: a.draw,
         ease: a.ease,
+        effect: a.effect,
       );
 
   TextPartAnimation copyWith({
@@ -283,6 +302,7 @@ class TextPartAnimation {
     TextEchoSpec? echo,
     TextDrawSpec? draw,
     ChartEase? ease,
+    EffectSpec? effect,
     bool? marks,
     int? markOffset,
     int? markLength,
@@ -296,6 +316,7 @@ class TextPartAnimation {
         echo: echo ?? this.echo,
         draw: draw ?? this.draw,
         ease: ease ?? this.ease,
+        effect: effect ?? this.effect,
         marks: marks ?? this.marks,
         markOffset: markOffset ?? this.markOffset,
         markLength: markLength ?? this.markLength,
@@ -315,6 +336,7 @@ class TextPartAnimation {
         if (echo.toJson().isNotEmpty) "echo": echo.toJson(),
         if (draw.toJson().isNotEmpty) "draw": draw.toJson(),
         if (ease != _defaults.ease) "ease": ease.name,
+        if (effect != _defaults.effect) "effect": effect.toJson(),
         if (marks) "marks": true,
         if (markOffset != _defaults.markOffset) "markOffset": markOffset,
         if (markLength != _defaults.markLength) "markLength": markLength,
@@ -334,6 +356,9 @@ class TextPartAnimation {
             ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
             : const TextDrawSpec(),
         ease: ChartEase.fromName(jsonStr(json["ease"])),
+        effect: json["effect"] is Map<String, dynamic>
+            ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
+            : const EffectSpec(),
         marks: jsonBool(json["marks"], false),
         markOffset: jsonInt(json["markOffset"], _defaults.markOffset),
         markLength:
@@ -520,6 +545,14 @@ class TextPart {
         highlight: clearHighlight ? null : (highlight ?? this.highlight),
         underline: clearUnderline ? null : (underline ?? this.underline),
         animation: animation ?? this.animation,
+      );
+
+  /// scaledBy sizes the part's outline and marks by [by]; its own size is a
+  /// share of the element's, which scales already.
+  TextPart scaledBy(double by) => copyWith(
+        outlineWidth: outlineWidth == null ? null : outlineWidth! * by,
+        highlight: highlight?.scaledBy(by),
+        underline: underline?.scaledBy(by),
       );
 
   /// mapColours maps the part's own colour and outline colour (none is the

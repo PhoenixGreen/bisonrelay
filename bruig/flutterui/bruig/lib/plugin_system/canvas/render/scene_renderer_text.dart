@@ -115,8 +115,9 @@ void _paintTextBody(
     if (e.wrap.on &&
         blocked.isNotEmpty &&
         wrapFits(words, spec, inner, blocked, e.wrap)) {
-      // Marks and arrival apply as a block: set line by line, there are no
-      // pieces to move. Outline and fill as everywhere (outlineSpecFor).
+      // The arrival applies as a block, set line by line, there being no
+      // pieces to move; marks line by line. Outline and fill as everywhere
+      // (outlineSpecFor).
       var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
           parts: drawn,
           outlineSpec: outlineSpecFor(spec,
@@ -140,6 +141,8 @@ void _paintTextBody(
         var written = stroke ? p : null;
         var fillAlpha =
             stroke && animation.draw.start == TextDrawStart.fadeText ? p : null;
+        paintWrappedMarks(canvas, wrapped, words, spec, drawn,
+            behind: true, timings: timings);
         if (!spec.fill.on) {
           paintWrapped(canvas, wrapped, spec,
               written: written, fillAlpha: fillAlpha);
@@ -156,6 +159,8 @@ void _paintTextBody(
                   written: written,
                   fillAlpha: fillAlpha));
         }
+        paintWrappedMarks(canvas, wrapped, words, spec, drawn,
+            behind: false, timings: timings);
         if (frameOf.alpha < 1) canvas.restore();
       }
       for (var r = 0; r < frameOf.depth; r++) {
@@ -247,8 +252,8 @@ TextSpec drawnTextSpec(TextElement e, Rect bounds) {
   // columns' room, which is where the text goes.
   var column = Size(e.columns.columnWidth(inner.width), inner.height);
   return spec.copyWith(
-      fontSize:
-          fitFontSize(e.displayText, spec, column, columns: e.columns.count));
+      fontSize: fitFontSize(e.displayText, spec, column,
+          columns: e.columns.count, parts: e.drawnParts));
 }
 
 /// _arrival is the animation a text element plays on this frame and how far

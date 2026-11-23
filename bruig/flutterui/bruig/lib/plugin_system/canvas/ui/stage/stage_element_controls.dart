@@ -250,6 +250,13 @@ extension StageElementControls on CanvasStageState {
       // A ring of boxes has no first box to read from: refused.
       return;
     }
+    // A box shows one box's overflow, and a second's would be drawn
+    // nowhere; text on a line has no box to show it in: both refused.
+    var taking = onto == null ? null : flowSourceOf(onto, document);
+    if (onto != null &&
+        (onto.curve != null || (taking != null && taking.id != from.id))) {
+      return;
+    }
 
     controller.beginInteraction();
     controller.replaceElement(from.copyWith(flowTo: onto?.id ?? ""));

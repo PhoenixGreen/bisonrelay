@@ -30,7 +30,8 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
     var curve = _curveFor(element, doc, frame);
     if (curve != null) {
       var glyphs = placeTextOnPath(
-          element.displayText, element.textSpec, curve, element.curve!);
+          element.displayText, element.textSpec, curve, element.curve!,
+          parts: element.drawnParts);
       var box = textOnPathBounds(glyphs, element.curve!);
       // No letters placed (empty, or slid off the end): the line itself.
       return box ?? _boundsOfPoints(curve) ?? moved();

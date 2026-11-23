@@ -337,10 +337,12 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
 }
 
 /// _partPreset picks a part's preset with its designed curve (see
-/// TextAnimationPreset.wants): a bounce with ease-out is just a slide.
+/// TextAnimationPreset.wants), a bounce with ease-out being just a slide,
+/// and its designed cut, as the element's own arrival does.
 TextPartAnimation _partPreset(
         TextPartAnimation animation, TextAnimationPreset preset) =>
-    animation.copyWith(preset: preset, ease: preset.wants);
+    animation.copyWith(
+        preset: preset, ease: preset.wants, effect: preset.effect);
 
 /// _animationBits are the preset-dependent settings (drawn mark, echo,
 /// timing), shared by element and parts. [live] writes; [done] commits, so

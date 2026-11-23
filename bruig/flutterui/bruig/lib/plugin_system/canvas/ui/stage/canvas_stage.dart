@@ -1274,6 +1274,11 @@ class CanvasStageState extends State<CanvasStage>
       item: item,
       rect: _toStageRect(box),
       pivot: _toStage(bounds.center),
+      // Turned as it is drawn on this frame, keys and clips and all.
+      turn: element.movedRotationAt(controller.frame, document,
+              live: controller.liveMotion) *
+          math.pi /
+          180,
       scale: _scale,
       showWords: shows,
       clickAt: edit.click,

@@ -67,6 +67,10 @@ class CanvasTextEditor extends StatefulWidget {
   /// middle of [rect].
   final Offset? pivot;
 
+  /// turn is how far the element is turned where it is drawn, in radians:
+  /// with its keys and clips on this frame. Null is its resting turn.
+  final double? turn;
+
   /// scale is document units to stage pixels.
   final double scale;
 
@@ -89,6 +93,7 @@ class CanvasTextEditor extends StatefulWidget {
     required this.rect,
     required this.scale,
     this.pivot,
+    this.turn,
     this.showWords = true,
     this.clickAt,
     required this.onChanged,
@@ -275,7 +280,7 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
       width: rect.width + caretRoom,
       height: fills ? rect.height : null,
       child: Transform.rotate(
-        angle: e.rotationRadians,
+        angle: widget.turn ?? e.rotationRadians,
         origin: pivot == null ? null : pivot - rect.center,
         child: field,
       ),

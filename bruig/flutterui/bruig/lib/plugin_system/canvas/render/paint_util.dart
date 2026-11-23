@@ -476,27 +476,44 @@ double paintTextInBox(
 /// fitFontSize is the largest size at which [text] fits inside [box], for
 /// autoSize: a bisection, since wrapped height steps as words change lines.
 /// [columns] is how many columns it flows into; [box] is one column's box.
+/// [parts] are the runs it is drawn with, measured since a part may be
+/// another size.
 /// _fits keeps fitFontSize's answers. An auto-sized text asked it on every
 /// frame, and each answer is fourteen paragraphs laid out and looked up.
-final _fits = <(String, TextSpec, Size, int), double>{};
+final _fits = <(String, TextSpec, Size, int, String), double>{};
 
 /// _fitCap is the number of answers kept: one a text and box size.
 const _fitCap = 1024;
 
-double fitFontSize(String text, TextSpec spec, Size box, {int columns = 1}) {
-  var key = (text, spec, box, columns);
+double fitFontSize(String text, TextSpec spec, Size box,
+    {int columns = 1, List<TextPart> parts = const []}) {
+  var key = (text, spec, box, columns, _sizingOf(parts));
   if (_fits[key] case var hit?) return hit;
   if (_fits.length >= _fitCap) _fits.remove(_fits.keys.first);
-  return _fits[key] = _fitFontSize(text, spec, box, columns);
+  return _fits[key] = _fitFontSize(text, spec, box, columns, parts);
 }
 
-double _fitFontSize(String text, TextSpec spec, Size box, int columns) {
+/// _sizingOf is what in [parts] can change how big the words come out, as a
+/// key: a list is a new one on every frame, so it cannot be one itself.
+String _sizingOf(List<TextPart> parts) => [
+      for (var p in parts)
+        if (p.scale != null ||
+            p.family != null ||
+            p.weight != null ||
+            p.italic != null)
+          "${p.unit.index} ${p.from} ${p.to} ${p.scale} ${p.family} "
+              "${p.weight} ${p.italic}",
+    ].join(";");
+
+double _fitFontSize(
+    String text, TextSpec spec, Size box, int columns, List<TextPart> parts) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) return spec.fontSize;
   var count = math.max(1, columns);
   var low = 4.0, high = box.height * 2 * count;
   for (var i = 0; i < 14; i++) {
     var mid = (low + high) / 2;
-    var p = layoutText(text, spec.copyWith(fontSize: mid), maxWidth: box.width);
+    var p = layoutText(text, spec.copyWith(fontSize: mid),
+        maxWidth: box.width, parts: parts);
     if (p.width > box.width + 0.5) {
       high = mid;
       continue;

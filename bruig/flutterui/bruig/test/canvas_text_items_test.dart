@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -240,6 +241,19 @@ void main() {
       expect(bodyIsBlock(slotted.copyWith(text: "")), isFalse);
     });
 
+    test("and a slot is as tall as its words are drawn, parts and all", () {
+      // The block was measured as plain words and drawn with the parts in
+      // it: a word at twice the size was cut off at the block's foot.
+      var card = _card(items: const [])
+          .copyWith(slot: TextSlot.topLeft, text: "Big and small", parts: [
+        const TextPart(from: 1, to: 1, scale: 2),
+      ]);
+      var body = textBodyRect(card, card.bounds)!;
+      var drawn = layoutText(card.displayText, drawnTextSpec(card, card.bounds),
+          maxWidth: card.box.inner(card.bounds).width, parts: card.drawnParts);
+      expect(body.height, closeTo(drawn.height, 0.5));
+    });
+
     test("and the slot survives being saved", () {
       var card = _card().copyWith(slot: TextSlot.bottomRight);
       var back =
@@ -306,6 +320,47 @@ void main() {
         TextItem(id: "p", icon: const TextIcon(assetId: "a", size: 40)),
       ]);
       expect((card.scaledBy(2) as TextElement).items.single.icon!.size, 80);
+    });
+
+    test("and the marks, the wrap's gap and the spacing on a line", () {
+      // A design laid out on another page shape scales its sizes: whatever
+      // is measured in design units has to scale with them, or a highlight
+      // is a fat band round small words.
+      var card = _card(items: [
+        TextItem(
+            id: "p",
+            icon: const TextIcon(
+                assetId: "a",
+                box: BoxSpec(padding: 4),
+                underline: PartUnderline(width: 2, away: 3))),
+      ]).copyWith(
+        highlight: const PartHighlight(padLeft: 10, radius: 4),
+        underline: const PartUnderline(width: 3, away: 2),
+        wrap: const TextWrap(on: true, gap: 12),
+        curve: const TextOnCurve(elementId: "l", spacing: 5),
+        parts: const [
+          TextPart(
+              outlineWidth: 2,
+              highlight: PartHighlight(padTop: 6),
+              underline: PartUnderline(width: 4)),
+        ],
+      );
+      var twice = card.scaledBy(2) as TextElement;
+      expect(twice.highlight!.padLeft, 20);
+      expect(twice.highlight!.radius, 8);
+      expect(twice.underline!.width, 6);
+      expect(twice.underline!.away, 4);
+      expect(twice.wrap.gap, 24);
+      expect(twice.curve!.spacing, 10);
+      expect(twice.curve!.elementId, "l", reason: "the same line");
+      var part = twice.parts.single;
+      expect(part.outlineWidth, 4);
+      expect(part.highlight!.padTop, 12);
+      expect(part.underline!.width, 8);
+      var icon = twice.items.single.icon!;
+      expect(icon.box.pad.left, 8);
+      expect(icon.underline!.width, 4);
+      expect(icon.underline!.away, 6);
     });
 
     test("but an element that is fractions of its box is left alone", () {
@@ -657,6 +712,20 @@ void main() {
       var after = controller.document.elementById("c") as TextElement;
       expect(after.text, "Burn it");
       expect(after.items.last.text, "Dash");
+    });
+  });
+
+  group("what the library keeps", () {
+    test("a picture only a piece's letters are painted with", () {
+      // A new piece takes the element's type, picture fill and all; once the
+      // element's own letters go back to a colour, the piece is the only
+      // thing still using the picture, and the sweep must not take it.
+      const picture = TextFill(kind: TextFillKind.image, assetId: "p");
+      var e = _card(items: const [])
+          .copyWith(textSpec: const TextSpec(fontSize: 30, fill: picture));
+      e = e.copyWith(items: [TextItem.fresh(TextSlot.topLeft, e.textSpec)]);
+      e = e.copyWith(textSpec: e.textSpec.copyWith(fill: const TextFill()));
+      expect(e.assetIds, contains("p"));
     });
   });
 }

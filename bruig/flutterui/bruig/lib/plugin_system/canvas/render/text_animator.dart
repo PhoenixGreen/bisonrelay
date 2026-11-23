@@ -411,17 +411,21 @@ bool movesAsOneBlock(TextAnimation animation) =>
 Rect motionRoom(Rect box, TextAnimation animation) {
   if (!animation.on || box.isEmpty) return box;
   var preset = animation.preset;
+  // The way it comes, turned to a chosen direction (TextAnimation.spec).
+  var way = animation.spec;
 
   // Where it comes in from, both sides: the exit plays the preset backwards.
-  var dx = box.width * preset.dx.abs();
-  var dy = box.height * preset.dy.abs();
+  var dx = box.width * way.dx.abs();
+  var dy = box.height * way.dy.abs();
 
-  // And how far an echo's or a trail's copies are strung out.
+  // And how far an echo's or a trail's copies are strung out: a trail's the
+  // way it comes, an echo's its preset's own (see _paintPiece).
   if (preset.motion == TextMotion.echo || preset.motion == TextMotion.trail) {
+    var fan = preset.motion == TextMotion.trail ? way : preset.spec;
     var spread =
         animation.echo.copies * animation.echo.spacing * box.height * 3;
-    dx += preset.dx.abs() * spread;
-    dy += preset.dy == 0 ? spread : preset.dy.abs() * spread;
+    dx += fan.dx.abs() * spread;
+    dy += fan.dy == 0 ? spread : fan.dy.abs() * spread;
   }
 
   var room = Rect.fromLTRB(
@@ -727,17 +731,22 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   if (preset.motion == TextMotion.echo || preset.motion == TextMotion.trail) {
     var spec2 = echo ?? const TextEchoSpec();
     var trail = preset.motion == TextMotion.trail;
+    // A trail comes the way the words do, turned to a chosen direction; an
+    // echo's fan is its preset's own, a direction meaning nothing to it
+    // (TextAnimation.arrivalDirected).
+    var dx = trail ? (motion?.dx ?? preset.dx) : preset.dx;
+    var dy = trail ? (motion?.dy ?? preset.dy) : preset.dy;
     // A trail's copies lie back along its path, so its step is the distance
     // travelled; an echo's is a fixed fan.
     var step = trail
-        ? Offset(piece.box.width * preset.dx * (1 - p),
-                piece.box.height * preset.dy * (1 - p)) *
+        ? Offset(piece.box.width * dx * (1 - p),
+                piece.box.height * dy * (1 - p)) *
             (spec2.spacing / math.max(1, spec2.copies))
         : Offset(
-            preset.dx * box.height * spec2.spacing,
-            preset.dy == 0
+            dx * box.height * spec2.spacing,
+            dy == 0
                 ? box.height * spec2.spacing
-                : preset.dy * box.height * spec2.spacing,
+                : dy * box.height * spec2.spacing,
           );
     // An echo's turns flag means copies on both sides ("Both ways").
     var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];

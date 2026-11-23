@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -104,14 +105,43 @@ void main() {
       expect(second.parts, isNotEmpty,
           reason: "the runs that fall in this box came with the words");
 
-      // The bold run names the words it actually covers here.
-      var bold = second.parts.firstWhere((p) => p.weight == 700);
+      // The bold run names the words it actually covers here. Not the
+      // heading's: at its own size the heading takes two lines, the second
+      // in this box.
+      var bold =
+          second.parts.firstWhere((p) => p.weight == 700 && p.scale == null);
       var range = rangeOf(second.text, bold)!;
       expect(second.text.substring(range.$1, range.$2), contains("bold"));
 
       // And what the first box drew is the head's own list, unmoved.
       expect(flowFor(a, doc, const Rect.fromLTWH(0, 0, 300, 22), spec).parts,
           parts);
+    });
+
+    test("a heading in the first box loses no words between the two", () {
+      // What the first box draws is laid out with its parts, a heading at
+      // nearly twice the size; what it passes on was measured as plain words,
+      // so it passed on less than it could not show and the lines between
+      // were drawn nowhere.
+      const heading = [TextPart(from: 1, to: 4, scale: 1.8)];
+      var a = _box("a", text: _lorem, flowTo: "b", height: 44)
+          .copyWith(documentParts: heading);
+      var b = _box("b");
+      var doc = CanvasDocument(elements: [a, b]);
+
+      // Where the first box's last whole line ends, laid out as it is drawn.
+      var drawn = layoutText(_lorem, spec,
+          maxWidth: 300, fillWidth: true, parts: a.drawnParts);
+      var lines = drawn.computeLineMetrics();
+      var shown = columnRuns(lines, 44, 1).single.$2;
+      expect(shown, inInclusiveRange(1, lines.length - 1),
+          reason: "otherwise this test is not asking anything");
+      var end = drawn
+          .getPositionForOffset(Offset(1000, lines[shown - 1].baseline))
+          .offset;
+
+      var second = flowFor(b, doc, room, spec);
+      expect(second.text.trimLeft(), _lorem.substring(end).trimLeft());
     });
 
     test("the head decides whether a box starts on a blank line", () {

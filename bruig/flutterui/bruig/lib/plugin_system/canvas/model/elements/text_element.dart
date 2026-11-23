@@ -320,6 +320,8 @@ class TextElement extends CanvasElement {
   Set<String> get assetIds => {
         for (var item in items) ...{
           if (item.icon?.assetId.isNotEmpty ?? false) item.icon!.assetId,
+          // A piece's letters can be painted with a picture of their own.
+          if (item.spec.fill.assetId.isNotEmpty) item.spec.fill.assetId,
           ...item.box.assetIds,
           ...?item.icon?.box.assetIds,
         },
@@ -349,14 +351,20 @@ class TextElement extends CanvasElement {
   @override
   bool get scalesInside => true;
 
-  /// scaledBy scales the words, pieces and box by [by], but not a curve's
-  /// offset (a fraction of the line) or the column count.
+  /// scaledBy scales the words, pieces, box, marks and gaps by [by], but not
+  /// a curve's offset (a fraction of the line) or the column count.
   @override
   CanvasElement scaledBy(double by) => copyWith(
         textSpec: textSpec.scaledBy(by),
         box: box.scaledBy(by),
         items: [for (var item in items) item.scaledBy(by)],
         columns: columns.copyWith(gap: columns.gap * by),
+        highlight: highlight?.scaledBy(by),
+        underline: underline?.scaledBy(by),
+        parts: [for (var part in parts) part.scaledBy(by)],
+        documentParts: [for (var part in documentParts) part.scaledBy(by)],
+        wrap: wrap.copyWith(gap: wrap.gap * by),
+        curve: curve?.copyWith(spacing: curve!.spacing * by),
       );
 
   @override

@@ -443,14 +443,7 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
   }
 
   for (var (i, line) in wrapped.lines.indexed) {
-    var room = line.box.width - line.painter.width;
-    var dx = switch (spec.align) {
-      TextAlignSpec.left => 0.0,
-      TextAlignSpec.justify => 0.0,
-      TextAlignSpec.center => math.max(0.0, room / 2),
-      TextAlignSpec.right => math.max(0.0, room),
-    };
-    var at = Offset(line.box.left + dx, line.box.top);
+    var at = _lineAt(line, spec);
     var layerRoom = line.box.inflate(line.box.height);
 
     /// pen clips to how much of this line has been written.
@@ -487,5 +480,48 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
       half(layerRoom, fillAlpha ?? 1, () => line.painter.paint(canvas, at));
     }
     if (written != null) stroke();
+  }
+}
+
+/// _lineAt is where [line] is drawn: [TextSpec.align] applies inside each
+/// run, so a centred paragraph beside a picture centres in its room.
+Offset _lineAt(WrappedLine line, TextSpec spec) {
+  var room = line.box.width - line.painter.width;
+  var dx = switch (spec.align) {
+    TextAlignSpec.left => 0.0,
+    TextAlignSpec.justify => 0.0,
+    TextAlignSpec.center => math.max(0.0, room / 2),
+    TextAlignSpec.right => math.max(0.0, room),
+  };
+  return Offset(line.box.left + dx, line.box.top);
+}
+
+/// paintWrappedMarks draws the highlights ([behind]) or underlines of
+/// [parts] on what layoutWrapped set of [text], line by line: each line is
+/// its own paragraph, its parts counted from its first word (partsFrom) and
+/// [timings] kept beside them.
+void paintWrappedMarks(ui.Canvas canvas, WrappedText wrapped, String text,
+    TextSpec spec, List<TextPart> parts,
+    {required bool behind, List<PartTiming> timings = const []}) {
+  if (parts.isEmpty) return;
+  for (var line in wrapped.lines) {
+    var words = wordsIn(text.substring(0, line.from));
+    var lineParts = <TextPart>[];
+    var lineTimings = <PartTiming>[];
+    for (var (i, part) in parts.indexed) {
+      for (var moved in partsFrom([part], words)) {
+        lineParts.add(moved);
+        lineTimings.add(i < timings.length ? timings[i] : PartTiming.there);
+      }
+    }
+    paintPartMarks(
+        canvas,
+        line.painter,
+        text.substring(line.from, line.to).trimRight(),
+        lineParts,
+        spec,
+        _lineAt(line, spec),
+        behind: behind,
+        timings: lineTimings);
   }
 }

@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
@@ -76,7 +77,8 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
   TextSlot? slotOf(int i) =>
       i == 0 ? (body ? e.slot : null) : e.items[i - 1].slot;
   Size sizeOf(int i) => i == 0
-      ? _sizeOfText(e.text, drawnTextSpec(e, bounds), inner.width)
+      ? _sizeOfText(e.text, drawnTextSpec(e, bounds), inner.width,
+          parts: e.drawnParts)
       : _sizeOf(e.items[i - 1], inner.width);
   double gapOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
   double leadOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
@@ -130,10 +132,13 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
   return out;
 }
 
-/// _sizeOfText is how tall and wide a run of words comes out at a width.
-Size _sizeOfText(String text, TextSpec spec, double maxWidth) {
+/// _sizeOfText is how tall and wide a run of words comes out at a width,
+/// with the [parts] it is drawn with.
+Size _sizeOfText(String text, TextSpec spec, double maxWidth,
+    {List<TextPart> parts = const []}) {
   if (text.isEmpty) return Size.zero;
-  var painter = layoutText(text, spec, maxWidth: math.max(1, maxWidth));
+  var painter =
+      layoutText(text, spec, maxWidth: math.max(1, maxWidth), parts: parts);
   return Size(math.min(painter.width, maxWidth), painter.height);
 }
 

@@ -184,11 +184,15 @@ class TextItem {
     return copyWith(spec: spec, icon: icon, box: box);
   }
 
-  /// scaledBy scales its type, picture, box and spacing; slot and text stay.
+  /// scaledBy scales its type, picture (its box and underline too), box and
+  /// spacing; slot and text stay.
   TextItem scaledBy(double by) => copyWith(
         spec: spec.scaledBy(by),
         icon: icon?.copyWith(
-            size: icon!.size * by, outlineWidth: icon!.outlineWidth * by),
+            size: icon!.size * by,
+            outlineWidth: icon!.outlineWidth * by,
+            box: icon!.box.scaledBy(by),
+            underline: icon!.underline?.scaledBy(by)),
         box: box.scaledBy(by),
         gap: gap * by,
         side: side * by,

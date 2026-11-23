@@ -1,10 +1,12 @@
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -1192,6 +1194,73 @@ void main() {
             isFalse,
             reason: "${preset.label} is part way through, not finished");
       }
+    });
+  });
+
+  group("a direction chosen", () {
+    // A preset comes from its own side unless a direction is chosen
+    // (TextAnimation.spec); everything drawn with the moving words has to
+    // follow the direction, not the preset's own dx and dy.
+
+    /// rightmost is the furthest right any pixel is lit, with [preset]
+    /// turned to come from the right, half way in.
+    Future<int> rightmost(TextAnimationPreset preset) async {
+      const size = Size(600, 300);
+      var e = TextElement(
+        const ElementBase(id: "t", x: 0, y: 100, width: 400, height: 100),
+        text: "Go",
+        textSpec: spec.copyWith(
+            align: TextAlignSpec.left, verticalAlign: VerticalAlignSpec.middle),
+        animation: TextAnimation(
+            preset: preset,
+            direction: AnimationDirection.right,
+            ease: ChartEase.linear),
+      ).withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0.5}),
+        ]),
+      ) as TextElement;
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, e, 0, document: CanvasDocument(elements: [e]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(600, 300);
+      var bytes = (await image.toByteData())!;
+      var right = -1;
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        if (bytes.getUint32(i) != 0x000000FF) {
+          right = math.max(right, (i ~/ 4) % 600);
+        }
+      }
+      image.dispose();
+      picture.dispose();
+      return right;
+    }
+
+    testWidgets("a trail's copies lie back along the way it came",
+        (tester) async {
+      // Half way in from the right, the word is 180 to the right of where
+      // it lands (0.9 of the box) and "Go" ends at 220; its copies lie
+      // further right still, back along its path.
+      late int right;
+      await tester.runAsync(() async {
+        right = await rightmost(TextAnimationPreset.trailDown);
+      });
+      expect(right, greaterThan(300),
+          reason: "the copies trail to the right of the word, not above it");
+    });
+
+    test("and the room a filled layer is given reaches it", () {
+      const box = Rect.fromLTWH(100, 100, 200, 50);
+      var room = motionRoom(
+          box,
+          const TextAnimation(
+              preset: TextAnimationPreset.slideUp,
+              direction: AnimationDirection.left));
+      expect(room.left, lessThan(box.left - 100),
+          reason: "turned to come from the left, it comes from the left");
     });
   });
 }

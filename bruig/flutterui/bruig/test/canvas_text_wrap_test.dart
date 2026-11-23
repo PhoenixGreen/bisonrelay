@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
@@ -567,6 +568,31 @@ void main() {
         }
       });
       expect(patterned, greaterThan(200));
+    });
+
+    testWidgets("and with their highlights and underlines", (tester) async {
+      // Wrapped, the marks were not drawn at all: the wrap draws line by
+      // line and never asked for them.
+      late Map<int, int> marked;
+      await tester.runAsync(() async {
+        var doc = around(const TextSpec(fontSize: 14));
+        var e = doc.elementById("t") as TextElement;
+        marked = await ink(CanvasDocument(elements: [
+          e.copyWith(
+            highlight: const PartHighlight(color: Color(0xFFFF0000)),
+            parts: const [
+              TextPart(
+                  from: 3,
+                  underline: PartUnderline(color: Color(0xFF00FF00), width: 3)),
+            ],
+          ),
+          _blocker(x: 240, width: 160),
+        ]));
+      });
+      expect(marked[0xFF0000FF] ?? 0, greaterThan(200),
+          reason: "the element's highlight behind the words");
+      expect(marked[0x00FF00FF] ?? 0, greaterThan(200),
+          reason: "and a part's underline under them, on every line");
     });
   });
 }

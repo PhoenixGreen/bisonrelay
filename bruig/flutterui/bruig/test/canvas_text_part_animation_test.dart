@@ -710,4 +710,27 @@ void main() {
           isTrue);
     });
   });
+
+  group("a part's cutting effect", () {
+    // The panel edits a part's arrival as a text animation and takes it back
+    // (asAnimation, fromAnimation): whatever the round trip drops, the
+    // controls offered for it cannot change.
+    const part = TextPartAnimation(preset: TextAnimationPreset.shatter);
+    TextPartAnimation edited() => part.fromAnimation(part.asAnimation
+        .copyWith(effect: const EffectSpec(pieces: 30, scatter: 0.9)));
+
+    test("is kept when the panel changes it", () {
+      expect(edited().asAnimation.effect.pieces, 30);
+      expect(edited().asAnimation.effect.scatter, 0.9);
+    });
+
+    test("and survives being saved", () {
+      var back = TextPartAnimation.fromJson(edited().toJson());
+      expect(back.asAnimation.effect.pieces, 30);
+      expect(
+          TextPartAnimation.fromJson(part.toJson()).toJson()..remove("preset"),
+          isEmpty,
+          reason: "nothing is written for an effect left as it was");
+    });
+  });
 }

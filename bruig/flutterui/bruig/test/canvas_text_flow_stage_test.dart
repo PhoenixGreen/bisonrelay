@@ -2,8 +2,10 @@ import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:flutter/material.dart';
@@ -368,5 +370,52 @@ void main() {
     expect(boxIn(controller, "b").flowTo, "");
     expect(boxIn(controller, "a").flowTo, "b",
         reason: "and nothing else moved");
+  });
+
+  testWidgets("a box already taking words in refuses a second link",
+      (tester) async {
+    // A box shows one box's overflow; a second box linked to it had its own
+    // overflow drawn nowhere.
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    controller.addElement(TextElement(
+      const ElementBase(id: "c", x: 420, y: 40, width: 300, height: 60),
+      text: _lorem,
+      box: const BoxSpec(padding: 0),
+      textSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.left),
+    ));
+    var stage = await pump(tester, controller);
+    controller.replaceElement(boxIn(controller, "a").copyWith(flowTo: "b"));
+    controller.selectOnly("c");
+    await tester.pumpAndSettle();
+
+    var from = stage.textFlowGrips!.outAt;
+    var onto = stage.toStagePoint(const Offset(190, 360));
+    await tester.dragFrom(from, onto - from);
+    await tester.pumpAndSettle();
+
+    expect(boxIn(controller, "c").flowTo, "", reason: "refused");
+    expect(boxIn(controller, "a").flowTo, "b", reason: "the first link stays");
+  });
+
+  testWidgets("and text on a line is no box to flow into", (tester) async {
+    // It has no box: the words flowed into it were dropped, all of them.
+    var controller = twoBoxes();
+    addTearDown(controller.dispose);
+    controller.addElement(LineElement(
+        const ElementBase(id: "l", x: 40, y: 360, width: 300, height: 4)));
+    var stage = await pump(tester, controller);
+    controller.replaceElement(boxIn(controller, "b")
+        .copyWith(curve: const TextOnCurve(elementId: "l")));
+    controller.selectOnly("a");
+    await tester.pumpAndSettle();
+
+    var from = stage.textFlowGrips!.outAt;
+    var words = visualBoundsOf(boxIn(controller, "b"), controller.document, 0);
+    var onto = stage.toStagePoint(words.center);
+    await tester.dragFrom(from, onto - from);
+    await tester.pumpAndSettle();
+
+    expect(boxIn(controller, "a").flowTo, "", reason: "refused");
   });
 }

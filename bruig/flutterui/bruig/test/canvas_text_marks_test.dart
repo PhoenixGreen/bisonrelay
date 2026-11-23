@@ -703,5 +703,56 @@ void main() {
       expect(parted[0x00FF00FF] ?? 0, greaterThan(40),
           reason: "five letters of green along the line");
     });
+
+    test("and its size and face are the part's", () {
+      // Along a line only a part's colour, weight, slant and outline were
+      // taken: a word at twice the size was set at the size of the rest.
+      var line = [const Offset(40, 100), const Offset(360, 100)];
+      const spec = TextSpec(fontSize: 20, align: TextAlignSpec.left);
+      var glyphs = placeTextOnPath(
+          "ALONGTHELINE", spec, line, const TextOnCurve(elementId: "l"),
+          parts: const [
+            TextPart(
+                unit: TextUnit.characters,
+                from: 1,
+                to: 5,
+                scale: 2,
+                family: "Serif"),
+          ]);
+      expect(
+          glyphs.first.size.height, closeTo(glyphs.last.size.height * 2, 0.5));
+      expect(glyphs.first.spec.fontFamily, "Serif");
+      expect(glyphs.last.spec.fontFamily, spec.fontFamily);
+    });
+
+    test("and the selection box is round the letters as drawn", () {
+      // The box the stage selects by was worked out without the parts, so
+      // a word at twice the size stood out of it.
+      CanvasElement text(List<TextPart> parts) =>
+          onALine(parts: parts).elementById("t")!;
+      var doc = onALine();
+      var plain = visualBoundsOf(text(const []), doc, 0);
+      var big = visualBoundsOf(
+          text(const [TextPart(unit: TextUnit.characters, scale: 2)]), doc, 0);
+      expect(big.height, closeTo(plain.height * 2, 1));
+    });
+
+    testWidgets("and its highlight and underline are drawn", (tester) async {
+      late Map<int, int> marked;
+      await tester.runAsync(() async {
+        marked = await _ink(onALine(parts: const [
+          TextPart(
+              unit: TextUnit.characters,
+              from: 1,
+              to: 5,
+              highlight: PartHighlight(color: Color(0xFF00FF00)),
+              underline: PartUnderline(color: Color(0xFFFF0000), width: 3)),
+        ]));
+      });
+      expect(marked[0x00FF00FF] ?? 0, greaterThan(100),
+          reason: "a band behind five letters");
+      expect(marked[0xFF0000FF] ?? 0, greaterThan(40),
+          reason: "and a line under them");
+    });
   });
 }

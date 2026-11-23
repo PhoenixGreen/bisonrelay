@@ -1,11 +1,14 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'support/canvas_app.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -51,9 +54,12 @@ void main() {
   const viewport = Size(1000, 800);
 
   Future<(CanvasController, CanvasStageState)> pump(
-      WidgetTester tester, TextElement element) async {
-    var controller =
-        CanvasController(const CanvasDocument().addElement(element));
+      WidgetTester tester, TextElement element,
+      {int? frames}) async {
+    var document = frames == null
+        ? const CanvasDocument()
+        : CanvasDocument(frames: frames);
+    var controller = CanvasController(document.addElement(element));
     addTearDown(controller.dispose);
     var key = GlobalKey<CanvasStageState>();
     setTestScreen(tester, viewport);
@@ -194,6 +200,80 @@ void main() {
     var selection = field.controller!.selection;
     expect(selection.isCollapsed, isTrue, reason: "a caret, nothing selected");
     expect(selection.baseOffset, inInclusiveRange(5, 7));
+  });
+
+  testWidgets(
+    "and where the click was among words of another size",
+    (tester) async {
+      // The field lays the words out in one style; the canvas draws the first
+      // word at twice the size, so a click on the second word lands in the
+      // field's first.
+      var e = const TextElement(
+        ElementBase(id: "t", x: 100, y: 100, width: 1200, height: 120),
+        text: "Hello wonderful world",
+        textSpec: TextSpec(
+            fontSize: 40,
+            align: TextAlignSpec.left,
+            verticalAlign: VerticalAlignSpec.top),
+        box: BoxSpec(padding: 0),
+        parts: [TextPart(from: 1, to: 1, scale: 2)],
+      );
+      var (controller, stage) = await pump(tester, e);
+      // "Hello" drawn 80 a letter, the space 40, then three letters of
+      // "wonderful": between its "n" and "d", the ninth character.
+      await doubleClick(
+          tester, stage, controller, const Offset(100 + 440 + 3 * 40, 140));
+      await tester.pump();
+
+      var field = tester.widget<TextField>(find.descendant(
+          of: find.byType(CanvasTextEditor), matching: find.byType(TextField)));
+      expect(field.controller!.selection.baseOffset, inInclusiveRange(8, 10));
+    },
+    skip: true, // The field cannot lay out a part's size until the
+    // paragraph is laid out in one place for the painter and the editor.
+  );
+
+  testWidgets("a turned editor is turned as the element is on this frame",
+      (tester) async {
+    // The see-through field sat at the element's resting turn while the
+    // drawing was turned by its keys, so the caret was off the words.
+    var e = TextElement(
+      ElementBase(
+          id: "t",
+          x: 200,
+          y: 200,
+          width: 400,
+          height: 120,
+          track: ElementTrack(const [
+            Keyframe(frame: 0),
+            Keyframe(frame: 20, rotate: 30),
+          ])),
+      text: "Turning words",
+      textSpec: const TextSpec(fontSize: 40),
+      box: const BoxSpec(padding: 0),
+    );
+    var (controller, stage) = await pump(tester, e, frames: 24);
+    controller.frame = 10;
+    await tester.pumpAndSettle();
+    await doubleClick(tester, stage, controller, e.bounds.center);
+    await tester.pump();
+
+    expect(find.byType(CanvasTextEditor), findsOneWidget);
+    var turn = tester
+        .widget<Transform>(find
+            .descendant(
+                of: find.byType(CanvasTextEditor),
+                matching: find.byType(Transform))
+            .first)
+        .transform;
+    var angle = math.atan2(turn.entry(1, 0), turn.entry(0, 0));
+    var drawn = controller.document
+            .elementById("t")!
+            .movedRotationAt(10, controller.document) *
+        math.pi /
+        180;
+    expect(drawn, isNot(0), reason: "otherwise this test asks nothing");
+    expect(angle, closeTo(drawn, 0.001));
   });
 
   testWidgets("a new element's Text still opens selected", (tester) async {

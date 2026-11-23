@@ -33,8 +33,8 @@ List<PlacedGlyph> placeTextOnPath(
   TextOnCurve on, {
   double scale = 1,
 
-  /// parts colour, embolden or italicise some letters (TextPart); needed
-  /// here because they change letter widths.
+  /// parts colour, size, embolden or italicise some letters, or set them in
+  /// another face (TextPart); needed here because they change letter widths.
   List<TextPart> parts = const [],
 }) {
   if (text.isEmpty || curve.length < 2) return const [];
@@ -108,6 +108,8 @@ TextSpec _specForPart(TextSpec spec, TextPart? part) {
   if (part == null) return spec;
   return spec.copyWith(
     color: part.color ?? spec.color,
+    fontSize: part.scale == null ? spec.fontSize : spec.fontSize * part.scale!,
+    fontFamily: part.family ?? spec.fontFamily,
     weight: part.weight ?? spec.weight,
     italic: part.italic ?? spec.italic,
     outlineWidth: part.outlineWidth ?? spec.outlineWidth,
@@ -300,6 +302,13 @@ void paintTextOnPath(
         !fillOnly) {
       _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: false);
     }
+    // The parts' own highlights, behind the letter, as the letter moves.
+    var advance = g.size.width + on.spacing * scale;
+    if (!fillOnly) {
+      _paintCurvePartMarks(
+          canvas, local, advance, text, g, parts, timings, frame.alpha, spec,
+          behind: true);
+    }
 
     // An echo's or trail's copies, in the turned frame so they fan along the
     // line, and before the letter so they sit behind it.
@@ -329,6 +338,11 @@ void paintTextOnPath(
         anim.preset.motion == TextMotion.underline &&
         !fillOnly) {
       _paintCurveMark(canvas, local, anim.draw, spec, sweep, under: true);
+    }
+    if (!fillOnly) {
+      _paintCurvePartMarks(
+          canvas, local, advance, text, g, parts, timings, frame.alpha, spec,
+          behind: false);
     }
 
     for (var r = 0; r < frame.depth; r++) {
@@ -461,6 +475,55 @@ void _paintCurveMark(ui.Canvas canvas, Rect local, TextDrawSpec mark,
       RRect.fromRectAndRadius(band, Radius.circular(mark.radius)), paint);
 }
 
+/// _paintCurvePartMarks draws the parts' own highlights ([behind]) or
+/// underlines over one letter on a line: the letter's share, [advance] wide,
+/// in its turned frame, so the mark bends with the line. The ends of a run
+/// take its padding and corners. A mark drawn on comes letter by letter.
+void _paintCurvePartMarks(
+    ui.Canvas canvas,
+    Rect local,
+    double advance,
+    String text,
+    PlacedGlyph g,
+    List<TextPart> parts,
+    List<PartTiming> timings,
+    double alpha,
+    TextSpec spec,
+    {required bool behind}) {
+  for (var (n, part) in parts.indexed) {
+    if ((behind ? part.highlight : part.underline) == null) continue;
+    var range = rangeOf(text, part);
+    if (range == null || g.index < range.$1 || g.index >= range.$2) continue;
+    var drawn = n < timings.length ? timings[n].mark : 1.0;
+    if (g.index - range.$1 >= drawn * (range.$2 - range.$1)) continue;
+    var box = Rect.fromCenter(
+        center: local.center, width: advance, height: local.height);
+    var first = g.index == range.$1;
+    var last = g.index + g.glyph.length >= range.$2;
+    _fadeInto(canvas, box, alpha, () {
+      if (!behind) {
+        _paintPartUnderline(
+            canvas, box, part.underline!, part.color ?? spec.color);
+        return;
+      }
+      var h = part.highlight!;
+      var band = Rect.fromLTRB(
+          box.left - (first ? h.padLeft : 0),
+          box.top - h.padTop,
+          box.right + (last ? h.padRight : 0),
+          box.bottom + h.padBottom);
+      var r = Radius.circular(h.radius);
+      canvas.drawRRect(
+          RRect.fromRectAndCorners(band,
+              topLeft: first ? r : Radius.zero,
+              bottomLeft: first ? r : Radius.zero,
+              topRight: last ? r : Radius.zero,
+              bottomRight: last ? r : Radius.zero),
+          PaintSpec(h.color, gradient: h.fade).into(Paint(), band));
+    });
+  }
+}
+
 /// _paintCurveCopies draws an echo's or a trail's copies of one letter.
 void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
     Rect local, TextAnimation animation, double p,
@@ -468,15 +531,18 @@ void _paintCurveCopies(ui.Canvas canvas, PlacedGlyph g, double dy, double scale,
   var echo = animation.echo;
   var preset = animation.preset;
   var trail = preset.motion == TextMotion.trail;
+  // A trail comes the way the letters do, turned to a chosen direction; an
+  // echo's fan is its preset's own (see _paintPiece).
+  var way = trail ? animation.spec : preset.spec;
   var step = trail
-      ? Offset(local.width * preset.dx * (1 - p),
-              local.height * preset.dy * (1 - p)) *
+      ? Offset(
+              local.width * way.dx * (1 - p), local.height * way.dy * (1 - p)) *
           (echo.spacing / math.max(1, echo.copies))
       : Offset(
-          preset.dx * local.height * echo.spacing,
-          preset.dy == 0
+          way.dx * local.height * echo.spacing,
+          way.dy == 0
               ? local.height * echo.spacing
-              : preset.dy * local.height * echo.spacing,
+              : way.dy * local.height * echo.spacing,
         );
   var ways = preset.turns > 0 && !trail ? const [1.0, -1.0] : const [1.0];
 

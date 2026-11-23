@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -457,6 +458,26 @@ void main() {
       expect(back.length, 12);
       expect(const TextPartAnimation().toJson(), isEmpty,
           reason: "a part that arrives with the rest writes nothing");
+    });
+  });
+
+  group("a part at another size", () {
+    test("is measured when the type is fitted to the box", () {
+      // Fit to box found the largest size at which plain words fit, and the
+      // words were then drawn with a heading at nearly twice that size.
+      var e = TextElement(
+        const ElementBase(id: "t", width: 300, height: 80),
+        text: "A heading over the words that follow it",
+        textSpec: const TextSpec(fontSize: 20),
+        box: const BoxSpec(padding: 0),
+        autoSize: true,
+        parts: const [TextPart(from: 1, to: 2, scale: 1.8)],
+      );
+      var spec = drawnTextSpec(e, e.bounds);
+      var drawn = layoutText(e.displayText, spec,
+          maxWidth: 300, fillWidth: true, parts: e.drawnParts);
+      expect(drawn.height, lessThanOrEqualTo(80 + 0.5),
+          reason: "drawn at ${spec.fontSize}, it is ${drawn.height} tall");
     });
   });
 }

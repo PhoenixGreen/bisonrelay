@@ -69,7 +69,9 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   if (doc == null || (e.flowTo.isEmpty && !_isTarget(e, doc))) {
     return TextFlow(
       text: mine,
-      overflows: _consumed(mine, e, inner, spec, tidy: e.columns.noBlankStart) <
+      overflows: _consumed(mine, e, inner, spec,
+              tidy: e.columns.noBlankStart,
+              parts: e.drawnPartsWith(e.documentParts)) <
           mine.length,
       head: e.id,
       tidyStart: e.columns.noBlankStart,
@@ -97,7 +99,8 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     var room = _roomOf(box);
     at += _consumed(text.substring(at), box, room, _specOf(box),
         tidy: tidy,
-        blocked: wrapObstacles(box, doc, frame, room, images: images));
+        blocked: wrapObstacles(box, doc, frame, room, images: images),
+        parts: box.drawnPartsWith(_partsAt(head, text, at)));
   }
 
   var receiving = !identical(head, e) && head.id != e.id;
@@ -106,7 +109,10 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   }
 
   var rest = at >= text.length ? "" : text.substring(at);
-  var took = _consumed(rest, e, inner, spec, tidy: tidy, blocked: blocked);
+  // The head's styled runs, counted from this box's own first word.
+  var parts = receiving ? _partsAt(head, text, at) : head.documentParts;
+  var took = _consumed(rest, e, inner, spec,
+      tidy: tidy, blocked: blocked, parts: e.drawnPartsWith(parts));
   return TextFlow(
     text: rest,
     overflows: took < rest.length,
@@ -114,10 +120,7 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     head: head.id,
     tidyStart: tidy,
     blocked: blocked,
-    // The head's styled runs, counted from this box's own first word.
-    parts: receiving
-        ? partsFrom(head.documentParts, wordsIn(text.substring(0, at)))
-        : head.documentParts,
+    parts: parts,
   );
 }
 
@@ -186,6 +189,12 @@ List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
   return chain;
 }
 
+/// _partsAt is [head]'s styled runs for the words from character [at] of
+/// [text] on, counted from the first of them.
+List<TextPart> _partsAt(TextElement head, String text, int at) => at <= 0
+    ? head.documentParts
+    : partsFrom(head.documentParts, wordsIn(text.substring(0, at)));
+
 /// _roomOf is where a box's words go: its bounds, less its padding.
 Rect _roomOf(TextElement e) => e.box.inner(e.bounds);
 
@@ -208,9 +217,12 @@ int _blankRun(String text) {
   return at;
 }
 
-/// _consumed is how many characters of [text] this box can show.
+/// _consumed is how many characters of [text] this box can show, laid out
+/// with the [parts] it is drawn with, since a part may change the size.
 int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
-    {bool tidy = false, List<WrapShape> blocked = const []}) {
+    {bool tidy = false,
+    List<WrapShape> blocked = const [],
+    List<TextPart> parts = const []}) {
   if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
 
   // Wrapped, the room a box has is what is left once the things in the way
@@ -219,14 +231,16 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
   if (e.wrap.on &&
       blocked.isNotEmpty &&
       wrapFits(text, spec, inner, blocked, e.wrap)) {
-    return layoutWrapped(text, spec, inner, blocked, e.wrap).consumed;
+    return layoutWrapped(text, spec, inner, blocked, e.wrap, parts: parts)
+        .consumed;
   }
 
   var width =
       e.columns.isSingle ? inner.width : e.columns.columnWidth(inner.width);
   if (width <= 0) return 0;
 
-  var painter = layoutText(text, spec, maxWidth: width, fillWidth: true);
+  var painter =
+      layoutText(text, spec, maxWidth: width, fillWidth: true, parts: parts);
   var metrics = painter.computeLineMetrics();
   if (metrics.isEmpty) return 0;
 
