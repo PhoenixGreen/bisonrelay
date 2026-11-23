@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/stroke_controls.dart';
 // strip, Content (points), Look and More (its follower). Its stroke's
 // controls are stroke_controls.dart's, which a line's panel uses too.
 
+/// pathPanel is a path's settings, laid out by elementPanel.
 Widget pathPanel(
     BuildContext context,
     CanvasController controller,
@@ -123,6 +124,14 @@ PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
       ? "Nobody follows it"
       : "${controller.followerLabel(e.follow)} · "
           "frames ${e.firstFrame}–${e.lastFrame}";
+  var options = _followOptions(controller);
+  // A follower that is none of the choices (no longer on the canvas, say)
+  // is shown by the name the summary gives it, for as long as it is the
+  // one, as a font not known is.
+  var gone = e.follow != null && !options.any((o) => o.$1 == e.follow);
+  if (gone) {
+    options.insert(1, (e.follow!, controller.followerLabel(e.follow)));
+  }
   return PanelBit(PanelSection.more, summary: followed, children: [
     CanvasControlGroup(
       label: "The run",
@@ -137,8 +146,10 @@ PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
           // The least it can be: wider, and the frame fields and button
           // wrap onto their own line in a narrow sidebar.
           width: 112,
-          options: _followOptions(controller),
+          options: options,
           onChanged: (follow) {
+            // Nothing to follow again: it is not there.
+            if (gone && follow == e.follow) return;
             // Detach the old follower first, or its baked keyframes stay
             // and it keeps running a route nothing is attached to: in the
             // same step as what follows, so one undo takes back both.
@@ -197,8 +208,6 @@ PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
 }
 
 /// _nobody is the choice of nothing following: no element has an empty id.
-/// A follower no longer on the canvas is none of the choices, so the list
-/// shows no name rather than saying nothing follows.
 const _nobody = PathFollow(elementId: "");
 
 /// _followOptions is everything that could follow a path, players included

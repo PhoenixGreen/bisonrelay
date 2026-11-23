@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/design_device.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -28,8 +29,10 @@ import 'support/canvas_sidebar_host.dart';
 // path's settings, used in the real sidebar: a stroke's controls in the
 // quick strip and in Look are one control twice, with the model's range; a
 // line's Layout reads and sets the line as it is drawn, turned or slanted;
-// a closed path offers no ends; a square or a circle keeps its box square;
-// what the Chain's Design table writes stays within the same ranges; and
+// a closed path offers no ends; a follower gone from the canvas is shown
+// as missing; a square or a circle keeps its box square; Scale inside says
+// what it scales on each; what the Chain's Design table writes stays
+// within the same ranges; and
 // every control of the three, pressed or set, changes what it says in one
 // undo step (_rows: a new control is one row there).
 
@@ -222,6 +225,45 @@ void main() {
       expect(_dropdown(_look, "Start"), findsOneWidget);
       expect(_dropdown(_look, "End"), findsOneWidget);
       expect(_number(_look, "End size"), findsOneWidget);
+    });
+  });
+
+  group("a follower no longer on the canvas", () {
+    var path = PathElement(
+        const ElementBase(id: "p", x: 100, y: 300, width: 300, height: 200),
+        nodes: PathElement.defaultNodes(frames: 96),
+        follow: const PathFollow(elementId: "gone"));
+    const runner = TextElement(ElementBase(id: "f", name: "Runner"));
+    Finder whoFollows() => _dropdown("elementSection-more", "Who follows");
+    List<PathFollow> offered(WidgetTester tester) => [
+          for (var (v, _) in tester
+              .widget<CanvasDropdown<PathFollow>>(whoFollows())
+              .options)
+            v
+        ];
+
+    testWidgets("is shown in Who follows as missing", (tester) async {
+      await _panel(tester, path, beside: [runner]);
+      expect(find.descendant(of: whoFollows(), matching: find.text("Missing")),
+          findsOneWidget);
+    });
+
+    testWidgets("and choosing it again changes nothing", (tester) async {
+      var c = await _panel(tester, path, beside: [runner]);
+      var before = c.document;
+      await _chosen(whoFollows(), const PathFollow(elementId: "gone"))(tester);
+      await tester.pumpAndSettle();
+      expect(c.document, same(before));
+    });
+
+    testWidgets("and is not offered once another is chosen", (tester) async {
+      var c = await _panel(tester, path, beside: [runner]);
+      await _chosen(whoFollows(), const PathFollow(elementId: "f"))(tester);
+      await tester.pumpAndSettle();
+      expect((c.document.elementById("p") as PathElement).follow,
+          const PathFollow(elementId: "f"));
+      expect(offered(tester),
+          isNot(contains(const PathFollow(elementId: "gone"))));
     });
   });
 
@@ -424,6 +466,53 @@ void main() {
           .onChanged(ShapeKind.square);
       await tester.pumpAndSettle();
       expectSquared(c.document.elementById("s") as ShapeElement);
+    });
+  });
+
+  group("Scale inside on another page shape", () {
+    /// hint is what the "?" beside Scale inside says for [e], in a canvas
+    /// laid out for two page shapes.
+    Future<String> hint(WidgetTester tester, CanvasElement e) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(
+          const CanvasDocument(targets: ["feedAd", "wide"]).addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly(e.id);
+      await pumpCanvasApp(tester, designSidebar(c),
+          size: const Size(320, 9000));
+      await openEverything(tester, find.byType(CanvasSidebarHost));
+      expect(find.byKey(const ValueKey("elementTypeScale")), findsOneWidget);
+      return tester
+          .widgetList<CanvasHint>(find.byType(CanvasHint))
+          .map((h) => h.message)
+          .singleWhere((m) => m.contains("on the shape of page you are on"));
+    }
+
+    const box = ElementBase(id: "e", x: 100, y: 100, width: 200, height: 120);
+
+    testWidgets("names what it scales on a shape", (tester) async {
+      var said = await hint(tester, const ShapeElement(box));
+      for (var part in ["words", "outline", "corners", "padding"]) {
+        expect(said, contains(part));
+      }
+      expect(said, isNot(contains("rules")));
+    });
+
+    for (var e in <CanvasElement>[
+      const LineElement(box),
+      PathElement(box, nodes: PathElement.defaultNodes()),
+    ]) {
+      testWidgets("and on a ${e.kind.label.toLowerCase()}", (tester) async {
+        var said = await hint(tester, e);
+        expect(said, contains("width"));
+        expect(said, contains("dashes"));
+        expect(said, isNot(contains("type")));
+      });
+    }
+
+    testWidgets("and on text, as it always has", (tester) async {
+      var said = await hint(tester, const TextElement(box, text: "Words"));
+      expect(said, contains("the type, the line spacing, the padding"));
     });
   });
 

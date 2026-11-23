@@ -70,8 +70,13 @@ enum LineEnd {
   static LineEnd fromName(String? name) =>
       values.firstWhere((e) => e.name == name, orElse: () => LineEnd.none);
 
-  /// reach is how far this decoration extends from the stroke's end, as a
-  /// multiple of the stroke width, for the selection box to allow for.
+  /// reach is how far this mark reaches from the stroke's end in any
+  /// direction, in end widths (see EndShape), for the selection box to
+  /// allow for (StrokeSpec.endReach). An arrow's is its barb and a bar's its
+  /// reach across. A circle's, a square's and a diamond's are rounded up
+  /// past the mark's own size (a radius of 1.2, a half-diagonal of about
+  /// 1.56, a half-length of 1.7), but not by the edge a hollow one is drawn
+  /// with, half the stroke's width outside it.
   double get reach => switch (this) {
         LineEnd.none => 0,
         LineEnd.bar => EndShape.barReach,
@@ -96,7 +101,7 @@ enum LineEnd {
         LineEnd.openArrow =>
           EndShape.openArrowBarb * EndShape.openArrowNotch * EndShape.seam,
         LineEnd.hollowArrow => EndShape.arrowBase,
-        LineEnd.diamond => EndShape.diamondSeat,
+        LineEnd.diamond => EndShape._diamondSeat,
         LineEnd.hollowDiamond => EndShape.diamondLength,
         LineEnd.circle || LineEnd.hollowCircle => EndShape.circleRadius,
         LineEnd.square => EndShape.squareSide / 2,
@@ -134,10 +139,10 @@ abstract final class EndShape {
   /// stroke and half its width across, centred on the end.
   static const double diamondLength = 1.7, diamondWidth = 1.0;
 
-  /// diamondSeat is how far behind its middle a solid diamond's stroke
+  /// _diamondSeat is how far behind its middle a solid diamond's stroke
   /// stops: well short of its back point, where it is too narrow to cover
   /// a thick stroke.
-  static const double diamondSeat = 1.2;
+  static const double _diamondSeat = 1.2;
 
   /// circleRadius is a circle's, centred on the end.
   static const double circleRadius = 1.2;
@@ -260,10 +265,8 @@ class StrokeSpec {
     var dash = jsonDouble(json["dash"], defaults.dash);
     return StrokeSpec(
         color: colorFromJson(json["color"], defaults.color),
-        fade: json["fade"] is Map
-            ? GradientSpec.fromJson(
-                (json["fade"] as Map).cast<String, dynamic>())
-            : null,
+        fade:
+            jsonSpec<GradientSpec?>(json["fade"], GradientSpec.fromJson, null),
         strokeWidth: jsonLength(json["sw"], defaults.strokeWidth),
         cap: json["strokeCap"] is String
             ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))

@@ -9,16 +9,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 
-export 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
-
 /// lineSliver is the depth of a level line's box, or the width of an
 /// upright one's: see LineElement.withEnds.
 const double lineSliver = 0.01;
 
-/// maxCurvature is the largest bow a line is read with: ten times what the
+/// _maxCurvature is the largest bow a line is read with: ten times what the
 /// panel offers, so nothing made here is changed, while a received canvas
 /// cannot draw a bow a billion times the page.
-const double maxCurvature = 10;
+const double _maxCurvature = 10;
 
 /// snapLineAngle is [moving] swung about [fixed] onto the nearest multiple of
 /// 45 degrees, when it is within [within] degrees of it or [always] is set.
@@ -47,6 +45,7 @@ class LineElement extends StrokedElement {
   /// flipped runs the line bottom-left to top-right.
   final bool flipped;
 
+  /// animation is how it arrives on the page and leaves.
   final ElementAnimation animation;
 
   const LineElement(
@@ -79,21 +78,25 @@ class LineElement extends StrokedElement {
   @override
   ElementKind get kind => ElementKind.line;
 
-  /// start and end are the endpoints in the document's own coordinates.
+  /// start and end are the line's two ends at corners of its own box, in
+  /// the document's coordinates before its turn and slant: what its [curve]
+  /// runs between. On a turned or slanted line they are not where its ends
+  /// are drawn; [length] and [angle] are of the line as drawn, and
+  /// strokeOnPage (in the renderer) has its ends on any frame.
   Offset get start => flipped ? bounds.bottomLeft : bounds.topLeft;
   Offset get end => flipped ? bounds.topRight : bounds.bottomRight;
 
-  /// drawnStart and drawnEnd are where its two ends are drawn on the page
+  /// _drawnStart and _drawnEnd are where its two ends are drawn on the page
   /// as it rests: [start] and [end] through its turn and slant.
-  Offset get drawnStart => onPage(start);
-  Offset get drawnEnd => onPage(end);
+  Offset get _drawnStart => onPage(start);
+  Offset get _drawnEnd => onPage(end);
 
   /// length and angle are the line as it is drawn at rest, from its start
   /// to its end: what a person sees, which a turn or a slant makes other
   /// than its box's. The angle is in degrees clockwise from pointing right.
-  double get length => (drawnEnd - drawnStart).distance;
+  double get length => (_drawnEnd - _drawnStart).distance;
   double get angle {
-    var d = drawnEnd - drawnStart;
+    var d = _drawnEnd - _drawnStart;
     return math.atan2(d.dy, d.dx) * 180 / math.pi;
   }
 
@@ -106,7 +109,7 @@ class LineElement extends StrokedElement {
   LineElement _drawnFromStart(double angle, double length) {
     var r = angle * math.pi / 180;
     return withEndsDrawnAt(
-        drawnStart, drawnStart + Offset(math.cos(r), math.sin(r)) * length);
+        _drawnStart, _drawnStart + Offset(math.cos(r), math.sin(r)) * length);
   }
 
   /// withEnds is this line drawn from [a] to [b]. A level line would be a box
@@ -151,12 +154,12 @@ class LineElement extends StrokedElement {
   /// start is drawn, keeping its length and the side it points to: level on
   /// the page, whatever its turn or slant.
   LineElement get level {
-    var a = drawnStart, d = drawnEnd - a;
+    var a = _drawnStart, d = _drawnEnd - a;
     return withEndsDrawnAt(a, a + Offset(d.dx < 0 ? -length : length, 0));
   }
 
   LineElement get plumb {
-    var a = drawnStart, d = drawnEnd - a;
+    var a = _drawnStart, d = _drawnEnd - a;
     return withEndsDrawnAt(a, a + Offset(0, d.dy < 0 ? -length : length));
   }
 
@@ -266,8 +269,8 @@ class LineElement extends StrokedElement {
   factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       LineElement._of(b, StrokeSpec.fromJson(json, _defaults.stroke),
           curvature: jsonDouble(json["curve"], _defaults.curvature)
-              .clamp(-maxCurvature, maxCurvature),
-          flipped: jsonBool(json["flipped"], false),
+              .clamp(-_maxCurvature, _maxCurvature),
+          flipped: jsonBool(json["flipped"], _defaults.flipped),
           animation: jsonSpec(
               json["anim"], ElementAnimation.fromJson, _defaults.animation));
 }

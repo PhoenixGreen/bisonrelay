@@ -136,6 +136,8 @@ enum BubbleTail {
 /// SpeechBubbleSpec is everything a speech bubble has that a rectangle has
 /// not, grouped so the settings show it only for a bubble.
 class SpeechBubbleSpec {
+  /// body is the bubble's outline round its words, and tail what points
+  /// from it at whoever is talking.
   final BubbleBody body;
   final BubbleTail tail;
 
@@ -213,22 +215,36 @@ class SpeechBubbleSpec {
       );
 }
 
+/// ShapeElement is a filled and outlined shape drawn to its box, of any
+/// [ShapeKind], with words set inside it if it has any. Its outline is
+/// worked out in one place (shapeOutline, in the renderer), which the
+/// painter, a loop, wrapped words and the stage's press all ask.
 class ShapeElement extends CanvasElement {
+  /// shape is which outline it draws.
   final ShapeKind shape;
+
+  /// fill is the colour inside the outline, or where its [fillFade] starts.
   final Color fill;
 
   /// painted is a picture or a pattern inside the shape instead of a flat
   /// colour, cut to its outline: the TextFill letters and boxes use.
   final TextFill painted;
+
+  /// strokeColor is the outline's colour, or where its [strokeFade] starts.
+  /// No outline is drawn while [strokeWidth] is 0, however it is coloured.
   final Color strokeColor;
 
   /// fillFade and strokeFade are the second colours a fill or outline fades
   /// to, or null for flat. See GradientSpec.
   final GradientSpec? fillFade;
   final GradientSpec? strokeFade;
+
+  /// strokeWidth is the outline's width, drawn centred on the outline, so
+  /// half of it falls outside; 0 is no outline.
   final double strokeWidth;
 
-  /// cornerRadius rounds a rectangle; shapes without corners ignore it.
+  /// cornerRadius rounds the corners of a kind that has them (hasCorners:
+  /// a rectangle, a square, a rounded bubble); the others ignore it.
   final double cornerRadius;
 
   /// radTL, radTR, radBR and radBL are corners given their own rounding, or
@@ -254,13 +270,15 @@ class ShapeElement extends CanvasElement {
   final int points;
   final double innerRatio;
 
-  /// text is the label inside, usually empty.
+  /// text is the label inside, usually empty, and textSpec the type it is
+  /// set in.
   final String text;
   final TextSpec textSpec;
 
   /// bubble is read only when [shape] is a speech bubble.
   final SpeechBubbleSpec bubble;
 
+  /// animation is how it arrives on the page and leaves.
   final ElementAnimation animation;
 
   const ShapeElement(
@@ -535,19 +553,15 @@ class ShapeElement extends CanvasElement {
       ShapeElement(b,
           shape: ShapeKind.fromName(jsonStr(json["shape"])),
           fill: colorFromJson(json["fill"], _defaults.fill),
-          painted: json["painted"] is Map
-              ? TextFill.fromJson(
-                  (json["painted"] as Map).cast<String, dynamic>())
-              : const TextFill(),
-          fillFade: json["fillFade"] is Map
-              ? GradientSpec.fromJson(
-                  (json["fillFade"] as Map).cast<String, dynamic>())
-              : null,
-          strokeFade: json["strokeFade"] is Map
-              ? GradientSpec.fromJson(
-                  (json["strokeFade"] as Map).cast<String, dynamic>())
-              : null,
-          strokeColor: colorFromJson(json["sc"]),
+          painted: jsonSpec(
+              json["painted"], TextFill.fromJson, _defaults.painted),
+          fillFade: jsonSpec<GradientSpec?>(
+              json["fillFade"], GradientSpec.fromJson, null),
+          strokeFade:
+              jsonSpec<
+                      GradientSpec?>(
+                  json["strokeFade"], GradientSpec.fromJson, null),
+          strokeColor: colorFromJson(json["sc"], _defaults.strokeColor),
           strokeWidth: jsonLength(json["sw"], _defaults.strokeWidth),
           cornerRadius: jsonLength(json["cr"], _defaults.cornerRadius),
           radTL: json["rTL"] == null ? null : jsonLength(json["rTL"], 0),
@@ -559,11 +573,12 @@ class ShapeElement extends CanvasElement {
           padT: json["padT"] == null ? null : jsonLength(json["padT"], 0),
           padR: json["padR"] == null ? null : jsonLength(json["padR"], 0),
           padB: json["padB"] == null ? null : jsonLength(json["padB"], 0),
-          points: jsonInt(json["points"], _defaults.points)
+          points: jsonInt(json["points"],
+                  _defaults.points)
               .clamp(minStarPoints, maxStarPoints),
           innerRatio:
-              jsonDouble(json["inner"], _defaults.innerRatio).clamp(minStarDepth,
-                  maxStarDepth),
+              jsonDouble(json["inner"], _defaults.innerRatio)
+                  .clamp(minStarDepth, maxStarDepth),
           text: jsonString(json["text"], _defaults.text),
           textSpec:
               jsonSpec(json["textSpec"], TextSpec.fromJson, _defaults.textSpec),

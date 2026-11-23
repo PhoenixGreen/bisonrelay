@@ -268,9 +268,9 @@ void _paintColumnRules(ui.Canvas canvas, Rect box, TextColumns columns,
     canvas.drawPath(
       switch (columns.ruleStyle) {
         ColumnRuleStyle.dashed =>
-          dashPath(line, columns.ruleWidth * 4, columns.ruleWidth * 3),
+          _dashPath(line, columns.ruleWidth * 4, columns.ruleWidth * 3),
         // Near-zero dashes with a round cap are dots.
-        ColumnRuleStyle.dotted => dashPath(line, 0.01, columns.ruleWidth * 3),
+        ColumnRuleStyle.dotted => _dashPath(line, 0.01, columns.ruleWidth * 3),
         _ => line,
       },
       paint,

@@ -1,12 +1,18 @@
 part of 'scene_renderer.dart';
 
-// Shapes, lines and paths, and where a line's or a path's curve is on the
-// page (curveOfElement), which the selection box, the press, text riding it
-// and Follow path all ask. Part of scene_renderer.dart.
+// Shapes, lines and paths: a shape's painter and where its words go
+// (labelRoom), a stroke's painter, and where a line's or a path's curve is
+// on the page (strokeOnPage, curveOfElement), which the selection box, the
+// press, text riding it and Follow path all ask. With them, where any
+// element is drawn (visualBoundsOf, hasOwnGeometry), since a stroke, text on
+// a line and an element on a stage are where that is not its box. A
+// button's painter
+// is here too, for want of a file of its own. Part of scene_renderer.dart.
 
 /// visualBoundsOf is where [element] is drawn, which differs from its moved
-/// box on a stage, for a bowed line or path, and for text on a line. The
-/// selection outline, handles and on-canvas text editor use it.
+/// box on a stage, for a line or a path (round its curve as drawn, with
+/// room for its width and ends), and for text on a line. The selection
+/// outline, handles and on-canvas text editor use it.
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
     {LiveMotion? live}) {
   // With its clips' moves on it: see movedBoundsAt.

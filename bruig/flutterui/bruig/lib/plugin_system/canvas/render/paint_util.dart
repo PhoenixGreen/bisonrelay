@@ -21,6 +21,7 @@ import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
 part 'paint_util_text_marks.dart';
+part 'paint_util_box.dart';
 part 'paint_util_shapes.dart';
 part 'paint_util_stroke.dart';
 part 'paint_util_columns.dart';

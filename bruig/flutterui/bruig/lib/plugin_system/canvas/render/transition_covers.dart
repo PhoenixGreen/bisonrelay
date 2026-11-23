@@ -1,32 +1,34 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
-import 'package:flutter/painting.dart';
 
-// transition_shapes.dart is what an overlay transition draws: a shape in the
-// transition's colour grows over the page, the scenes change behind it, and
-// it goes. A cover, not a mask: the next scene seen through a splatter would
-// be a wipe. Shapes come from the transition's numbers and a seed from its
-// kind, never a random number at draw time, so each separately rendered
-// export frame lands the paint in the same place.
+// transition_covers.dart is what a covering scene transition draws (see
+// SceneTransitionKind.covers): a shape in the transition's colour grows over
+// the page, the scenes change behind it, and it goes. A cover, not a mask:
+// the next scene seen through a splatter would be a wipe. Shapes come from
+// the transition's numbers and a seed from its kind, never a random number
+// at draw time, so each separately rendered export frame lands the paint in
+// the same place. Its one caller is the scene sequence's _drawCover.
 
-/// coverAt is how much of the page the overlay covers at [t]: up over the
+/// _coverAt is how much of the page the overlay covers at [t]: up over the
 /// first half and down over the second, so the scenes change when it is
 /// complete.
-double coverAt(double t) => t <= 0.5 ? t * 2 : (1 - t) * 2;
+double _coverAt(double t) => t <= 0.5 ? t * 2 : (1 - t) * 2;
 
-/// leavesAt is whether the overlay is on its way out, which tells a shape
+/// _leavesAt is whether the overlay is on its way out, which tells a shape
 /// which side to retreat to.
-bool leavesAt(double t) => t > 0.5;
+bool _leavesAt(double t) => t > 0.5;
 
 /// overlayPath is the shape [over] draws at [t], in the page's coordinates.
 ui.Path overlayPath(SceneTransition over, Rect page, double t) {
-  var grown = coverAt(t).clamp(0.0, 1.0);
-  var going = leavesAt(t);
+  var grown = _coverAt(t).clamp(0.0, 1.0);
+  var going = _leavesAt(t);
 
   return switch (over.kind) {
     SceneTransitionKind.band => _band(over, page, t),
@@ -41,7 +43,27 @@ ui.Path overlayPath(SceneTransition over, Rect page, double t) {
     SceneTransitionKind.halftone => _halftone(over, page, grown),
     SceneTransitionKind.burst => _burst(over, page, t),
     SceneTransitionKind.rays => _rays(over, page, t),
-    _ => ui.Path()..addRect(page),
+    // Not covers, so never asked; the whole page is what a cover becomes.
+    SceneTransitionKind.cut ||
+    SceneTransitionKind.fade ||
+    SceneTransitionKind.through ||
+    SceneTransitionKind.slideLeft ||
+    SceneTransitionKind.slideRight ||
+    SceneTransitionKind.slideUp ||
+    SceneTransitionKind.slideDown ||
+    SceneTransitionKind.pushLeft ||
+    SceneTransitionKind.pushRight ||
+    SceneTransitionKind.pushUp ||
+    SceneTransitionKind.pushDown ||
+    SceneTransitionKind.wipeLeft ||
+    SceneTransitionKind.wipeRight ||
+    SceneTransitionKind.wipeUp ||
+    SceneTransitionKind.wipeDown ||
+    SceneTransitionKind.zoomIn ||
+    SceneTransitionKind.zoomOut ||
+    SceneTransitionKind.blurThrough ||
+    SceneTransitionKind.pageTurn =>
+      ui.Path()..addRect(page),
   };
 }
 
@@ -221,7 +243,7 @@ ui.Path _pointed(
 
 /// _clock is a sector sweeping round like a hand.
 ui.Path _clock(Rect page, double t) {
-  var grown = coverAt(t);
+  var grown = _coverAt(t);
   if (grown >= 1) return ui.Path()..addRect(page);
   if (grown <= 0) return ui.Path();
 
@@ -229,7 +251,7 @@ ui.Path _clock(Rect page, double t) {
   // Leaving, the hand carries on rather than unwinding, which would read as
   // the transition undone.
   var from =
-      leavesAt(t) ? -math.pi / 2 + 2 * math.pi * (1 - grown) : -math.pi / 2;
+      _leavesAt(t) ? -math.pi / 2 + 2 * math.pi * (1 - grown) : -math.pi / 2;
   return ui.Path()
     ..moveTo(page.center.dx, page.center.dy)
     ..arcTo(box, from, 2 * math.pi * grown, false)
@@ -266,7 +288,7 @@ Offset Function(double along, double across) _along(
 ui.Path _arrows(SceneTransition over, Rect page, double t) {
   var path = ui.Path();
   var many = over.count.clamp(1, 40);
-  var grown = coverAt(t).clamp(0.0, 1.0);
+  var grown = _coverAt(t).clamp(0.0, 1.0);
   var horizontal = over.way.horizontal;
   var at = _along(over.way, page);
 
@@ -738,7 +760,7 @@ ui.Path _burst(SceneTransition over, Rect page, double t) {
 /// _rays is the lines swinging shut like a fan and open again (its own kind,
 /// not half a burst): the gaps narrow to nothing, then widen.
 ui.Path _rays(SceneTransition over, Rect page, double t) {
-  var grown = coverAt(t).clamp(0.0, 1.0);
+  var grown = _coverAt(t).clamp(0.0, 1.0);
   var full = _reach(page);
   var centre = page.center;
   // At least two: one gap taking the whole turn wraps past itself, cancels

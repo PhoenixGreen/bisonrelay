@@ -14,10 +14,11 @@ part 'panel_kit_tiles.dart';
 part 'panel_kit_hold.dart';
 
 // panel_kit.dart is the sectioned settings panel's parts: folding sections,
-// picture tiles, tools, the stepper. Element-agnostic; see
-// settings/README.md for the rows inside a section. The stepper and sides
-// field are in panel_kit_steppers.dart, the tiles and tool tiles in
-// panel_kit_tiles.dart.
+// picture tiles, tools. Element-agnostic; see settings/README.md for the
+// rows inside a section. The tiles and tool tiles are in
+// panel_kit_tiles.dart, and what keeps the untouched sections while a
+// gesture is held in panel_kit_hold.dart. The stepper and the sides field
+// are controls (ui/controls_steppers.dart), not parts of a panel.
 
 /// CanvasKept is [builder]'s widget, rebuilt only when [deps] or inherited
 /// state change, as Flutter skips an unchanged subtree. Pass everything it

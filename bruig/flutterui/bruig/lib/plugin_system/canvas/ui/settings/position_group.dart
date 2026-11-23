@@ -4,6 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show cameraOf;
@@ -407,8 +409,8 @@ List<Widget> _pageShapeRow(_Placing p) {
     // spacing and padding scale, as a banner headline is a feed line
     // (ElementBase.typeScale). Offered where something inside is measured
     // apart from the box (scalesInside): words, a table's type and padding,
-    // a shape's outline, corners and label, a stroke's width. A picture is
-    // drawn to its box.
+    // a shape's outline, corners, padding and label, a stroke's width and
+    // dash. A picture is drawn to its box.
     if (e.scalesInside) ...[
       CanvasStepper(
         key: const ValueKey("elementTypeScale"),
@@ -433,13 +435,7 @@ List<Widget> _pageShapeRow(_Placing p) {
         },
         onCommit: p.commit,
       ),
-      const CanvasHint(
-          "Everything inside the box at once, on the shape of page you "
-          "are on: the type, the line spacing, the padding, the corners "
-          "and the rules. The box itself stays where you put it. Type "
-          "size on its own is the Type group's Size — this is that and "
-          "the room round it together, which is what keeps a design "
-          "looking like itself at another size."),
+      CanvasHint(_scaleInsideHint(e)),
     ],
     // And the way out of sharing, for an element it cannot carry.
     CanvasToggle(
@@ -467,3 +463,23 @@ List<Widget> _pageShapeRow(_Placing p) {
             "freely, and the shared one is kept for the others."),
   ];
 }
+
+/// _scaleInsideHint is what Scale inside sizes on [e], in the words of what
+/// [e] has inside it.
+String _scaleInsideHint(CanvasElement e) => switch (e) {
+      ShapeElement() => "Everything inside the box at once, on the shape of "
+          "page you are on: the words, the outline, the corners and the "
+          "padding. The box itself stays where you put it, and the shape is "
+          "drawn to it. Type size on its own is the Label type group's Size "
+          "— this is that and the room round it together, which is what "
+          "keeps a design looking like itself at another size.",
+      StrokedElement() => "The stroke's weight, on the shape of page you are "
+          "on: its width and its dashes, and the marks on its ends with "
+          "them. Where it runs stays where you put it.",
+      _ => "Everything inside the box at once, on the shape of page you "
+          "are on: the type, the line spacing, the padding, the corners "
+          "and the rules. The box itself stays where you put it. Type "
+          "size on its own is the Type group's Size — this is that and "
+          "the room round it together, which is what keeps a design "
+          "looking like itself at another size.",
+    };

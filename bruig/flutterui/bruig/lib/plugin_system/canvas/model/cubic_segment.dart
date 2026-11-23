@@ -8,8 +8,9 @@ import 'dart:ui';
 // vector_cut.dart) are the same arithmetic, and are meant to take these up.
 
 /// CubicSegment is one cubic piece of a curve: from [p0] to [p3], pulled
-/// towards [c1] on leaving and [c2] on arriving. A control point on its end
-/// gives a straight piece, which is what a point with no handle is.
+/// towards [c1] on leaving and [c2] on arriving. A control point lying on
+/// its own end pulls nothing that way, which is what a point with no handle
+/// is: with both so, the piece is straight.
 class CubicSegment {
   final Offset p0, c1, c2, p3;
 

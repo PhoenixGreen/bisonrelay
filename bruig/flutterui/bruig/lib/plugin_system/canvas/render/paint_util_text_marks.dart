@@ -405,12 +405,12 @@ void _paintPartUnderline(
     case PartLineStyle.dashed:
       paint.strokeCap = StrokeCap.butt;
       canvas.drawPath(
-          dashPath(_straight(box.left, box.right, y), width * 4, width * 3),
+          _dashPath(_straight(box.left, box.right, y), width * 4, width * 3),
           paint);
 
     case PartLineStyle.dotted:
       canvas.drawPath(
-          dashPath(_straight(box.left, box.right, y), 0.01, width * 3), paint);
+          _dashPath(_straight(box.left, box.right, y), 0.01, width * 3), paint);
 
     case PartLineStyle.twin:
       paint

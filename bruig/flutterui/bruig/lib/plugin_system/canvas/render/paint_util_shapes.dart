@@ -1,93 +1,53 @@
 part of 'paint_util.dart';
 
-// Boxes and their fills and borders, shape outlines, dashes and speech
-// bubbles. Part of paint_util.dart.
-
-/// paintBox draws a [BoxSpec]: the fill, then the border, both rounded.
-void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
-    [CanvasImageSource? images]) {
-  paintBoxFill(canvas, rect, box, images);
-  paintBoxBorder(canvas, rect, box);
-}
-
-/// paintBoxFill is the inside of a box (its colour, and a picture or pattern
-/// over that) without its border, for an element drawing between the two.
-void paintBoxFill(ui.Canvas canvas, Rect rect, BoxSpec box,
-    [CanvasImageSource? images]) {
-  if (rect.width <= 0 || rect.height <= 0) return;
-  var filled = PaintSpec(box.fill, gradient: box.fillFade);
-  if (filled.shows) {
-    canvas.drawRRect(box.rounded(rect), filled.into(Paint(), rect));
-  }
-  // A picture or pattern over that, cut to the box as paintThroughText does.
-  if (box.painted.on) {
-    paintThroughText(canvas, rect, box.painted, images,
-        () => canvas.drawRRect(box.rounded(rect), Paint()));
-  }
-}
-
-/// paintBoxBorder is a box's border alone, inside its edge.
-void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
-  if (rect.width <= 0 || rect.height <= 0) return;
-  if (!box.hasBorder) return;
-  var inset = box.borderInset;
-
-  var paint =
-      PaintSpec(box.borderColor, gradient: box.borderFade).into(Paint(), rect);
-
-  var even = box.evenBorder;
-  if (even != null) {
-    // Inset by half the stroke so the border sits inside the bounds and is
-    // not half cut off on a full-bleed element.
-    canvas.drawRRect(
-      // Inset, with the box's own rounding rather than concentric corners,
-      // which a deep inset would square off.
-      box.rounded(inset > 0 ? rect.deflate(inset) : rect, by: even / 2),
-      paint
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = even,
-    );
-    return;
-  }
-
-  // Uneven sides are four strips inside the bounds, square where they meet:
-  // two widths at a rounded corner have no agreed shape.
-  var sides = box.borders;
-  paint.style = PaintingStyle.fill;
-  if (inset > 0) rect = rect.deflate(inset);
-  if (sides.top > 0) {
-    canvas.drawRect(
-        Rect.fromLTWH(rect.left, rect.top, rect.width, sides.top), paint);
-  }
-  if (sides.bottom > 0) {
-    canvas.drawRect(
-        Rect.fromLTWH(
-            rect.left, rect.bottom - sides.bottom, rect.width, sides.bottom),
-        paint);
-  }
-  if (sides.left > 0) {
-    canvas.drawRect(
-        Rect.fromLTWH(rect.left, rect.top, sides.left, rect.height), paint);
-  }
-  if (sides.right > 0) {
-    canvas.drawRect(
-        Rect.fromLTWH(
-            rect.right - sides.right, rect.top, sides.right, rect.height),
-        paint);
-  }
-}
+// A shape's outline (the shape element's, and a kind of shape borrowed by a
+// picture's frame, the shapes transition and the panel's tiles), the speech
+// bubble's body and tail, a star, and the dash any stroke is broken into.
+// Part of paint_util.dart.
 
 /// shapeOutline is [e]'s outline in its box [bounds], before the box is
 /// turned or slanted onto the page: what is filled and stroked, what a loop
 /// runs round, what wrapped words go round and what a press lands on, so
-/// none of them can disagree about a shape's edge.
-Path shapeOutline(ShapeElement e, Rect bounds) =>
-    shapePath(e.shape, shapeBox(e, bounds),
-        points: e.points,
-        inner: e.innerRatio,
-        cornerRadius: e.cornerRadius,
-        corners: e.corners,
-        bubble: e.bubble);
+/// none of them can disagree about a shape's edge. Each outline built is
+/// kept by what it is made from (_outlines), so they share one, and the
+/// paint after asks for it again without building it again. What is handed
+/// back is shared: nothing asking may change it.
+Path shapeOutline(ShapeElement e, Rect bounds) {
+  var box = shapeBox(e, bounds);
+  var c = e.corners, b = e.bubble;
+  var key = (
+    e.shape,
+    box,
+    e.points,
+    e.innerRatio,
+    (c.all, c.tl, c.tr, c.br, c.bl),
+    (b.body, b.tail, b.tailAngle, b.tailLength, b.tailWidth, b.curl),
+  );
+  // Taken out and put back, so the map's order is the order last asked.
+  var kept = _outlines.remove(key);
+  if (kept == null && _outlines.length >= _outlinesKept) {
+    _outlines.remove(_outlines.keys.first);
+  }
+  return _outlines[key] = kept ??
+      shapePath(e.shape, box,
+          points: e.points,
+          inner: e.innerRatio,
+          cornerRadius: e.cornerRadius,
+          corners: c,
+          bubble: e.bubble);
+}
+
+/// _outlines is every outline shapeOutline has built and not yet let go,
+/// the least lately asked first: a cloud bubble is a dozen unions of
+/// circles, and twenty of them took a third of a frame to build on every
+/// paint. A shape whose box moves on every frame makes a new one each
+/// time, so they are let go past [_outlinesKept].
+final Map<Object, Path> _outlines = {};
+const int _outlinesKept = 512;
+
+/// clearShapeOutlines lets go of every outline shapeOutline has kept
+/// (clearRenderCaches).
+void clearShapeOutlines() => _outlines.clear();
 
 /// shapeBox is the part of [bounds] [e]'s outline is drawn in: the whole
 /// box, or for a square or a circle the square in its middle, so one in an
@@ -224,8 +184,8 @@ void _regular(Path path, Offset c, double rx, double ry, int sides) {
   path.close();
 }
 
-/// dashPath breaks [source] into dashes of [on] followed by gaps of [off].
-Path dashPath(Path source, double on, double off) {
+/// _dashPath breaks [source] into dashes of [on] followed by gaps of [off].
+Path _dashPath(Path source, double on, double off) {
   if (!(on > 0) || !off.isFinite) return source;
   off = math.max(0.0, off);
   // Past this many dashes the line is drawn whole, so a tiny dash from a

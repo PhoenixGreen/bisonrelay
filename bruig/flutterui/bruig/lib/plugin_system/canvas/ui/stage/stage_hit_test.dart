@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -15,46 +15,33 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 
-/// _KeptOutline is a shape's outline in a box, and its edge walked into
-/// points for one reach, kept for the next ask about the same shape in the
-/// same box (_outlineOf): a pointer moving over one shape asks at every
-/// move, and a cloud's outline is a dozen unions.
-class _KeptOutline {
-  final ShapeElement shape;
-  final Rect box;
-  final Path outline;
-  double? _reach;
-  List<List<Offset>> _edges = const [];
+/// _edgesKept is a shape outline's edge walked into points for one reach,
+/// kept with the outline itself: shapeOutline keeps each outline it builds
+/// and hands back the same one for the same shape in the same box, and a
+/// pointer moving over one shape asks at every move. Let go with the
+/// outline.
+final Expando<(double, List<List<Offset>>)> _edgesKept =
+    Expando("outline edges");
 
-  _KeptOutline(this.shape, this.box) : outline = shapeOutline(shape, box);
-
-  /// edges is the outline's edge as runs of points, in steps short beside
-  /// [reach] so a corner is not stepped over, and never more than a few
-  /// thousand of them.
-  List<List<Offset>> edges(double reach) {
-    if (_reach == reach) return _edges;
-    _reach = reach;
-    return _edges = [
-      for (var metric in outline.computeMetrics())
-        [
-          for (var d = 0.0;
-              d < metric.length;
-              d += math.max(reach / 4, metric.length / 2000))
-            metric.getTangentForOffset(d)!.position,
-          metric.getTangentForOffset(metric.length)!.position,
-        ],
-    ];
+/// _edgesOf is [outline]'s edge as runs of points, in steps short beside
+/// [reach] so a corner is not stepped over, and never more than a few
+/// thousand of them.
+List<List<Offset>> _edgesOf(Path outline, double reach) {
+  if (_edgesKept[outline] case (var r, var edges) when r == reach) {
+    return edges;
   }
-}
-
-_KeptOutline? _lastOutline;
-
-/// _outlineOf is [e]'s outline in [box], the last one kept if it is the
-/// same shape in the same box.
-_KeptOutline _outlineOf(ShapeElement e, Rect box) {
-  var last = _lastOutline;
-  if (last != null && identical(last.shape, e) && last.box == box) return last;
-  return _lastOutline = _KeptOutline(e, box);
+  var edges = [
+    for (var metric in outline.computeMetrics())
+      [
+        for (var d = 0.0;
+            d < metric.length;
+            d += math.max(reach / 4, metric.length / 2000))
+          metric.getTangentForOffset(d)!.position,
+        metric.getTangentForOffset(metric.length)!.position,
+      ],
+  ];
+  _edgesKept[outline] = (reach, edges);
+  return edges;
 }
 
 /// StageHitTest answers "what is at this point of the document, now": where
@@ -172,9 +159,9 @@ class StageHitTest {
     // its edge to pick a thin one; its box's empty corners are left to
     // what is behind it.
     if (e is ShapeElement) {
-      var kept = _outlineOf(e, box);
-      return kept.outline.contains(local) ||
-          _nearOutline(kept, local, _strokeReach(e.strokeWidth));
+      var outline = shapeOutline(e, box);
+      return outline.contains(local) ||
+          _nearOutline(outline, local, _strokeReach(e.strokeWidth));
     }
     return true;
   }
@@ -262,10 +249,11 @@ class StageHitTest {
   double _strokeReach(double strokeWidth) =>
       math.max(strokeWidth / 2, 0) + strokeHitSlop / scale;
 
-  /// _nearOutline is whether [point] is within [reach] of [kept]'s edge.
-  bool _nearOutline(_KeptOutline kept, Offset point, double reach) {
-    if (!kept.outline.getBounds().inflate(reach).contains(point)) return false;
-    return kept.edges(reach).any((run) => _nearPolyline(run, point, reach));
+  /// _nearOutline is whether [point] is within [reach] of [outline]'s edge.
+  bool _nearOutline(Path outline, Offset point, double reach) {
+    if (!outline.getBounds().inflate(reach).contains(point)) return false;
+    return _edgesOf(outline, reach)
+        .any((run) => _nearPolyline(run, point, reach));
   }
 
   bool _nearPolyline(List<Offset> points, Offset point, double reach) {

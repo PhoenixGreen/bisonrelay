@@ -15,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/plugin_system/canvas/render/transition_shapes.dart';
+import 'package:bruig/plugin_system/canvas/render/transition_covers.dart';
 import 'package:flutter/painting.dart';
 
 // scene_sequence.dart plays a document through: every scene in order, and
@@ -261,7 +261,7 @@ void paintTransition(
       _faded(canvas, page, t, to);
 
     // Covers: a shape in the transition's colour grows over the page, the
-    // scenes swap, and it goes. See transition_shapes.dart, and
+    // scenes swap, and it goes. See transition_covers.dart, and
     // SceneTransitionKind.covers for why these are not masks.
     case SceneTransitionKind.band:
     case SceneTransitionKind.blinds:

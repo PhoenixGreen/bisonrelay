@@ -28,4 +28,5 @@ void clearRenderCaches() {
   clearTextLayouts();
   clearGlyphs();
   clearCodeLayouts();
+  clearShapeOutlines();
 }

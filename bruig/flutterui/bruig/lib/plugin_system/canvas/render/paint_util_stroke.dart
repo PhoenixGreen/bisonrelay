@@ -38,7 +38,7 @@ void paintStroke(ui.Canvas canvas, Path along, StrokeSpec stroke) {
   }
 
   canvas.drawPath(
-      stroke.dash > 0 ? dashPath(body, stroke.dash, stroke.dash * 0.8) : body,
+      stroke.dash > 0 ? _dashPath(body, stroke.dash, stroke.dash * 0.8) : body,
       paint);
 
   // The ends in the stroke's own paint, its fade laid over the same curve,

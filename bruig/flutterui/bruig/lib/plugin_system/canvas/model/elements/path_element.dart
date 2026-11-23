@@ -49,6 +49,8 @@ class PathNode {
   /// field out.
   static const _defaults = PathNode(x: 0, y: 0);
 
+  /// point, inHandle and outHandle are where the node and its two handles
+  /// are, as fractions of the box.
   Offset get point => Offset(x, y);
   Offset get inHandle => Offset(x + inDx, y + inDy);
   Offset get outHandle => Offset(x + outDx, y + outDy);
@@ -59,8 +61,8 @@ class PathNode {
   bool get hasIn => inDx != 0 || inDy != 0;
   bool get hasOut => outDx != 0 || outDy != 0;
 
-  /// gripOf is where [grip] is, as a fraction of the box.
-  Offset gripOf(PathGrip grip) => switch (grip) {
+  /// _gripOf is where [grip] is, as a fraction of the box.
+  Offset _gripOf(PathGrip grip) => switch (grip) {
         PathGrip.point => point,
         PathGrip.inHandle => inHandle,
         PathGrip.outHandle => outHandle,
@@ -138,6 +140,7 @@ enum PathGrip { point, inHandle, outHandle }
 /// PathFollow names what travels the curve: an element, or a team's
 /// player, by the team's id and row index, as the timeline does.
 class PathFollow {
+  /// elementId is the follower's id, or its team's.
   final String elementId;
 
   /// playerIndex is set when the follower is a team's player.
@@ -323,16 +326,23 @@ bool _sameAs(Keyframe k, Keyframe as, Map<String, double> values) =>
 /// stroke is a StrokedElement's: yellow, 3 wide, round, with an arrow at its
 /// end.
 class PathElement extends StrokedElement {
+  /// nodes are its points in order along the curve, each with its handles
+  /// and the frame the follower reaches it on.
   final List<PathNode> nodes;
 
+  /// closed joins the last node back to the first with one more piece of
+  /// curve, which a follower does not ride; a closed path draws no ends.
   final bool closed;
 
   /// guide draws the curve only while editing, never published; on once a
   /// follower is attached, since a path without one is a drawing.
   final bool guide;
 
+  /// follow is what rides the path, or null for nothing. Its ride is baked
+  /// into the follower's own keys (followTrack), not worked out here.
   final PathFollow? follow;
 
+  /// animation is how it arrives on the page and leaves.
   final ElementAnimation animation;
 
   const PathElement(
@@ -382,7 +392,7 @@ class PathElement extends StrokedElement {
   /// as the curve is, by [place] (where the painter lays the path out on a
   /// frame), or through its turn and slant as it rests.
   Offset gripOnPage(PathNode node, PathGrip grip, [ElementPlace? place]) {
-    var inBox = _inBox(node.gripOf(grip));
+    var inBox = _inBox(node._gripOf(grip));
     return place == null ? onPage(inBox) : place.place(inBox);
   }
 
@@ -516,12 +526,12 @@ class PathElement extends StrokedElement {
     next.insert(index + 1, made);
     // Two neighbours a single frame apart leave no whole frame between them,
     // so the halved frame lands on one of them.
-    return copyWith(nodes: next).withDistinctFrames(maxFrame: maxFrame);
+    return copyWith(nodes: next)._withDistinctFrames(maxFrame: maxFrame);
   }
 
-  /// withDistinctFrames gives every point its own frame (two sharing one
+  /// _withDistinctFrames gives every point its own frame (two sharing one
   /// put the follower in two places), re-spacing the whole run.
-  PathElement withDistinctFrames({int maxFrame = 1 << 30}) {
+  PathElement _withDistinctFrames({int maxFrame = 1 << 30}) {
     if (nodes.length < 2) return this;
 
     var collides = false;
@@ -561,8 +571,8 @@ class PathElement extends StrokedElement {
         frame: math.min(maxFrame, last.frame + gap),
       ),
       // Clamped to the last frame, the new point can land on the old end;
-      // withDistinctFrames spreads them apart.
-    ]).withDistinctFrames(maxFrame: maxFrame);
+      // _withDistinctFrames spreads them apart.
+    ])._withDistinctFrames(maxFrame: maxFrame);
   }
 
   /// insertAtFrame adds a point at [frame], splitting whichever segment spans
@@ -589,6 +599,7 @@ class PathElement extends StrokedElement {
     return withNode(index, nodes[index].copyWith(frame: frame));
   }
 
+  /// withoutNode is this path without node [index]; never fewer than two.
   PathElement withoutNode(int index) {
     if (index < 0 || index >= nodes.length || nodes.length <= 2) return this;
     return copyWith(nodes: [...nodes]..removeAt(index));
@@ -671,19 +682,15 @@ class PathElement extends StrokedElement {
         if (animation.any) "anim": animation.toJson(),
       };
 
-  factory PathElement.fromJson(Map<String, dynamic> json, ElementBase b) {
-    var followJson = json["follow"];
-    return PathElement._of(b, StrokeSpec.fromJson(json, _defaults.stroke),
-        nodes:
-            jsonObjects(json["nodes"], PathNode.fromJson, most: maxPathNodes),
-        closed: jsonBool(json["closed"], false),
-        guide: jsonBool(json["guide"], false),
-        follow: followJson is Map<String, dynamic>
-            ? PathFollow.fromJson(followJson)
-            : null,
-        animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, _defaults.animation));
-  }
+  factory PathElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
+      PathElement._of(b, StrokeSpec.fromJson(json, _defaults.stroke),
+          nodes:
+              jsonObjects(json["nodes"], PathNode.fromJson, most: maxPathNodes),
+          closed: jsonBool(json["closed"], _defaults.closed),
+          guide: jsonBool(json["guide"], _defaults.guide),
+          follow: jsonSpec(json["follow"], PathFollow.fromJson, null),
+          animation: jsonSpec(
+              json["anim"], ElementAnimation.fromJson, _defaults.animation));
 
   /// defaultNodes is the curve a freshly added path starts as: a shallow arc
   /// across its own box, so it visibly has handles.

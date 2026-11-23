@@ -44,6 +44,7 @@ class _Shape {
   }
 }
 
+/// shapePanel is a shape's settings, laid out by elementPanel.
 Widget shapePanel(
     BuildContext context,
     CanvasController controller,

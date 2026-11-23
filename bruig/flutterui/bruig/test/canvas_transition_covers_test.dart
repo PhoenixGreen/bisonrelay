@@ -1,12 +1,13 @@
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
-import 'package:bruig/plugin_system/canvas/render/transition_shapes.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// canvas_transition_shapes_test.dart is the shape an overlay transition draws
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/transition_covers.dart';
+
+// canvas_transition_covers_test.dart is the shape an overlay transition draws
 // at a given moment, measured rather than looked at.
 //
 // These are covers: a shape in the transition's own colour that grows until

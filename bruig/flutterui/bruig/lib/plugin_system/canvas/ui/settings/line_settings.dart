@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/stroke_controls.dart';
 // stroke's controls are stroke_controls.dart's, which a path's panel uses
 // too.
 
+/// linePanel is a line's settings, laid out by elementPanel.
 Widget linePanel(
     BuildContext context,
     CanvasController controller,

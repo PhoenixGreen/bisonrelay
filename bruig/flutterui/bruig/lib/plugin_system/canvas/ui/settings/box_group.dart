@@ -164,7 +164,8 @@ List<Widget> _boxMore(BoxSpec box, ValueChanged<BoxSpec> onChanged,
     ];
 
 /// cornerFields is the corners as one control (a number for all four and a
-/// splitting link), shared by an element's frame and a rectangle shape.
+/// splitting link), shared by an element's box, a piece of a text's box and
+/// a shape whose corners can be rounded (ShapeElement.hasCorners).
 List<Widget> cornerFields(
         Corners corners, ValueChanged<Corners> onChanged, VoidCallback commit,
         {String label = "Radius", required String prefix}) =>

@@ -401,7 +401,8 @@ corners, and its corner handles move them (`_applyLineEnd`): the end goes
 under the pointer and the other stays where it is drawn, the line's resting
 ends laid so through the place it is drawn by (`LineElement.withEndsDrawnAt`).
 A line's panel reads and sets it the same way, as it is drawn at rest:
-`length` and `angle` are between `drawnStart` and `drawnEnd`, and
+`length` and `angle` are between where its ends are drawn (not its box's
+`start` and `end`), and
 `withLength`, `withAngle`, `level` and `plumb` keep where its start is drawn,
 so Level makes a turned line level on the page.
 A bowed line's or a path's corner handles resize its box. A handle drawn on
