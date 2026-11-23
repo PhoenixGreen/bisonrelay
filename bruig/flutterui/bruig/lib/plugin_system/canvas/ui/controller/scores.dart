@@ -116,7 +116,7 @@ extension CanvasScores on CanvasController {
     }
     if (_frame < span.$1 || _frame >= span.$2 - 1) frame = span.$1;
     play();
-    _rangeEnd = span.$2;
+    _setRangeEnd(span.$2);
   }
 
   /// setSheetSpeed plays [sheet] at [speed], a share of real time (1) to the

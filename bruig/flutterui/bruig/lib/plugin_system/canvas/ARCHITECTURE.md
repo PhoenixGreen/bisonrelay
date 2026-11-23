@@ -184,11 +184,34 @@ are with its lanes (`lanes.dart`), and what a button element does is
 `button_actions.dart`, whose head is the one table of what each action does
 in the editor and in a published book, and where the two differ. What needs
 nothing of the controller is a library beside the parts rather than a part,
-handed what it reads and what to tell: `view_types.dart`, and
+handed what it reads and what to tell: `view_types.dart`;
 `counter_clock.dart`, the live counters' clock, which the controller holds
-one of (`counters.dart` is the controller's side of it: a game's counts).
-`test/canvas_layers_test.dart` holds those two to not importing the
+one of (`counters.dart` is the controller's side of it: a game's counts);
+and `playhead_on.dart`, what the playhead is on (below).
+`test/canvas_layers_test.dart` holds those three to not importing the
 controller.
+
+**Playing.** Whether anything plays is the timer's (`playing`: `_playback`
+is running). What plays is one value, `_playheadOn`, a sealed `PlayheadOn`
+(`controller/playhead_on.dart`) whose cases each hold what that activity
+needs: `OnTimeline`, the scene's own timeline, playing or stopped (a canvas
+opens on a bare one); `OnRun`, a frame of the run of every scene, to its
+end; `OnJoin`, a join's transition watched, with the scene to go back to;
+`OnElement`, one element's animation previewed; and `OnSlots`, the clip
+slots alone on their own clock. The first three are `Showing`, what the
+canvas shows, and each may carry a range to stop at; the last two play
+only while the timer runs, each over the `Showing` that was there, which
+shows again on `pause`. The questions asked of it are named once, on the
+value (`isPreview`: an element or a join, when the metronome is quiet) or
+in `playback.dart`: `timelinePlaying` (the timer runs for anything but the
+slots alone: Play shows as pressed), `canvasLive` (playing, or a game on
+its own timer), `showingScene` (no frame of the run, no element
+previewed) and `_runHeld` (a frame of the run that stopping, or moving the
+playhead by hand, lets go of). The scene is turned in one place,
+`_turnScene` (`scenes.dart`), for a turn by hand, by every scene playing
+and by a join going back. A new kind of playing is a new case: the
+compiler then lists every `switch` over the value that has to say what it
+does.
 
 Two rules for whatever is added to it:
 

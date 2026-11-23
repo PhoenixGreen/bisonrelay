@@ -12,11 +12,7 @@ extension StageGuides on CanvasStageState {
   /// through the scene's camera, when the camera moves the page under them.
   /// The rulers stay.
   bool get _guidesInView =>
-      !controller.playing &&
-      !controller.gaming &&
-      !_directed &&
-      controller.previewAt == null &&
-      controller.previewing == null;
+      !controller.canvasLive && !_directed && controller.showingScene;
 
   /// _drawnOverGuide is whether a press at [stage] is on a mark drawn over
   /// the guides, which takes the press before a guide there: the

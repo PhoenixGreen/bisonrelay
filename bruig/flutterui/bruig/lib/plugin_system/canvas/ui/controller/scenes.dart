@@ -22,7 +22,7 @@ extension CanvasScenes on CanvasController {
   /// when it is showing the scene being edited. How a transition is watched:
   /// the stage draws the sequence with the same function publishing uses
   /// (see paintSequenceFrame).
-  int? get previewAt => _previewAt;
+  int? get previewAt => _playheadOn.runFrame;
 
   /// previewTransitionAfter plays the join after scene [index]: a little of
   /// the scene before, the transition, and a little of the scene after.
@@ -42,15 +42,17 @@ extension CanvasScenes on CanvasController {
     pause();
     var over = document.transitionAfter(index);
     var start = document.startOfScene(index + 1);
-    _previewJoin = index;
     // A little of the scene being left, then the join, then a little of the
     // one arriving, so the eye has something to compare the transition with.
     var lead = math.max(6, (document.frameRate * 0.4).round());
-    _previewFrom = document.at;
-    _previewFromMaster = document.editingMaster;
-    _previewAt = math.max(0, start - over.overlap - lead);
-    _previewEnd =
-        math.min(document.sequenceFrames - 1, start + over.frames + lead);
+    var end = math.min(document.sequenceFrames - 1, start + over.frames + lead);
+    _playbackState.runEnd = end;
+    _playheadOn = OnJoin(
+        at: math.max(0, start - over.overlap - lead),
+        end: end,
+        join: index,
+        from: document.at,
+        fromMaster: document.editingMaster);
     _startTimer();
     notifyListeners();
   }
@@ -61,11 +63,15 @@ extension CanvasScenes on CanvasController {
   bool joinPlaying(int join) {
     var doc = _document;
     if (join < 0 || join >= doc.allScenes.length - 1) return false;
-    if (_previewAt case var at?) {
-      if (_previewJoin == join) return true;
-      var start = doc.startOfScene(join + 1);
-      var over = doc.transitionAfter(join);
-      return at >= start - over.overlap && at < start + over.frames;
+    switch (_playheadOn.showing) {
+      case OnJoin(at: int(), join: var watched) when watched == join:
+        return true;
+      case OnRun(:var at) || OnJoin(at: var at?):
+        var start = doc.startOfScene(join + 1);
+        var over = doc.transitionAfter(join);
+        return at >= start - over.overlap && at < start + over.frames;
+      case OnTimeline() || OnJoin(at: null):
+        break;
     }
     if (gameChange case (var left, _, _, _, _)?) {
       return left.at == join && doc.at == join + 1;
@@ -75,20 +81,28 @@ extension CanvasScenes on CanvasController {
 
   /// stopPreview puts the canvas back on the scene being edited.
   void stopPreview() {
-    if (_previewAt == null) return;
-    _previewAt = null;
-    _previewJoin = null;
+    int? back;
+    var wasMaster = false;
+    switch (_playheadOn.showing) {
+      // Showing the scene: no frame of the run to stop showing.
+      case OnTimeline() || OnJoin(at: null):
+        return;
+      // A run of every scene stays on the scene it got to.
+      case OnRun():
+        break;
+      // A join goes back to where it was watched from.
+      case OnJoin(:var from, :var fromMaster):
+        back = from;
+        wasMaster = fromMaster;
+    }
+    _playheadOn = _playheadOn.withShowing(const OnTimeline());
     pause();
     // Back to the canvas it was started from: playing the document walks the
-    // editor through the scenes (see _step).
-    var back = _previewFrom;
-    var wasMaster = _previewFromMaster;
-    _previewFrom = null;
-    _previewFromMaster = false;
+    // editor through the scenes (see _stepRun).
     if (back != null && back != _document.at) {
-      _document = _document.goToScene(back);
+      _turnScene(_document.goToScene(back),
+          keepLeft: false, toKept: false, letGo: false, asChange: false);
       _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
-      _audioFollowsPage(turned: true);
     }
     // And back onto the shared canvas where that is where it started.
     if (wasMaster && !_document.editingMaster) {
@@ -479,18 +493,63 @@ extension CanvasScenes on CanvasController {
   void goToScene(int index) {
     var next = _document.goToScene(index).copyWith(onMaster: false);
     if (identical(next, _document)) return;
-    if (!_document.editingMaster) _sceneFrames[_document.scene.id] = _frame;
-    apply(next, transient: true);
     // Back where it was left on this scene, rather than one playhead clamped
     // to each scene in turn.
-    if (_sceneFrames[_document.scene.id] case var kept?) _frame = kept;
+    _turnScene(next, keepLeft: true, toKept: true, letGo: true, asChange: true);
     // A stop's label is the scene left's, at whatever frame this one is on.
     _playbackState.stoppedAt = null;
-    // Clips picked on the timeline go with the selection: they name the
-    // scene left's elements, or keep one of this scene's out of it.
-    _motionPicks = const {};
-    _offCanvas = const {};
-    _afterSceneChange();
+    _syncTimeline();
+    _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+    notifyListeners();
+  }
+
+  /// _turnScene shows [next], the document on another scene: the one way
+  /// the scene is turned, by hand (goToScene), by every scene playing
+  /// (_stepRun) and by a join watched going back (stopPreview). The media
+  /// follow to the scene turned to. What differs between them:
+  ///
+  /// - [keepLeft]: the frame the scene left was on is remembered (see
+  ///   frameOn), as it is by hand and by playing; a join going back leaves
+  ///   nothing to remember.
+  /// - [toKept]: the scene turned to goes to the frame it was left on; by
+  ///   hand only, as playing goes to the run's frame and a join going back
+  ///   keeps the playhead.
+  /// - [letGo]: the selection goes, with the clips picked on the timeline
+  ///   and anything picked on another scene's canvas, as they name the
+  ///   scene left's elements; not for a join going back, which never
+  ///   changed them.
+  /// - [asChange]: through apply, as a change the document keeps (it saves
+  ///   the scene shown), autosaved and told at once; by hand only, as
+  ///   playing and a join going back are not edits.
+  ///
+  /// The caller then settles the frame and tells, once it has (goToScene
+  /// holds the frame to the scene; _stepRun puts it on the run's frame and
+  /// tells as a frame of play does; stopPreview first goes back onto the
+  /// master, if it was watched from there).
+  void _turnScene(CanvasDocument next,
+      {required bool keepLeft,
+      required bool toKept,
+      required bool letGo,
+      required bool asChange}) {
+    if (keepLeft && !_document.editingMaster) {
+      _sceneFrames[_document.scene.id] = _frame;
+    }
+    if (asChange) {
+      apply(next, transient: true);
+    } else {
+      _document = next;
+    }
+    if (toKept) {
+      if (_sceneFrames[_document.scene.id] case var kept?) _frame = kept;
+    }
+    if (letGo) {
+      _selection = {};
+      _motionPicks = const {};
+      _offCanvas = const {};
+      _backgroundSelected = false;
+      _focusedPlayer = null;
+    }
+    _audioFollowsPage(turned: true);
   }
 
   /// frameOn is the frame scene [index] is at: the playhead for the scene

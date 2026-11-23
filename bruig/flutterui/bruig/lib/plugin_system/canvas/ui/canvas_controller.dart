@@ -163,6 +163,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/counter_clock.dart';
+import 'package:bruig/plugin_system/canvas/ui/controller/playhead_on.dart';
 import 'package:bruig/plugin_system/canvas/ui/controller/view_types.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/image_masking.dart';
@@ -1067,44 +1068,22 @@ class CanvasController extends ChangeNotifier {
   // Playback
   // ------------------------------------------------------------------------
 
-  // What is playing and how, together: the timer, Play running every scene
-  // or a join's transition watched, one element's animation previewed, a
-  // range to stop at, the slots playing on their own and the session's
-  // clocks, recording, and the clock a test stands in. Set and read in
-  // controller/playback.dart above all. A sheet slowed or practised keeps
-  // its own (_slowSheet with the instruments, _practice under Practising).
+  // What is playing: the timer, which says whether, and _playheadOn, which
+  // says what (controller/playhead_on.dart: the scene's timeline, the run of
+  // every scene, a join watched, one element previewed, the slots alone).
+  // Beside them the switch to play every scene, the session's clock while
+  // the timeline plays, recording, and the clock a test stands in. Played
+  // in controller/playback.dart. A sheet slowed or practised keeps its own
+  // (_slowSheet with the instruments, _practice under Practising), and a
+  // game its own timer.
 
   Timer? _playback;
   bool get playing => _playback != null;
 
   bool _playAll = false;
 
-  int? _previewAt;
-
-  /// _previewEnd is where the preview stops, so a transition does not run on.
-  int _previewEnd = 0;
-
-  /// _previewFrom is the scene the preview started on, returned to after it.
-  int? _previewFrom;
-
-  /// _previewFromMaster is whether the master was open as the preview began.
-  bool _previewFromMaster = false;
-
-  /// _previewJoin is the join whose transition is being previewed (see
-  /// previewTransitionAfter), or null.
-  int? _previewJoin;
-
-  ({String id, int frame})? _previewing;
-  int _previewingEnd = 0;
-
-  /// _rangeEnd is the frame a sheet's range of bars stops playing at (see
-  /// playSheet), or null.
-  int? _rangeEnd;
-
-  bool _sessionOnly = false;
-
-  /// _sessionSeconds is the slots' own clock, playing on their own.
-  double _sessionSeconds = 0;
+  /// _playheadOn is what the playhead is playing or showing: see PlayheadOn.
+  PlayheadOn _playheadOn = const OnTimeline();
 
   /// _sessionClock is the session's clock while the timeline plays: from the
   /// playhead at Play, one frame on per frame played. A Loop, a Jump or a
@@ -1120,12 +1099,21 @@ class CanvasController extends ChangeNotifier {
   @visibleForTesting
   int Function()? clockForTest;
 
+  /// frame, set, moves the playhead by hand: held to the scene, it ends a
+  /// frame of the run stepped into, lets go of the Code panels' picks and a
+  /// stop's label, syncs the media and tells. A step of play (_step, and
+  /// Play from the end of the run) writes _frame directly: it syncs and
+  /// tells once the step is done, and the rest cannot be there while
+  /// playing (Play lets go of the picks and the label, and a frame of the
+  /// run is the run's to move). A document changed, opened or undone, or a
+  /// scene turned, holds _frame to its length directly, as part of that
+  /// change, which tells itself.
   set frame(int value) {
     var next = value.clamp(0, math.max(0, _document.frames - 1)).toInt();
-    // A playhead moved by hand ends a transition it was stepped into (see
-    // goToRunFrame).
-    if (_playAll && _previewFrom == null && !playing && _previewAt != null) {
-      _previewAt = null;
+    // A playhead moved by hand ends a frame of the run it was stepped into
+    // (see goToRunFrame).
+    if (_runHeld && !playing) {
+      _letGoOfRun();
       notifyListeners();
     }
     if (next == _frame) return;

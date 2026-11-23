@@ -176,7 +176,7 @@ extension CanvasSession on CanvasController {
     ].any((e) =>
         e.base.motion.clips.any((c) => c.triggers.any((t) => t.kind == kind)));
     if (!any) return;
-    var at = playing || gaming ? _sessionNow : _sessionStart();
+    var at = canvasLive ? _sessionNow : _sessionStart();
     var wasOff = {
       for (var e in _elementsWithClips())
         if (motionPlayer.isOff(e)) e,
@@ -221,7 +221,7 @@ extension CanvasSession on CanvasController {
     _soundsWithTheirMotion();
     if (!motionPlayer.offTimeline) return;
     var events = motionPlayer.step(_document, _frame, _sessionNow,
-        recording: _recording && !_sessionOnly);
+        recording: _recording && !sessionOnly);
     for (var e in events) {
       if (e is MotionBack) motionPlayer.leave(e.element);
     }
@@ -236,13 +236,17 @@ extension CanvasSession on CanvasController {
   /// keeps time with the timeline from where Play was pressed, so a clip
   /// launched on a bar is on the timeline's bar -- and goes on through a
   /// loop back (see _sessionClock).
-  double get _sessionNow => gaming
-      ? _gameClock
-      : _sessionOnly
-          ? _sessionSeconds
-          : playing
-              ? _sessionClock + betweenFrames / math.max(1, _document.frameRate)
-              : (_frame + betweenFrames) / math.max(1, _document.frameRate);
+  double get _sessionNow {
+    // A game's slots keep its own clock, beside whatever else plays.
+    if (gaming) return _gameClock;
+    var rate = math.max(1, _document.frameRate);
+    return switch (_playheadOn) {
+      OnSlots(:var seconds) => seconds,
+      Showing() || OnElement() when playing =>
+        _sessionClock + betweenFrames / rate,
+      Showing() || OnElement() => (_frame + betweenFrames) / rate,
+    };
+  }
 
   /// _gameClock is a game's slots' own clock: seconds since it started. Not
   /// the playhead's, which a Loop on the game's timeline sends back, taking
@@ -253,17 +257,17 @@ extension CanvasSession on CanvasController {
   /// sessionOnly is whether only the clip slots are playing: launched with
   /// the transport stopped, they run on their own clock, the timeline silent
   /// and its playhead still, until Play or Back to the timeline.
-  bool get sessionOnly => _sessionOnly;
+  bool get sessionOnly => _playheadOn is OnSlots;
 
   /// offTimeline is whether what is heard is not the timeline (only slots
   /// playing, or a channel left for its slots): Back to the timeline lights.
   bool get offTimeline =>
-      _sessionOnly || _offTimeline.isNotEmpty || motionPlayer.offTimeline;
+      sessionOnly || _offTimeline.isNotEmpty || motionPlayer.offTimeline;
 
   /// backToTimeline goes back to the timeline: playing only the slots, they
   /// stop; a channel that left it for its slots plays it again.
   void backToTimeline() {
-    if (_sessionOnly) {
+    if (sessionOnly) {
       pause();
       return;
     }
@@ -312,7 +316,7 @@ extension CanvasSession on CanvasController {
     // or -- only the slots playing -- every one with a clip on.
     var channels = {
       ..._offTimeline,
-      if (_sessionOnly)
+      if (sessionOnly)
         for (var e in _clipChannels.entries)
           if (e.value.now != null || e.value.next != null) e.key,
     };
@@ -360,13 +364,13 @@ extension CanvasSession on CanvasController {
     for (var key in {item.key, "snd-${item.key}"}) {
       var playing = _clipChannels[key];
       var off = _offTimeline.remove(key);
-      if ((off || _sessionOnly) &&
+      if ((off || sessionOnly) &&
           (playing?.now != null || playing?.next != null)) {
         stopChannelClips(key, now: true);
       }
     }
     // Only the slots playing, and none left: they stop, as Back does.
-    if (_sessionOnly && offTimelineItems.every((i) => i.isHeld)) {
+    if (sessionOnly && offTimelineItems.every((i) => i.isHeld)) {
       pause();
       return;
     }
@@ -390,8 +394,7 @@ extension CanvasSession on CanvasController {
   double _sessionStart() {
     // The slots on their own, from nought: the timeline stays where it is,
     // and silent -- see sessionOnly.
-    _sessionOnly = true;
-    _sessionSeconds = 0;
+    _playheadOn = OnSlots(seconds: 0, over: _playheadOn.showing);
     _startTimer();
     _syncTimeline();
     notifyListeners();
@@ -401,7 +404,7 @@ extension CanvasSession on CanvasController {
   /// _launchTime is when a launch now is heard: the next boundary, playing;
   /// at once, from a bar, when it starts the transport.
   double _launchTime([Quantise? quantise]) =>
-      playing || gaming ? _nextLaunch(_sessionNow, quantise) : _sessionStart();
+      canvasLive ? _nextLaunch(_sessionNow, quantise) : _sessionStart();
 
   /// clipState is how slot [row] of [channel] is doing, for the mixer.
   ClipState clipState(String channel, int row) {
@@ -918,7 +921,7 @@ extension CanvasSession on CanvasController {
       if (ch.next case var next? when now + 0.001 >= next.from) {
         if (ch.now case var was?) _endPlay(ch.channel, was, next.from);
         // Left the timeline for its slots, until Back to the timeline.
-        if (!_sessionOnly) _offTimeline.add(ch.channel);
+        if (!sessionOnly) _offTimeline.add(ch.channel);
         ch.now = next;
         ch.next = null;
         ch.stopAt = null;
@@ -1007,7 +1010,7 @@ extension CanvasSession on CanvasController {
   /// _sessionSilenced is whether [key]'s timeline is quiet: a channel plays
   /// its slots, not its timeline, until they are stopped (as in Ableton).
   bool _sessionSilenced(String key) =>
-      _sessionOnly ||
+      sessionOnly ||
       _offTimeline.contains(key) ||
       (_clipChannels[key]?.now != null &&
           _clipChannels[key]!.now!.from <= _sessionNow + 0.001);

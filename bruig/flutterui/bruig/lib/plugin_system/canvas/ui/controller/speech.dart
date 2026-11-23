@@ -1162,7 +1162,7 @@ extension CanvasSpeech on CanvasController {
     var onMaster = _document.editingMaster;
     var run = onMaster
         ? _frame
-        : _previewAt ?? _document.startOfScene(_document.at) + _frame;
+        : previewAt ?? _document.startOfScene(_document.at) + _frame;
     for (var e in _document.elements) {
       if (timed(e)) yield (e, onMaster ? run : _frame);
     }
@@ -1192,11 +1192,11 @@ extension CanvasSpeech on CanvasController {
         when identical(d, _document) &&
             f == _frame &&
             all == _playAll &&
-            preview == _previewAt) {
+            preview == previewAt) {
       return kept;
     }
     var made = List<TimedLane>.unmodifiable(_makeTimedLanes());
-    _lanesKept = ((_document, _frame, _playAll, _previewAt), made);
+    _lanesKept = ((_document, _frame, _playAll, previewAt), made);
     return made;
   }
 
@@ -1321,7 +1321,7 @@ extension CanvasSpeech on CanvasController {
     // Asked for many times a frame -- by the timeline, the mixer, the
     // strips -- and the same until one of these changes.
     var key =
-        (_document, _frame, _playAll, _previewAt, _speechState.channelOrder);
+        (_document, _frame, _playAll, previewAt, _speechState.channelOrder);
     if (_channels case (var k, var known)
         when CanvasController._sameChannelKey(k, key)) {
       return known;

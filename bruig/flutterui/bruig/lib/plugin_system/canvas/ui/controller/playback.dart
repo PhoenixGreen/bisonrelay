@@ -51,11 +51,67 @@ extension CanvasPlayback on CanvasController {
     if (place.scene != document.at) goToScene(place.scene);
     frame = place.frame;
     var showing = place.changing ? run : null;
-    if (showing != _previewAt) {
-      _previewAt = showing;
+    if (showing != _playheadOn.runFrame) {
+      _showRunFrame(showing);
       notifyListeners();
     }
   }
+
+  /// _showRunFrame puts what shows on frame [run] of the whole run, or back
+  /// on the scene (null). A join watched keeps the scene it goes back to,
+  /// even off its transition. A run put by hand from the scene plays to
+  /// where the last run or join was to stop (see _PlaybackState.runEnd).
+  void _showRunFrame(int? run) {
+    _playheadOn = _playheadOn.withShowing(switch (_playheadOn.showing) {
+      OnJoin join => join.movedTo(run),
+      OnRun on =>
+        run == null ? OnTimeline(rangeEnd: on.rangeEnd) : on.movedTo(run),
+      OnTimeline line => run == null
+          ? line
+          : OnRun(at: run, end: _playbackState.runEnd, rangeEnd: line.rangeEnd),
+    });
+  }
+
+  // ------------------------------------------------------------ what plays
+
+  /// timelinePlaying is whether the timer runs for the timeline rather than
+  /// for the slots alone: Play shows as pressed, and the timeline's media
+  /// play. So too while a join is watched or one element previewed, which
+  /// Play's button pauses.
+  bool get timelinePlaying => playing && !sessionOnly;
+
+  /// canvasLive is whether the canvas is running rather than being edited:
+  /// the timer playing, or a game going on its own timer. Helpers that
+  /// edit (guides, the gizmo, the 3D view's controls) go, and the slots
+  /// launch on the clock already running.
+  bool get canvasLive => playing || gaming;
+
+  /// showingScene is whether the canvas shows the scene being edited at the
+  /// playhead: no frame of the run (a join's transition, or every scene's)
+  /// and no element previewed. Not [PlayheadOn.isPreview]: a run of every
+  /// scene is not a preview (the metronome keeps its time), but it is not
+  /// the scene being edited either (the guides go).
+  bool get showingScene => previewAt == null && previewing == null;
+
+  /// _runHeld is whether the canvas shows a frame of the run that nothing
+  /// will put back: every scene played, or a frame of it stepped into by
+  /// hand (Play all on). Not a join watched, which puts the editor back
+  /// itself (see stopPreview). Let go when playing stops, and, stopped,
+  /// when the playhead is moved by hand; a playhead moved while the run
+  /// plays is the run's to move on from.
+  bool get _runHeld => _playAll && _playheadOn.showing is OnRun;
+
+  /// _letGoOfRun puts what shows back on the scene from a frame of the run.
+  void _letGoOfRun() {
+    if (_playheadOn.showing case OnRun on) {
+      _playheadOn = _playheadOn.withShowing(OnTimeline(rangeEnd: on.rangeEnd));
+    }
+  }
+
+  /// _setRangeEnd stops what is playing at frame [end] of the scene it was
+  /// asked on (see Showing.rangeEnd), or at nothing (null).
+  void _setRangeEnd(int? end) => _playheadOn =
+      _playheadOn.withShowing(_playheadOn.showing.withRangeEnd(end));
 
   /// playsEveryScene is whether Play runs along every scene, one after
   /// another, rather than the scene in front: Play all, on a canvas with
@@ -80,11 +136,11 @@ extension CanvasPlayback on CanvasController {
     _codeFull.clear();
     // Playing only the slots: Play is the timeline's -- the slots stop, and
     // the piece plays from its playhead.
-    if (_sessionOnly) {
+    if (_playheadOn case OnSlots(:var over)) {
       _haltClips();
       _playback?.cancel();
       _playback = null;
-      _sessionOnly = false;
+      _playheadOn = over;
     }
     if (playing) return;
     _playbackState.playedFrom = (_document.at, _frame);
@@ -103,18 +159,26 @@ extension CanvasPlayback on CanvasController {
     // Not while a game plays: the game says which scene is showing.
     if (playsEveryScene && !gaming) {
       if (!canPlay) return;
-      _previewEnd = _document.playFrames - 1;
+      var end = _document.playFrames - 1;
       // From the playhead, wherever it has been put: the run's frame under
       // it on the ruler. At the very end, from the start.
       var from = _document.editingMaster
           ? _frame
           : _document.startOfScene(_document.at) + _frame;
-      if (from >= _previewEnd) {
+      if (from >= end) {
         if (!_document.editingMaster && _document.at != 0) goToScene(0);
         _frame = 0;
         from = 0;
       }
-      _previewAt = from;
+      _playbackState.runEnd = end;
+      _playheadOn = _playheadOn.withShowing(switch (_playheadOn.showing) {
+        // A join watched and paused plays on from here, to the run's end,
+        // and still goes back to where it was watched from.
+        OnJoin join => join.playedTo(from, end),
+        OnTimeline(:var rangeEnd) ||
+        OnRun(:var rangeEnd) =>
+          OnRun(at: from, end: end, rangeEnd: rangeEnd),
+      });
       _playbackState.loopCounts.clear();
       _startTimer();
       notifyListeners();
@@ -160,8 +224,8 @@ extension CanvasPlayback on CanvasController {
     // Practising, the clock runs at the tempo set -- see _clockRate.
     var seconds = raw * _clockRate + _playbackState.clockShift;
     // Only the slots: their clock goes on, the playhead does not.
-    if (_sessionOnly) {
-      _sessionSeconds = seconds;
+    if (_playheadOn case OnSlots slots) {
+      _playheadOn = slots.atSeconds(seconds);
       if (_clipChannels.isNotEmpty || _clipRecord != null) {
         _sessionStep(_sessionNow);
       }
@@ -217,7 +281,7 @@ extension CanvasPlayback on CanvasController {
   /// smoothly between frames (see scene_renderer's betweenFrames).
   double get betweenFrames {
     // Only the slots playing, the playhead stands still.
-    if (_playback == null || clockForTest != null || _sessionOnly) return 0;
+    if (!playing || clockForTest != null || sessionOnly) return 0;
     var now = _clockAt(_playbackState.playWatch.elapsedMicroseconds / 1000000);
     return (now - _playbackState.clockFrames).clamp(0.0, 0.999);
   }
@@ -277,7 +341,7 @@ extension CanvasPlayback on CanvasController {
   }
 
   void pause() {
-    _rangeEnd = null;
+    _setRangeEnd(null);
     if (_practice != null) _endPractice();
     if (_slowSheet != null) {
       _slowRelease();
@@ -291,7 +355,7 @@ extension CanvasPlayback on CanvasController {
     // The elements' slots: playing only them, back to the timeline; over
     // the timeline, stopped where they are, off it until Back.
     if (!gaming && motionPlayer.offTimeline) {
-      if (_sessionOnly) {
+      if (sessionOnly) {
         motionPlayer.clear();
       } else {
         motionPlayer.halt(_document, _frame, _sessionNow);
@@ -303,13 +367,14 @@ extension CanvasPlayback on CanvasController {
     }
     _playback?.cancel();
     _playback = null;
-    _sessionOnly = false;
-    _previewing = null;
+    // The slots alone, or one element previewed, end with the timer: what
+    // they played over shows again.
+    _playheadOn = _playheadOn.showing;
     // A run of every scene, stopped, is the scene it stopped on at the frame
     // it stopped at, which is where the playhead already is; holding the
     // run's frame would keep the canvas drawing it while editing. Watching
     // one join is different: it puts itself back. See stopPreview.
-    if (_playAll && _previewFrom == null) _previewAt = null;
+    if (_runHeld) _letGoOfRun();
     _syncTimeline();
     notifyListeners();
   }
@@ -325,23 +390,25 @@ extension CanvasPlayback on CanvasController {
       gamePaused = !_gamePaused;
       return;
     }
-    playing && !_sessionOnly ? pause() : play();
+    timelinePlaying ? pause() : play();
   }
 
   /// stopPlaying is the control bar's Stop: playing, back to where Play
   /// started, to go over a take again; stopped, back to the very start.
   void stopPlaying() {
-    // Only the slots playing, or one element previewed: they stop, and the
-    // playhead, which they did not move, stays where it is.
-    if (_sessionOnly || _previewing != null) {
-      pause();
-      return;
-    }
-    // Watching a join: back on the scene it was watched from, as its own
-    // end would put it, not where an earlier Play began.
-    if (_previewAt != null && _previewFrom != null) {
-      stopPreview();
-      return;
+    switch (_playheadOn) {
+      // Only the slots playing, or one element previewed: they stop, and
+      // the playhead, which they did not move, stays where it is.
+      case OnSlots() || OnElement():
+        pause();
+        return;
+      // Watching a join: back on the scene it was watched from, as its own
+      // end would put it, not where an earlier Play began.
+      case OnJoin(at: int()):
+        stopPreview();
+        return;
+      case OnTimeline() || OnRun() || OnJoin(at: null):
+        break;
     }
     var from = _playbackState.playedFrom;
     if (!playing || from == null) {
@@ -374,11 +441,10 @@ extension CanvasPlayback on CanvasController {
   void _syncMetronome() {
     var sheet = _clicking;
     // Not while one element or one join is previewed; every scene playing
-    // also runs on _previewAt, told apart by having no _previewFrom.
+    // is the piece's own time, and keeps it.
     var on = playing &&
         (_playbackState.metronome || sheet != null) &&
-        _previewing == null &&
-        (_previewAt == null || _previewFrom == null);
+        !_playheadOn.isPreview;
     if (!on && _audio == null) return;
     // A sheet's: on its score's beat, from its part's start, at its speed.
     if (sheet case (_, var score, var ch)?) {
@@ -393,10 +459,11 @@ extension CanvasPlayback on CanvasController {
     var a = _document.audio;
     audio.metronome(
         on: on,
-        // On the slots' own clock, when only they play.
-        at: _sessionOnly
-            ? _sessionSeconds
-            : _frame / math.max(1, _document.frameRate),
+        at: switch (_playheadOn) {
+          // On the slots' own clock, when only they play.
+          OnSlots(:var seconds) => seconds,
+          Showing() || OnElement() => _frame / math.max(1, _document.frameRate),
+        },
         secondsPerBeat: a.secondsPerBeat,
         beatsPerBar: a.beatsPerBar);
   }
@@ -471,74 +538,22 @@ extension CanvasPlayback on CanvasController {
     // The session's clock goes on a frame, wherever the playhead goes.
     _sessionClock += 1 / math.max(1, _document.frameRate);
     // Previewing one element: it alone moves on, and the playhead stays.
-    if (_previewing case var one?) {
-      if (one.frame + 1 > _previewingEnd) {
+    if (_playheadOn case OnElement one) {
+      if (one.frame + 1 > one.end) {
         pause();
         return;
       }
-      _previewing = (id: one.id, frame: one.frame + 1);
+      _playheadOn = one.steppedOn();
       notifyListeners();
       return;
     }
-    // Watching a transition: the playhead is running through the whole
-    // document rather than through the scene, and it stops at the end of the
-    // stretch that was asked for rather than looping.
-    var preview = _previewAt;
-    if (preview != null) {
-      var next = preview + 1;
-      if (next > _previewEnd) {
-        stopPreview();
+    // A join watched, or every scene playing: along the whole run.
+    switch (_playheadOn.showing) {
+      case OnRun(:var at, :var end) || OnJoin(at: var at?, :var end):
+        _stepRun(at, end);
         return;
-      }
-      _previewAt = next;
-      var turned = false;
-
-      // Playing the document, not one join: the editor walks along with the
-      // playhead, and a scene told to hold stops it there.
-      if (_playAll) {
-        var place = placeInSequence(_document, next);
-        // A range to play on the scene it was asked on (a button's Play to
-        // frame, a sheet's bars): it stops at its end.
-        if (_rangeEnd case var end?
-            when place.scene == _document.at && place.frame >= end) {
-          _rangeEnd = null;
-          pause();
-          return;
-        }
-        if (place.scene != _document.at) {
-          var last = _document.allScenes[_document.at];
-          if (last.holds) {
-            stopPreview();
-            return;
-          }
-          // As a turn by hand (goToScene): the frame the scene was left on
-          // kept, and nothing on it left picked. The next scene plays from
-          // the run's frame, not the one it was last left on.
-          if (!_document.editingMaster) {
-            _sceneFrames[_document.scene.id] = _frame;
-          }
-          _document = _document.goToScene(place.scene);
-          _selection = {};
-          _motionPicks = const {};
-          _offCanvas = const {};
-          _backgroundSelected = false;
-          _focusedPlayer = null;
-          turned = true;
-          _audioFollowsPage(turned: true);
-          _autoplayAudio();
-        }
-        _frame =
-            place.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
-      }
-      _syncTimeline();
-      _notifyPlayhead(turned);
-      // The next scene begun: the last one's elements are not on it, and
-      // what starts with this one starts.
-      if (turned) {
-        _triggeredBack();
-        _sceneBegins();
-      }
-      return;
+      case OnTimeline() || OnJoin(at: null):
+        break;
     }
 
     // Waiting to be played: the playhead holds on the note.
@@ -576,8 +591,8 @@ extension CanvasPlayback on CanvasController {
     if (wrapped) next = 0;
     var was = _frame;
     // Playing a sheet's range of bars: it stops at the end of the last.
-    if (_rangeEnd case var end? when next >= end || next < was) {
-      _rangeEnd = null;
+    if (_playheadOn.showing.rangeEnd case var end?
+        when next >= end || next < was) {
       _frame = math.max(0, end - 1);
       pause();
       return;
@@ -615,6 +630,57 @@ extension CanvasPlayback on CanvasController {
     _synthLanesLive();
     _notifyPlayhead(false);
     if (wrapped) _sceneBegins();
+  }
+
+  /// _stepRun moves the playhead a frame on along the whole run, from frame
+  /// [at], rather than along the scene: a join watched, or every scene
+  /// playing. It stops at [end], the end of the stretch asked for, rather
+  /// than looping.
+  void _stepRun(int at, int end) {
+    var next = at + 1;
+    if (next > end) {
+      stopPreview();
+      return;
+    }
+    _showRunFrame(next);
+    var turned = false;
+
+    // Playing the document, not one join: the editor walks along with the
+    // playhead, and a scene told to hold stops it there.
+    if (_playAll) {
+      var place = placeInSequence(_document, next);
+      // A range to play on the scene it was asked on (a button's Play to
+      // frame, a sheet's bars): it stops at its end.
+      if (_playheadOn.showing.rangeEnd case var stop?
+          when place.scene == _document.at && place.frame >= stop) {
+        pause();
+        return;
+      }
+      if (place.scene != _document.at) {
+        var last = _document.allScenes[_document.at];
+        if (last.holds) {
+          stopPreview();
+          return;
+        }
+        // As a turn by hand (goToScene): the frame the scene was left on
+        // kept, and nothing on it left picked. The next scene plays from
+        // the run's frame, not the one it was last left on, and is not an
+        // edit of the document.
+        _turnScene(_document.goToScene(place.scene),
+            keepLeft: true, toKept: false, letGo: true, asChange: false);
+        turned = true;
+        _autoplayAudio();
+      }
+      _frame = place.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+    }
+    _syncTimeline();
+    _notifyPlayhead(turned);
+    // The next scene begun: the last one's elements are not on it, and
+    // what starts with this one starts.
+    if (turned) {
+      _triggeredBack();
+      _sceneBegins();
+    }
   }
 
   /// holdingMarker is the marker playback is held at, whose label is shown
@@ -698,6 +764,13 @@ class _PlaybackState {
 
   /// playedFrom is the scene and frame the last Play started from.
   (int, int)? playedFrom;
+
+  /// runEnd is where the last run of every scene, or the last join watched,
+  /// was to stop (nought on a canvas just opened). A frame of the run put
+  /// by hand from the scene is given it as its end: Play all sets its own
+  /// before playing, so it is reached only when the timer steps such a
+  /// frame without Play setting one.
+  int runEnd = 0;
 
   /// metronome is the play bar's switch: see CanvasPlayback.metronome.
   bool metronome = false;

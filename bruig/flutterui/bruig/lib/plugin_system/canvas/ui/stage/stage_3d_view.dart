@@ -12,7 +12,7 @@ extension Stage3dView on CanvasStageState {
 
   /// _gizmo is the gizmo on the lone selected staged element, or null.
   StageGizmo? _gizmo() {
-    if (!controller.showHelpers || controller.playing || controller.gaming) {
+    if (!controller.showHelpers || controller.canvasLive) {
       return null;
     }
     if (controller.selection.length != 1) return null;

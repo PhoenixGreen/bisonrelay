@@ -306,7 +306,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           ]);
     }
 
-    var timelinePlays = controller.playing && !controller.sessionOnly;
+    var timelinePlays = controller.timelinePlaying;
     // The bar holds what is pressed while working; the timing is behind the
     // readout, the rest behind settings, and an option turned on there
     // shows lit on the bar, to be turned off here.

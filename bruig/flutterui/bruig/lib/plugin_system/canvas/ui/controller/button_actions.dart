@@ -87,7 +87,7 @@ extension CanvasButtonActions on CanvasController {
             action.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
         if (_frame >= to) frame = 0;
         play();
-        if (playing) _rangeEnd = to + 1;
+        if (playing) _setRangeEnd(to + 1);
       case ButtonActionKind.play:
         play();
       case ButtonActionKind.pause:

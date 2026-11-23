@@ -271,9 +271,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
           IconButton(
             key: const ValueKey("canvasFilePlay"),
             // The editor's Play button's: only the slots playing, it plays.
-            icon: Icon(
-                c.playing && !c.sessionOnly ? Icons.pause : Icons.play_arrow),
-            tooltip: c.playing && !c.sessionOnly ? "Pause" : "Play",
+            icon: Icon(c.timelinePlaying ? Icons.pause : Icons.play_arrow),
+            tooltip: c.timelinePlaying ? "Pause" : "Play",
             onPressed: c.togglePlay,
           ),
           IconButton(

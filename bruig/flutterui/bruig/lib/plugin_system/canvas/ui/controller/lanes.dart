@@ -239,7 +239,7 @@ extension CanvasLanes on CanvasController {
     _applyMix();
     _syncMetronome();
     // Playing only the slots, the timeline is not playing.
-    var going = playing && !_sessionOnly;
+    var going = timelinePlaying;
     var ducks = _duckEnvelopes();
     var rate = math.max(1, _document.frameRate);
     for (var (e, at) in _joinedCuts(_timedOnScreen.toList())) {

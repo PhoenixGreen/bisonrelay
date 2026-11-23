@@ -188,12 +188,13 @@ void main() {
   });
 
   test("the controller's own libraries do not import the controller", () {
-    // The view's types and the live counters' clock are libraries beside the
-    // controller's parts, not parts of it: handed what they need, they can be
-    // read and tested without it.
+    // The view's types, the live counters' clock and what the playhead is on
+    // are libraries beside the controller's parts, not parts of it: handed
+    // what they need, they can be read and tested without it.
     var own = [
       "ui/controller/view_types.dart",
       "ui/controller/counter_clock.dart",
+      "ui/controller/playhead_on.dart",
     ];
     for (var path in own) {
       var file = File("$_canvas/$path");

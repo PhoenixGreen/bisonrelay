@@ -78,13 +78,10 @@ extension CanvasSaving on CanvasController {
     _pickedScene = null;
     _pickedSceneWith = const {};
     _joinPicked = _joinPress = false;
-    // A join previewed and paused, which pause keeps: frames of that
-    // canvas's run, and the scene to go back to.
-    _previewJoin = null;
-    _previewAt = null;
-    _previewEnd = 0;
-    _previewFrom = null;
-    _previewFromMaster = false;
+    // What the playhead was on, which pause keeps for a join watched:
+    // frames of that canvas's run, and the scene to go back to.
+    _playheadOn = const OnTimeline();
+    _playbackState.runEnd = 0;
     // The editor's loop, round a stretch of that canvas's frames.
     _playbackState.looping = false;
     _playbackState.loop = null;

@@ -252,7 +252,10 @@ extension CanvasKeyframes on CanvasController {
   /// previewing is the element being previewed and its frame while a Preview
   /// plays: that element runs through its animation and everything else
   /// stays as at the playhead, which does not move. See previewElement.
-  ({String id, int frame})? get previewing => _previewing;
+  ({String id, int frame})? get previewing => switch (_playheadOn) {
+        OnElement(:var id, :var frame) => (id: id, frame: frame),
+        Showing() || OnSlots() => null,
+      };
 
   /// previewElement plays [id]'s animation, and nothing else's, once. See
   /// previewing. Anything else playing stops first; pausing stops it.
@@ -262,8 +265,8 @@ extension CanvasKeyframes on CanvasController {
     pause();
     stopPreview();
     var (from, to) = previewSpanOf(element);
-    _previewing = (id: id, frame: from);
-    _previewingEnd = to;
+    _playheadOn =
+        OnElement(id: id, frame: from, end: to, over: _playheadOn.showing);
     _startTimer();
     notifyListeners();
   }

@@ -865,7 +865,7 @@ class CanvasStageState extends State<CanvasStage>
   /// it is being played.
   StageShown _shownOnStage() => (
         // A game's own view; playing, without guide paths.
-        document: controller.gaming || controller.playing
+        document: controller.canvasLive
             ? withoutGuides(controller.gameView ?? controller.spoken(document))
             : controller.spoken(document),
         frame: controller.frame,
@@ -1175,8 +1175,7 @@ class CanvasStageState extends State<CanvasStage>
       Positioned.fill(child: painter),
       if (controller.onStage3d &&
           controller.stageNav != StageNav.none &&
-          !controller.playing &&
-          !controller.gaming)
+          !controller.canvasLive)
         Positioned(
           right: 10,
           top: 10,

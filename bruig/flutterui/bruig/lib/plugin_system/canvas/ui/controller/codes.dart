@@ -137,7 +137,7 @@ extension CanvasCodes on CanvasController {
     if (end > _document.frames) setSceneLength(end + rate);
     if (frame >= end - 1) frame = 0;
     play();
-    _rangeEnd = end;
+    _setRangeEnd(end);
   }
 
   /// restartCode puts the playhead back at the scene's start, where Code
