@@ -110,6 +110,25 @@ class LineElement extends StrokedElement {
         height: h) as LineElement;
   }
 
+  /// withEndsDrawnAt is this line laid so that, posed as [pose] (its own
+  /// turn and slant, and what a frame's motion does: ElementPlace), its
+  /// start is drawn at [a] and its end at [b] on the page. How far apart the
+  /// ends are in the box is the page's taken back through the turn, slant
+  /// and size, none of which depends on where the box is; the box is then
+  /// moved until the start is drawn at [a]. Every point the place lays out
+  /// moves with the box, its middle and its anchor being shares of it, so
+  /// the end is drawn at [b].
+  LineElement withEndsDrawnAt(Offset a, Offset b,
+      [Keyframe pose = Keyframe.rest]) {
+    var place = placedBy(pose);
+    if (place.leavesAlone) return withEnds(a, b);
+    var apart = place.unplace(b) - place.unplace(a);
+    var drawnFrom =
+        withEnds(Offset.zero, apart).placedBy(pose).place(Offset.zero);
+    var by = a - drawnFrom;
+    return withEnds(by, apart + by);
+  }
+
   /// level and plumb are this line turned flat or upright about its start,
   /// keeping its length and the side it points to.
   LineElement get level {

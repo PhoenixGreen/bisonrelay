@@ -1,5 +1,6 @@
 import 'support/canvas_app.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -22,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -666,6 +668,49 @@ void main() {
       expect(c.pickedCopiesOf("a"), {"i1"});
       expect(c.document.elementById("a")!.y, 100);
       settled(stage, c, "clicked");
+    });
+  });
+
+  group("the box resized on a frame part-way through a move", () {
+    // Keyed from rest on frame 0 to 200 across and 100 down on frame 20, and
+    // selected on frame 10, where it is drawn 100 across and 50 down.
+    var moved = ShapeElement(
+        ElementBase(
+            id: "s",
+            x: 400,
+            y: 200,
+            width: 300,
+            height: 200,
+            track: ElementTrack(const [
+              Keyframe(frame: 0),
+              Keyframe(frame: 20, dx: 200, dy: 100),
+            ])),
+        fill: const Color(0xFFCC2200));
+
+    testWidgets("keeps the corner opposite the one pulled where it is drawn",
+        (tester) async {
+      var c = CanvasController(CanvasDocument(
+          frames: 24,
+          guides: const CanvasGuides(snap: false),
+          elements: [moved]));
+      addTearDown(c.dispose);
+      c.frame = 10;
+      c.selectOnly("s");
+      var stage = await pump(tester, c);
+      Rect drawn() =>
+          c.document.elementById("s")!.movedBoundsAt(10, c.document);
+      var before = drawn();
+      expect(before.topLeft, const Offset(500, 250));
+      await drag(tester, stage.handleAt(StageHandle.bottomRight),
+          const Offset(60, 40));
+      var after = drawn();
+      expect(after.topLeft.dx, closeTo(before.left, 0.5),
+          reason: "the held corner stays where it is drawn");
+      expect(after.topLeft.dy, closeTo(before.top, 0.5));
+      expect(after.width, greaterThan(before.width), reason: "it grew");
+      expect(c.document.elementById("s")!.track, moved.track,
+          reason: "a resize sizes the element, not its pose");
+      settled(stage, c, "resized");
     });
   });
 }

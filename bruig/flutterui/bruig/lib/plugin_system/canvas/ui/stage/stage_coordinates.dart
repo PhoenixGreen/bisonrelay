@@ -269,10 +269,10 @@ extension StageCoordinates on CanvasStageState {
       : Offset.zero;
 
   /// _boxIsDrawn is whether the lone selection's box is already round it as
-  /// it is drawn on the page, turned and slanted: a line's or a path's,
-  /// which is round its curve (visualBoundsOf), so it is not laid out by
-  /// the element's turn and slant again. Not one copy of a reused one,
-  /// which has a box of its own.
+  /// it is drawn on the page on this frame, turned, slanted and moved: a
+  /// line's or a path's, which is round its curve (visualBoundsOf), so it is
+  /// not laid out by the element's turn and slant again. Not one copy of a
+  /// reused one, which has a box of its own.
   bool get _boxIsDrawn =>
       _chosen.length == 1 &&
       _chosen.first is StrokedElement &&

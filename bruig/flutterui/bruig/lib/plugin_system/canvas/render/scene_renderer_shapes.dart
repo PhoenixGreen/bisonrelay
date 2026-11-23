@@ -35,13 +35,15 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
   }
 
   if (element is StrokedElement) {
-    var box = _boundsOfPoints(curveOfElement(element, frame));
-    if (box == null) return moved();
+    var drawn = strokeOnPage(element, frame, doc, live);
+    var box = _boundsOfPoints(drawn?.curve);
+    if (drawn == null || box == null) return moved();
     // Room for the stroke, centred on the curve, and for the ends it draws
-    // (LineEnd.reach).
+    // (LineEnd.reach), both as wide as the pose draws them.
     var stroke = element.drawnStroke;
-    return box.inflate(
-        math.max(stroke.strokeWidth, 1) * math.max(stroke.endReach, 1.5));
+    return box.inflate(math.max(stroke.strokeWidth, 1) *
+        drawn.place.stretch *
+        math.max(stroke.endReach, 1.5));
   }
 
   return moved();
@@ -69,17 +71,83 @@ bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
         doc != null &&
         stagedIn(doc, element, frame) != null);
 
-/// curveOfElement is where [element]'s curve is drawn on the page, as
-/// points along it, with the bow its keys give it on [frame] (or as it
-/// rests, with none given); null for anything not a stroke, or a stroke with
-/// no curve. The selection box, the press, text set on a line and Follow
-/// path all ask it (StrokedElement.curveOnPage).
-List<Offset>? curveOfElement(CanvasElement? element, [int? frame]) {
+/// StrokeOnPage is a line or a path as paintElement draws it on a frame:
+/// [shaped] by its pose (a line bowed as the pose keys it), its box laid on
+/// the page by [place], and its curve there, as points along it, [curve].
+typedef StrokeOnPage = ({
+  StrokedElement shaped,
+  ElementPlace place,
+  List<Offset> curve,
+});
+
+/// strokeOnPage is where [element]'s stroke is drawn on [frame] of [doc]:
+/// with everything that moves it then (its keys, clips and devices, about
+/// its anchor, through its turn and slant), or as it rests with no frame
+/// given. Null for anything not a stroke, or a stroke with no curve. The
+/// selection box, the press, text set on a line and Follow path all ask it,
+/// and the painter lays the element out by the same ElementPlace, so they
+/// cannot part.
+StrokeOnPage? strokeOnPage(CanvasElement? element,
+    [int? frame, CanvasDocument? doc, LiveMotion? live]) {
   if (element is! StrokedElement) return null;
-  var drawn = frame == null ? element : element.bowedBy(element.poseAt(frame));
-  var points = drawn.curveOnPage;
-  return points.isEmpty ? null : points;
+  // The stage asks at every move of the pointer and every paint, of the
+  // same document on the same frame: kept for the stroke, the document and
+  // the frame. Not while slots play, nor for a stroke following a sound,
+  // which is read from outside the document; and only an answer asked from
+  // outside any pose, which the guard below has not cut short.
+  var keeps = live == null &&
+      _riding == 0 &&
+      !element.base.motion.devices
+          .any((d) => d.kind == MotionDeviceKind.followSound);
+  if (keeps) {
+    if (_strokesKept[element] case (var d, var f, var known)
+        when identical(d, doc) && f == frame) {
+      return known;
+    }
+  }
+  var drawn = _strokeOnPage(element, frame, doc, live);
+  if (keeps) _strokesKept[element] = (doc, frame, drawn);
+  return drawn;
 }
+
+/// _strokesKept is each stroke's last answer from strokeOnPage, with the
+/// document and frame it was for.
+final Expando<(CanvasDocument?, int?, StrokeOnPage?)> _strokesKept =
+    Expando("strokeOnPage");
+
+StrokeOnPage? _strokeOnPage(
+    StrokedElement element, int? frame, CanvasDocument? doc, LiveMotion? live) {
+  Keyframe pose;
+  if (frame == null) {
+    pose = Keyframe.rest;
+  } else if (_riding > 3) {
+    // A stroke posed by something that rides it in turn (a path following
+    // what follows it, a line turned to face the text on it) is asked again
+    // from inside its own pose: past a few rounds, its keys alone answer.
+    pose = element.poseAt(frame);
+  } else {
+    _riding++;
+    try {
+      pose = element.drawnPoseAt(frame, doc, live: live);
+    } finally {
+      _riding--;
+    }
+  }
+  var shaped = element.bowedBy(pose);
+  var place = element.placedBy(pose);
+  var curve = shaped.curvePlaced(place);
+  if (curve.isEmpty) return null;
+  return (shaped: shaped, place: place, curve: curve);
+}
+
+/// _riding is how deep strokeOnPage is in asking poses: see there.
+var _riding = 0;
+
+/// curveOfElement is [strokeOnPage]'s curve: where [element]'s curve is
+/// drawn on the page on [frame], as points along it.
+List<Offset>? curveOfElement(CanvasElement? element,
+        [int? frame, CanvasDocument? doc, LiveMotion? live]) =>
+    strokeOnPage(element, frame, doc, live)?.curve;
 
 /// curveUnderText is the line a text element is riding, in document space.
 List<Offset>? curveUnderText(TextElement e, CanvasDocument? doc, int frame) =>
@@ -87,11 +155,13 @@ List<Offset>? curveUnderText(TextElement e, CanvasDocument? doc, int frame) =>
 
 /// _curveFor is the line text [e] rides, as document-space points, or null
 /// where its words are not set on a line (TextElement.wordsSetIn). Found by
-/// id, so the text follows it; if deleted, the text uses its box. The
-/// host's bow keyed on its track counts; its clips' bows do not.
+/// id, so the text follows it; if deleted, the text uses its box. Where the
+/// line is drawn on [frame], however it moves there, by what plays on the
+/// timeline and not from slots, so the text's painter, selection box and
+/// press, which have no slots to hand alike, agree.
 List<Offset>? _curveFor(TextElement e, CanvasDocument? doc, int frame) {
   if (e.wordsSetIn(doc) != WordsSet.onLine) return null;
-  return curveOfElement(doc!.elementById(e.curve!.elementId), frame);
+  return curveOfElement(doc!.elementById(e.curve!.elementId), frame, doc);
 }
 
 void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,

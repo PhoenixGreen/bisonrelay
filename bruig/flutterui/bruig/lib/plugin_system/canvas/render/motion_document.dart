@@ -759,7 +759,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
     case MotionDeviceKind.followPath:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
       var host = doc.elementById(d.target);
-      var points = curveOfElement(host, frame);
+      var points = curveOfElement(host, frame, doc, live);
       if (points == null || points.length < 2) return p;
       var t = _seconds(frame, doc, live);
       var u = d.value("start") + t / d.value("lap");
@@ -1050,6 +1050,19 @@ extension MovedElement on CanvasElement {
     }
     return null;
   }
+
+  /// drawnPoseAt is the pose paintElement draws this element in on [frame]:
+  /// its track's alone where nothing else moves it, else poseWithMotion's
+  /// (without [doc], a lone element's track and loop, as the painter has).
+  Keyframe drawnPoseAt(int frame, CanvasDocument? doc, {LiveMotion? live}) =>
+      movesAtAll(this)
+          ? poseWithMotion(this, frame, doc, live: live)
+          : poseAt(frame);
+
+  /// placeAt is where paintElement lays this element's box on the page on
+  /// [frame] (ElementPlace), as the element itself, not one of its copies.
+  ElementPlace placeAt(int frame, CanvasDocument? doc, {LiveMotion? live}) =>
+      placedBy(drawnPoseAt(frame, doc, live: live));
 
   /// movedRotationAt is rotationAt with the clips' turn added.
   double movedRotationAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>

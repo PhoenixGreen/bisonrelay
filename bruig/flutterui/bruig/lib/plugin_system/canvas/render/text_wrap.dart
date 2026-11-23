@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -81,6 +82,10 @@ class WrapShape {
 
   final double gap;
 
+  /// ink is a line's or a path's stroke as it is drawn on the page: runs of
+  /// points, each with how far its ink reaches either side (inkOfStroke).
+  final List<InkRun> ink;
+
   const WrapShape(
     this.bounds, {
     this.path,
@@ -89,6 +94,7 @@ class WrapShape {
     this.shown = Rect.zero,
     this.picture = Size.zero,
     this.gap = 0,
+    this.ink = const [],
   });
 
   /// spanIn is the horizontal room this takes from a line between [top] and
@@ -105,6 +111,8 @@ class WrapShape {
       return (span.$1 - gap, span.$2 + gap);
     }
 
+    if (ink.isNotEmpty) return _inkSpanIn(top, bottom);
+
     var outline = path;
     if (outline == null) return (bounds.left, bounds.right);
 
@@ -116,6 +124,93 @@ class WrapShape {
     if (box.width <= 0 || box.height <= 0) return null;
     return (box.left - gap, box.right + gap);
   }
+
+  /// _inkSpanIn is the room [ink] takes from a line between [top] and
+  /// [bottom]: each run's stretches that pass within its reach and the gap
+  /// of the line, as far across as they go there and the reach and the gap
+  /// again. A square brush rather than a round one, so a little more than
+  /// the ink where a stroke runs at a slant, and never less.
+  (double, double)? _inkSpanIn(double top, double bottom) {
+    double? left, right;
+    void take(double x, double r) {
+      left = math.min(left ?? x - r, x - r);
+      right = math.max(right ?? x + r, x + r);
+    }
+
+    for (var run in ink) {
+      var r = run.reach + gap;
+      var lo = top - r, hi = bottom + r;
+      var points = run.points;
+      if (points.length == 1) {
+        var p = points.single;
+        if (p.dy >= lo && p.dy <= hi) take(p.dx, r);
+        continue;
+      }
+      var pieces = run.closed ? points.length : points.length - 1;
+      for (var i = 0; i < pieces; i++) {
+        var a = points[i], b = points[(i + 1) % points.length];
+        if ((a.dy < lo && b.dy < lo) || (a.dy > hi && b.dy > hi)) continue;
+        var dy = b.dy - a.dy;
+        var from = 0.0, to = 1.0;
+        if (dy != 0) {
+          var t0 = (lo - a.dy) / dy, t1 = (hi - a.dy) / dy;
+          from = math.max(0.0, math.min(t0, t1));
+          to = math.min(1.0, math.max(t0, t1));
+          if (from > to) continue;
+        }
+        take(a.dx + (b.dx - a.dx) * from, r);
+        take(a.dx + (b.dx - a.dx) * to, r);
+      }
+    }
+    var l = left, rr = right;
+    return l == null || rr == null ? null : (l, rr);
+  }
+}
+
+/// InkRun is a run of points on the page with ink reaching [reach] either
+/// side of it, round from the last back to the first where [closed].
+typedef InkRun = ({List<Offset> points, double reach, bool closed});
+
+/// inkOfStroke is [e]'s stroke as it is drawn on [frame] of [doc]: its
+/// curve, reaching half its width either side, and what is drawn on its
+/// ends, solid ones to their edge and hollow ones and bars half the width
+/// past it, all as wide as the pose draws them (strokeOnPage). Empty where
+/// it draws nothing.
+List<InkRun> inkOfStroke(StrokedElement e, CanvasDocument? doc, int frame) {
+  var drawn = strokeOnPage(e, frame, doc);
+  if (drawn == null) return const [];
+  var place = drawn.place;
+  var half = drawn.shaped.strokeWidth / 2 * place.stretch;
+  var runs = <InkRun>[(points: drawn.curve, reach: half, closed: false)];
+  for (var mark
+      in strokeEndMarks(drawn.shaped.curve, drawn.shaped.drawnStroke)) {
+    var edge = mark.solid ? 0.0 : half;
+    var corners = mark.corners.isNotEmpty
+        ? mark.corners
+        : [
+            for (var k = 0; k < 16; k++)
+              mark.at + Offset.fromDirection(k * math.pi / 8, mark.radius),
+          ];
+    runs.add((
+      points: [for (var c in corners) place.place(c)],
+      reach: edge,
+      closed: mark.end != LineEnd.bar,
+    ));
+  }
+  return runs;
+}
+
+/// _inkBox is the box round [runs], each reaching as far as it does.
+Rect? _inkBox(List<InkRun> runs) {
+  Rect? box;
+  for (var run in runs) {
+    for (var p in run.points) {
+      var r = Rect.fromCenter(
+          center: p, width: run.reach * 2, height: run.reach * 2);
+      box = box == null ? r : box.expandToInclude(r);
+    }
+  }
+  return box;
 }
 
 /// wrapObstacles is what a text element sets its words around: everything
@@ -141,6 +236,17 @@ List<WrapShape> wrapObstacles(
     // several places, often overlapping while arranged; going round them
     // would squeeze the words out of sight.
     if (_sameChain(e, other, doc)) continue;
+
+    // A line or a path is gone round as its stroke is drawn on this frame:
+    // its box is a sliver for a level line, and neither turned, slanted,
+    // bowed nor moved but by its keys.
+    if (other is StrokedElement) {
+      var ink = inkOfStroke(other, doc, frame);
+      var box = _inkBox(ink)?.inflate(e.wrap.gap);
+      if (box == null || !box.overlaps(inner)) continue;
+      out.add(WrapShape(box, ink: ink, gap: e.wrap.gap));
+      continue;
+    }
 
     var at = other.boundsAt(frame);
     var box = at.inflate(e.wrap.gap);

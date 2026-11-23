@@ -277,6 +277,10 @@ typedef StageElementMarks = ({
   /// selectedPath is the selected path, drawn with points and handles.
   /// Compared by identity: the document keeps the element it holds.
   PathElement? selectedPath,
+
+  /// pathPlace is where the painter lays [selectedPath] out on this frame
+  /// (ElementPlace), so its points are drawn where it is drawn.
+  ElementPlace? pathPlace,
 });
 
 /// LayoutMarks is what the stage shows of a selected Layout: its lines

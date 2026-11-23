@@ -142,10 +142,11 @@ class StageHitTest {
     // out of its box, and text on a line is wherever the line is. What is
     // drawn on its ends is hit where it is drawn, however far it reaches.
     if (e is StrokedElement) {
-      var curve = curveOfElement(e, frame);
-      if (curve != null && curve.length >= 2) {
-        return _nearPolyline(curve, at, _strokeReach(e.strokeWidth)) ||
-            _onEnds(e.bowedBy(e.poseAt(frame)), curve, at);
+      var drawn = strokeOnPage(e, frame, document, live);
+      if (drawn != null && drawn.curve.length >= 2) {
+        return _nearPolyline(drawn.curve, at,
+                _strokeReach(e.strokeWidth * drawn.place.stretch)) ||
+            _onEnds(drawn, at);
       }
     }
     if (e is TextElement) {
@@ -219,19 +220,24 @@ class StageHitTest {
     return null;
   }
 
-  /// _onEnds is whether [at] is on what [e] draws on its ends: inside one,
-  /// or near enough its edge to pick it (a hollow one's edge, or a bar,
-  /// being drawn the stroke's width). [curve] is where it is drawn on the
-  /// page, whose two ends are asked about only when [at] is in their reach.
-  bool _onEnds(StrokedElement e, List<Offset> curve, Offset at) {
+  /// _onEnds is whether [at] is on what [drawn] draws on its ends: inside
+  /// one, or near enough its edge to pick it (a hollow one's edge, or a bar,
+  /// being drawn the stroke's width). Its curve's two ends are asked about
+  /// only when [at] is in their reach.
+  bool _onEnds(StrokeOnPage drawn, Offset at) {
+    var e = drawn.shaped;
+    var curve = drawn.curve;
     var stroke = e.drawnStroke;
-    var slop = _strokeReach(0), edge = _strokeReach(e.strokeWidth);
-    // In the curve's own space, before its turn and slant, where the marks
-    // are worked out and their reach is measured.
-    var local = e.fromPage(at);
+    // In the curve's own space, before it is laid on the page, where the
+    // marks are worked out and their reach is measured: the pointer's slop
+    // shrinks there by as much as the pose grows the stroke.
+    var stretch = drawn.place.stretch <= 0 ? 1.0 : drawn.place.stretch;
+    var slop = _strokeReach(0) / stretch;
+    var edge = math.max(e.strokeWidth / 2, 0) + slop;
+    var local = drawn.place.unplace(at);
     bool within(LineEnd end, Offset tip) =>
         end != LineEnd.none &&
-        (local - e.fromPage(tip)).distance <=
+        (local - drawn.place.unplace(tip)).distance <=
             e.strokeWidth * stroke.endSize * end.reach + edge;
     if (!within(stroke.startEnd, curve.first) &&
         !within(stroke.endEnd, curve.last)) {

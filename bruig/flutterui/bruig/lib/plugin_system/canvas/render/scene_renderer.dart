@@ -853,50 +853,14 @@ void paintElement(
     return;
   }
 
-  // The pose's shift first, in document space, so a moved element turns
-  // about where it is moved to, not where it was placed.
-  if (outer.dx != 0 || outer.dy != 0) canvas.translate(outer.dx, outer.dy);
-
-  // Squashed along its travel, about its middle: see the Squash device.
-  if (outer.values[KeyframeChannel.squash] case var s?
-      when (s - 1).abs() > 1e-3 && s > 0) {
-    var a = outer.values[KeyframeChannel.squashAngle] ?? 0;
-    var c = bounds.center;
-    canvas.translate(c.dx, c.dy);
-    canvas.rotate(a);
-    canvas.scale(s, 1 / s);
-    canvas.rotate(-a);
-    canvas.translate(-c.dx, -c.dy);
-  }
-
-  // Its resting turn and slant about its centre (BoxFrame); then the pose's
-  // turn and size about its anchor (ElementBase.anchorX).
-  BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
-      .applyTo(canvas, bounds.center);
-  if (outer.rotate != 0 || outer.scale != 1) {
-    var a = element.anchorIn(bounds);
-    canvas.translate(a.dx, a.dy);
-    if (outer.rotate != 0) canvas.rotate(outer.rotate * math.pi / 180);
-    if (outer.scale != 1) canvas.scale(outer.scale);
-    canvas.translate(-a.dx, -a.dy);
-  }
-
-  // Its moving loop's turn and size about the loop's pivot; its move and
-  // fade are in the pose already (poseWithMotion), for whatever follows it.
-  if (pose.values[KeyframeChannel.loopTurn] case var turn?) {
-    _applyLoopPose(
-        canvas,
-        bounds,
-        LoopPose(
-            turn: turn,
-            sx: pose.values[KeyframeChannel.loopSx] ?? 1,
-            sy: pose.values[KeyframeChannel.loopSy] ?? 1,
-            pivot: Offset(pose.values[KeyframeChannel.loopPivotX] ?? 0.5,
-                pose.values[KeyframeChannel.loopPivotY] ?? 0.5)),
-        anchor: element.anchorCentred
-            ? null
-            : Offset(element.base.anchorX, element.base.anchorY));
-  }
+  // Laid on the page where its pose puts it on this frame (ElementPlace):
+  // the pose's shift first, in document space, so a moved element turns
+  // about where it is moved to, not where it was placed; squashed along its
+  // travel; its resting turn and slant about its centre; the pose's turn and
+  // size about its anchor; and its moving loop's turn and size, whose move
+  // and fade are in the pose already (poseWithMotion), for whatever follows
+  // it. Whatever asks where a part of it is drawn asks the same place.
+  element.placedIn(bounds, outer, loop: pose).applyTo(canvas);
 
   // A video laid on as light or shade is composited through the same layer
   // its fade is: the blend has to be on the outermost layer, the one that
@@ -1233,7 +1197,7 @@ void paintElement(
   void drawn() {
     if (looping != null && phase != null) {
       paintLoopEffect(canvas, bounds, looping, phase.$1, phase.$2,
-          element.id.hashCode, _loopOutline(element, bounds, frame), body);
+          element.id.hashCode, _loopOutline(element, bounds, pose), body);
     } else {
       body();
     }

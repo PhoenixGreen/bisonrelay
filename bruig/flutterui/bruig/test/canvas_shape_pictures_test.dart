@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -13,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -32,7 +34,9 @@ import 'support/kept_pictures.dart';
 // level, upright and turned; a path open and closed, straight and curved,
 // with every end, each cap, dashed, faded, turned, slanted and as a guide;
 // and each with its outline run round by a loop, which is the only way to
-// see the outline a loop follows. Beside each picture it keeps the numbers
+// see the outline a loop follows; and a line and a path part-way through
+// being moved, sized and turned about a corner by their keys, and moved by
+// a clip. Beside each picture it keeps the numbers
 // the stage and the words ask of the same element: where it is drawn
 // (visualBoundsOf), what the stage's press counts as on it, what words
 // wrapped beside it go round, and for a line or a path where its ends are
@@ -59,12 +63,13 @@ const _green = Color(0xFF66BB6A);
 const _paper = Color(0xFFEEEEEE);
 const _clear = Color(0x00000000);
 
-/// _State is one thing kept: a page drawn on frame 0, [editing] where it
+/// _State is one thing kept: a page drawn on [frame], [editing] where it
 /// is drawn as the editor draws it rather than as it is published.
-typedef _State = ({String name, CanvasDocument doc, bool editing});
+typedef _State = ({String name, CanvasDocument doc, bool editing, int frame});
 
-_State _state(String name, CanvasDocument doc, {bool editing = false}) =>
-    (name: name, doc: doc, editing: editing);
+_State _state(String name, CanvasDocument doc,
+        {bool editing = false, int frame = 0}) =>
+    (name: name, doc: doc, editing: editing, frame: frame);
 
 /// _page is a page [w] by [h] holding [elements].
 CanvasDocument _page(int w, int h, List<CanvasElement> elements) =>
@@ -550,12 +555,60 @@ List<_State> _pathStates() {
   return out;
 }
 
+/// _movingStates are a line and a path on frame 12, half-way through keys
+/// from rest on frame 0 to a move, a size and a turn about the top left
+/// corner on frame 24, and a quarter of the way through a clip that carries
+/// them 80 across and 40 down in two seconds.
+List<_State> _movingStates() {
+  ElementBase keyed(ElementBase base, Keyframe to) => base.copyWith(
+      track: ElementTrack([const Keyframe(frame: 0), to.copyWith(frame: 24)]));
+  ElementBase clipped(ElementBase base) => base.copyWith(
+          motion: const ElementMotion(clips: [
+        MotionClip(id: "go", kind: MotionKind.action, length: 2, keys: {
+          MotionProp.x: [
+            MotionKey(0, MotionNumber(0)),
+            MotionKey(2, MotionNumber(80))
+          ],
+          MotionProp.y: [
+            MotionKey(0, MotionNumber(0)),
+            MotionKey(2, MotionNumber(40))
+          ],
+        }),
+      ], placed: [
+        ClipPlacement(id: "p", clip: "go", length: 2)
+      ]));
+  var line = _line(start: LineEnd.bar, end: LineEnd.arrow);
+  var path = _path(start: LineEnd.circle, end: LineEnd.arrow);
+  var out = <_State>[];
+  for (var (kind, e) in <(String, StrokedElement)>[
+    ("line", line),
+    ("path", path)
+  ]) {
+    for (var (how, base) in [
+      ("moved", keyed(e.base, const Keyframe(frame: 0, dx: 50, dy: -30))),
+      ("sized", keyed(e.base, const Keyframe(frame: 0, scale: 0.6))),
+      (
+        "turned-about-corner",
+        keyed(e.base.copyWith(anchorX: 0, anchorY: 0),
+            const Keyframe(frame: 0, rotate: 30))
+      ),
+      ("clip-moved", clipped(e.base)),
+    ]) {
+      out.add(_state(
+          "motion-$kind-$how", _page(_lineW, _lineH, [e.rebase(base)]),
+          frame: 12));
+    }
+  }
+  return out;
+}
+
 /// _states is every state kept.
 List<_State> _states() => [
       ..._shapeStates(),
       ..._bubbleStates(),
       ..._lineStates(),
       ..._pathStates(),
+      ..._movingStates(),
     ];
 
 // The numbers kept beside each picture.
@@ -592,6 +645,21 @@ String _digest(Rect page, bool Function(Offset) inside) {
   return "$count/$total #${hash.toRadixString(16).padLeft(8, "0")}";
 }
 
+/// _spans is the room [obstacle] takes from each band of [page] a grid
+/// step deep: in how many it takes any, and a hash of where.
+String _spans(Rect page, WrapShape obstacle) {
+  var hash = 0x811c9dc5, count = 0;
+  for (var y = page.top; y < page.bottom; y += _gridStep) {
+    var span = obstacle.spanIn(y, y + _gridStep);
+    if (span != null) count++;
+    for (var c
+        in (span == null ? "-" : "${_n(span.$1)} ${_n(span.$2)}").codeUnits) {
+      hash = ((hash ^ c) * 0x01000193) & 0xFFFFFFFF;
+    }
+  }
+  return "$count #${hash.toRadixString(16).padLeft(8, "0")}";
+}
+
 double _lengthOf(List<Offset> points) {
   var total = 0.0;
   for (var i = 1; i < points.length; i++) {
@@ -600,14 +668,14 @@ double _lengthOf(List<Offset> points) {
   return total;
 }
 
-/// _numbers is what the stage and the words ask of each element in [doc],
-/// one line each.
-String _numbers(CanvasDocument doc) {
+/// _numbers is what the stage and the words ask of each element in [doc]
+/// on [frame], one line each.
+String _numbers(CanvasDocument doc, int frame) {
   var out = StringBuffer();
   var page = doc.size.rect;
-  var hits = StageHitTest(document: doc, frame: 0, scale: 1);
+  var hits = StageHitTest(document: doc, frame: frame, scale: 1);
   for (var e in doc.elements) {
-    out.writeln("${e.id} drawn ${_rect(visualBoundsOf(e, doc, 0))}");
+    out.writeln("${e.id} drawn ${_rect(visualBoundsOf(e, doc, frame))}");
     out.writeln("${e.id} pressed ${_digest(page, (p) => hits.contains(e, p))}");
 
     // Words wrapped over the whole page, beside this element alone.
@@ -615,9 +683,14 @@ String _numbers(CanvasDocument doc) {
         ElementBase(id: "words", width: page.width, height: page.height),
         text: "Words",
         wrap: const TextWrap(on: true, gap: 8));
-    var beside = CanvasDocument(size: doc.size, elements: [e, words]);
-    for (var obstacle in wrapObstacles(words, beside, 0, page)) {
+    var beside = doc.copyWith(elements: [e, words]);
+    for (var obstacle in wrapObstacles(words, beside, frame, page)) {
       out.writeln("${e.id} wrap box ${_rect(obstacle.bounds)}");
+      // A line's or a path's stroke as the words go round it: the room it
+      // takes from each band of the page.
+      if (obstacle.ink.isNotEmpty) {
+        out.writeln("${e.id} wrap ink ${_spans(page, obstacle)}");
+      }
       var outline = obstacle.path;
       if (outline == null) {
         out.writeln("${e.id} wrap outline none");
@@ -628,7 +701,7 @@ String _numbers(CanvasDocument doc) {
     }
 
     if (e is LineElement || e is PathElement) {
-      var curve = curveOfElement(e);
+      var curve = curveOfElement(e, frame, doc);
       if (curve == null || curve.isEmpty) {
         out.writeln("${e.id} curve none");
       } else {
@@ -646,11 +719,15 @@ void main() {
   Future<void> keep(_State state) async {
     var size = state.doc.size;
     var recorder = ui.PictureRecorder();
-    paintCanvasDocument(ui.Canvas(recorder), state.doc, editing: state.editing);
+    paintCanvasDocument(ui.Canvas(recorder), state.doc,
+        frame: state.frame, editing: state.editing);
     var (raw, png) = await imageBytes(
         await recorder.endRecording().toImage(size.width, size.height));
     keepOrCompare("SHAPE_PICTURES", state.name,
-        raw: raw, png: png, width: size.width, numbers: _numbers(state.doc));
+        raw: raw,
+        png: png,
+        width: size.width,
+        numbers: _numbers(state.doc, state.frame));
   }
 
   var states = _states();

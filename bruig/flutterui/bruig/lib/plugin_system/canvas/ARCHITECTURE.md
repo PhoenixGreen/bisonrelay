@@ -341,31 +341,67 @@ stroke as well as along it.
 ### A line's and a path's curve
 
 Where a stroke's curve is has one answer. `StrokedElement.curve` is the
-line the stroke runs along in its box, before its turn and slant: what
-`paintStroke` strokes once `paintElement` has laid the canvas out by the
-element's `boxFrame`. `curvePoints` is that walked into points, and
-`curveOnPage` those points laid on the page through the turn and slant
-(`BoxFrame.place`, the point form of `placePath`). `bowedBy` gives a line
-the bow a pose keys. `curveOfElement` (`render/scene_renderer_shapes.dart`)
-is the curve on the page with the bow its track keys on a frame, and what
-asks where the curve is asks it: the selection box (`visualBoundsOf`), the
-press (`StageHitTest.contains`), text set on a line and the Follow path
-device. A loop runs round `curvePoints`, inside the frame the painter has
-already laid out. A lone line's or path's selection box is that box round
-its curve as drawn, so the stage lays it out upright (`_boxIsDrawn`), not
-turned and slanted a second time; its corner handles resize its box, and
-move one of its ends only while the line is neither turned nor slanted
-(`_applyLineEnd`). The painter alone takes a clip's keyed bow too; the rest
-take the track's, as text on a line always has.
+line the stroke runs along in its box, before it is laid on the page: what
+`paintStroke` strokes once `paintElement` has laid the canvas out.
+`curvePoints` is that walked into points. `bowedBy` gives a line the bow a
+pose keys.
+
+Where `paintElement` lays any element out on a frame is an `ElementPlace`
+(`model/canvas_element.dart`, made by `CanvasElement.placedBy` from a pose):
+the pose's move, a squash along its travel, the element's own turn and slant
+about its middle (`BoxFrame`), the pose's turn and size about its anchor,
+and a moving loop's turn and size. The painter lays the canvas out by its
+`applyTo`; `place` takes a point of the box to the page by the same steps
+in the same order and `unplace` brings one back, so nothing can ask where a
+part of the element is drawn and get anything but where the painter put it
+(`test/canvas_stroke_on_page_test.dart` holds `applyTo` and `place` to each
+other). `drawnPoseAt` and `placeAt` (`render/motion_document.dart`) are the
+pose and the place the painter uses on a frame, keys, clips and devices
+and all. `curvePlaced` is a stroke's points laid on the page by a place, and
+`curveOnPage` by its place at rest.
+
+`strokeOnPage` (`render/scene_renderer_shapes.dart`) is a stroke as drawn on
+a frame of a document: bowed and placed by the pose there, with its curve on
+the page; `curveOfElement` is that curve. What asks where a stroke is asks
+it: the selection box (`visualBoundsOf`, its room for the stroke as wide as
+the pose draws it), the press (`StageHitTest.contains`), text set on a line,
+the Follow path device and words wrapped beside it. The answer is kept for
+the stroke, the document and the frame, since the stage asks at every
+pointer move. A stroke can be posed by what rides it (a path following what
+follows it): past a few rounds of asking from inside its own pose, its keys
+alone answer, and a Look at has its own such guard (`_looking`). A loop
+runs round `curvePoints` bowed by the painter's pose, inside the frame the
+painter has already laid out.
+
+A lone line's or path's selection box is the box round its curve as drawn on
+the frame, so the stage lays it out upright (`_boxIsDrawn`), not turned and
+slanted a second time. A straight line's ends are at two of that box's
+corners, and its corner handles move them (`_applyLineEnd`): the end goes
+under the pointer and the other stays where it is drawn, the line's resting
+ends laid so through the place it is drawn by (`LineElement.withEndsDrawnAt`).
+A bowed line's or a path's corner handles resize its box. A handle drawn on
+the box's edge is pressed before the inside of the box, whose press takes
+hold of a stroke to move it. A path shows its points, not its box.
 
 A path's point or handle on the page is `PathElement.gripOnPage`, and
 `fractionAt` the way back from the page to the fraction of the box a point
-keeps: the stage's marks (`paintPathControls`), the press and the drag
-(`stage_path_points.dart`) use the two, so a turned or slanted path's points
-are drawn, taken and moved where the curve is. A follower's baked place
-(`positionAtFrame`) is on the page too. The press takes what is drawn on
+keeps, both by the place the path is drawn by on the frame: the stage's
+marks (`paintPathControls`, given `StageElementMarks.pathPlace`), the press
+and the drag (`stage_path_points.dart`) use the two, so a path's points are
+drawn, taken and moved where the curve is, turned, slanted or moved by its
+motion. An end or a point dragged on a frame where the stroke moves is moved,
+not posed: it lands under the pointer on that frame and the motion is left
+as it is, while the whole stroke dragged is posed or moved as any element is
+(`CanvasController.movedTo`). A follower's baked place (`positionAtFrame`)
+is on the page, on the path as it rests. The press takes what is drawn on
 the ends where it is drawn: `strokeEndMarks` (`render/paint_util_stroke.dart`)
 is the outline of each end, which `paintStroke` draws by.
+
+Words wrapped beside a line or a path go round its stroke as drawn on the
+frame (`inkOfStroke`, `text_wrap.dart`): its curve with half its width either
+side, and the marks on its ends, as runs of points with a reach that
+`WrapShape.spanIn` measures each band of words against, as a square brush,
+never less than the ink.
 
 A path is made of `CubicSegment`s (`model/cubic_segment.dart`): a piece is
 evaluated, split (`insertAfter`) and walked there, and distance along any
@@ -381,9 +417,12 @@ every frame it has a key of its own, and keeps what else it has keyed as it
 plays: a key of its own keeps its turn, size, fade, channels and easing, and
 a key added between takes them as its keys give them there. Unlinking
 (`clearPathFollow`) is `ownTrack`: the fewest keys that play as all of them
-do in everything but place, with no place. A key that held nothing but a
-place goes, whoever keyed it, since a place keyed by hand and a place baked
-over it are one value on one key.
+do on every frame in everything but place, with no place. So a key of the
+follower's own that lies on the way between two others but eases to the
+next its own way stays, as the frames after it show; one the bake added
+eases straight to a key a frame on and has no frames between. A key that
+held nothing but a place goes, whoever keyed it, since a place keyed by hand
+and a place baked over it are one value on one key.
 
 ## The editor
 

@@ -2,9 +2,12 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -348,6 +351,91 @@ void main() {
       expect(it.bounds.top, lessThan(oblong.y - 8));
       expect(it.spanIn(10, 30), isNotNull,
           reason: "a line above the box, beside the turned corner");
+    });
+
+    // A line or a path is gone round as its stroke is drawn on the frame:
+    // as thick as it is, turned, slanted, bowed and moved.
+    WrapShape aroundStroke(CanvasElement stroke, {int frame = 0}) {
+      var text = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 800, height: 400),
+        text: _words,
+        wrap: const TextWrap(on: true, gap: 8),
+      );
+      var doc = CanvasDocument(frames: 24, elements: [text, stroke]);
+      return wrapObstacles(text, doc, frame, text.bounds).single;
+    }
+
+    LineElement line(Offset a, Offset b, {double width = 6}) =>
+        LineElement(const ElementBase(id: "s"), strokeWidth: width)
+            .withEnds(a, b);
+
+    test("a level line, as thick as it is drawn", () {
+      // Its box is a sliver; its stroke reaches 10 above and below.
+      var it = aroundStroke(
+          line(const Offset(200, 140), const Offset(600, 140), width: 20));
+      expect(it.spanIn(116, 124), isNotNull,
+          reason: "the words keep the gap from the stroke's edge");
+      expect(it.spanIn(100, 110), isNull, reason: "and no further");
+    });
+
+    test("a turned line, along its stroke", () {
+      // Turned upright about its middle: from (400, 40) down to (400, 240).
+      var it = aroundStroke(line(const Offset(300, 140), const Offset(500, 140))
+          .withBase(rotation: 90));
+      var span = it.spanIn(60, 70)!;
+      expect(span.$1, closeTo(400 - 3 - 8, 1));
+      expect(span.$2, closeTo(400 + 3 + 8, 1));
+      expect(it.spanIn(10, 20), isNull, reason: "above its top end");
+    });
+
+    test("a slanted line, along its stroke", () {
+      // Level, slanted down by 30 degrees about its middle.
+      var it = aroundStroke(line(const Offset(300, 140), const Offset(500, 140))
+          .withBase(skewY: 30));
+      var drop = math.tan(30 * math.pi / 180) * 100;
+      expect(it.spanIn(140 + drop - 2, 140 + drop + 2), isNotNull,
+          reason: "beside its right end, below its box");
+      var span = it.spanIn(140 - drop - 2, 140 - drop + 2)!;
+      expect(span.$2, lessThan(400), reason: "only its left end up there");
+    });
+
+    test("a bowed line, round its bow", () {
+      // Bowed down 60 at its middle, out of its box.
+      var bowed = line(const Offset(200, 140), const Offset(600, 140))
+          .copyWith(curvature: 0.3);
+      var it = aroundStroke(bowed);
+      var span = it.spanIn(194, 198)!;
+      expect((span.$1 + span.$2) / 2, closeTo(400, 2));
+      expect(span.$2 - span.$1, lessThan(300), reason: "its bow, not its box");
+    });
+
+    test("a turned path, along its stroke", () {
+      var path = PathElement(
+          const ElementBase(
+              id: "s", x: 200, y: 40, width: 400, height: 200, rotation: 90),
+          nodes: const [
+            PathNode(x: 0, y: 0.5, frame: 0),
+            PathNode(x: 1, y: 0.5, frame: 10),
+          ],
+          endEnd: LineEnd.none);
+      var it = aroundStroke(path);
+      // Upright through (400, 140), 400 long.
+      var span = it.spanIn(0, 10)!;
+      expect(span.$1, closeTo(400 - 1.5 - 8, 1));
+      expect(span.$2, closeTo(400 + 1.5 + 8, 1));
+    });
+
+    test("a line turned by its keys, as it is on the frame", () {
+      // Level as it rests; upright on frame 20, through (400, 140).
+      var turning =
+          line(const Offset(300, 140), const Offset(500, 140)).withBase(
+              track: ElementTrack(const [
+        Keyframe(frame: 0),
+        Keyframe(frame: 20, rotate: 90),
+      ]));
+      var it = aroundStroke(turning, frame: 20);
+      expect(it.spanIn(60, 70), isNotNull, reason: "where it is drawn");
+      expect(it.spanIn(60, 70)!.$2 - it.spanIn(60, 70)!.$1, lessThan(40));
     });
   });
 

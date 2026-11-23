@@ -38,6 +38,7 @@ import 'package:bruig/plugin_system/canvas/ui/screen/page_keys.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_rulers.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_parts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -2589,6 +2590,116 @@ void main() {
           reason: "it opened on the words, not on the stored rectangle");
       expect(editor.center.dy, closeTo(at.dy, 60));
     });
+  });
+
+  group("a line under motion, selected on a frame part-way through it", () {
+    const page = CanvasSize(width: 400, ratio: CanvasRatio.square);
+
+    /// moving is a line from (100, 150) to (220, 230), keyed from rest on
+    /// frame 0 to [to] on frame 20, selected with the playhead on frame 10.
+    Future<(CanvasController, CanvasStageState)> moving(
+        WidgetTester tester, Keyframe to) async {
+      var line = LineElement(
+          ElementBase(
+              id: "l",
+              x: 100,
+              y: 150,
+              width: 120,
+              height: 80,
+              track: ElementTrack([const Keyframe(frame: 0), to])),
+          color: const Color(0xFFFFA726),
+          strokeWidth: 6);
+      // Nothing to snap to, so a move lands where it is taken.
+      var controller = CanvasController(CanvasDocument(
+          size: page,
+          frames: 24,
+          guides: const CanvasGuides(snap: false),
+          elements: [line]));
+      addTearDown(controller.dispose);
+      controller.frame = 10;
+      controller.selectOnly("l");
+      var stage = await pump(tester, controller);
+      return (controller, stage);
+    }
+
+    /// inkBox is the box round every pixel inked on [frame] of [doc].
+    Future<Rect> inkBox(WidgetTester tester, CanvasDocument doc, int frame) async {
+      late Rect box;
+      await tester.runAsync(() async {
+        var recorder = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(recorder), doc, frame: frame);
+        var image = await recorder.endRecording().toImage(400, 400);
+        var data = (await image.toByteData())!;
+        image.dispose();
+        int at(int i) => data.getUint8(i);
+        double left = 400, top = 400, right = 0, bottom = 0;
+        for (var y = 0; y < 400; y++) {
+          for (var x = 0; x < 400; x++) {
+            var i = (y * 400 + x) * 4;
+            var d = (at(i) - at(0)).abs() +
+                (at(i + 1) - at(1)).abs() +
+                (at(i + 2) - at(2)).abs();
+            if (d <= 90) continue;
+            left = math.min(left, x.toDouble());
+            top = math.min(top, y.toDouble());
+            right = math.max(right, x + 1.0);
+            bottom = math.max(bottom, y + 1.0);
+          }
+        }
+        box = Rect.fromLTRB(left, top, right, bottom);
+      });
+      return box;
+    }
+
+    /// handleBox is the selection's handles, in document units.
+    Rect handleBox(CanvasStageState stage, CanvasController c) {
+      var scale = stage.pageRect.width / c.document.size.width;
+      var origin = stage.toStagePoint(Offset.zero);
+      return Rect.fromPoints((stage.handleAt(StageHandle.topLeft) - origin) / scale,
+          (stage.handleAt(StageHandle.bottomRight) - origin) / scale);
+    }
+
+    for (var (name, to) in const [
+      ("turned by its keys", Keyframe(frame: 20, rotate: 80)),
+      ("moved by its keys", Keyframe(frame: 20, dx: 120, dy: -100)),
+    ]) {
+      testWidgets("a line $name is boxed where it is drawn", (tester) async {
+        var (c, stage) = await moving(tester, to);
+        var ink = await inkBox(tester, c.document, 10);
+        var box = handleBox(stage, c);
+        // Round all the ink, and no more than the room a stroke is given.
+        for (var (side, handles, inked) in [
+          ("left", box.left, ink.left),
+          ("top", box.top, ink.top),
+          ("right", -box.right, -ink.right),
+          ("bottom", -box.bottom, -ink.bottom),
+        ]) {
+          expect(handles, lessThanOrEqualTo(inked + 1),
+              reason: "the $side handles are outside the ink of $ink: $box");
+          expect(handles, greaterThan(inked - 12),
+              reason: "the $side handles are near the ink of $ink: $box");
+        }
+      });
+
+      testWidgets("a line $name is pressed and moved where it is drawn",
+          (tester) async {
+        var (c, stage) = await moving(tester, to);
+        var scale = stage.pageRect.width / page.width;
+        var before = curveOfElement(c.document.elementById("l"), 10, c.document)!;
+        var middle = Offset.lerp(before.first, before.last, 0.5)!;
+        await tester.dragFrom(
+            stage.toStagePoint(middle), const Offset(40, 20));
+        await tester.pumpAndSettle();
+        var after =
+            curveOfElement(c.document.elementById("l"), 10, c.document)!;
+        expect(after.first.dx, closeTo(before.first.dx + 40 / scale, 1),
+            reason: "it followed the pointer");
+        expect(after.first.dy, closeTo(before.first.dy + 20 / scale, 1));
+        expect(curveOfElement(c.document.elementById("l"), 0, c.document),
+            [const Offset(100, 150), const Offset(220, 230)],
+            reason: "and where it starts is left alone");
+      });
+    }
   });
 
   group("dragging a curve from inside its box", () {

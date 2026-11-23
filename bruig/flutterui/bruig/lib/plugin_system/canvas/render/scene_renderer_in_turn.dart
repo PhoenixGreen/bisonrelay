@@ -206,8 +206,9 @@ ElementAnimation? _animationOf(CanvasElement element) => switch (element) {
     };
 
 /// _loopOutline is [element]'s drawn outline for loops that run along it (a
-/// shape's, a drawing's shapes', a line's), or else its box.
-Path _loopOutline(CanvasElement element, Rect bounds, int frame) {
+/// shape's, a drawing's shapes', a line's), or else its box; a line bowed as
+/// [pose] bows the one drawn.
+Path _loopOutline(CanvasElement element, Rect bounds, Keyframe pose) {
   switch (element) {
     case ShapeElement e:
       return shapeOutline(e, bounds);
@@ -225,9 +226,9 @@ Path _loopOutline(CanvasElement element, Rect bounds, int frame) {
       }
       return out;
     case StrokedElement e:
-      // In its box, as it is drawn: the canvas is already turned and
-      // slanted as the element is.
-      var points = e.bowedBy(e.poseAt(frame)).curvePoints;
+      // In its box, as it is drawn: the canvas is already laid out where
+      // the element is on this frame (ElementPlace).
+      var points = e.bowedBy(pose).curvePoints;
       if (points.length > 1) return _polyline(points);
     default:
       break;

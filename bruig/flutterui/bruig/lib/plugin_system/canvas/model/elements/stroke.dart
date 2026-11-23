@@ -350,15 +350,18 @@ abstract class StrokedElement extends CanvasElement {
   /// the pose keys it (KeyframeChannel.bow). A path has no bow of its own.
   StrokedElement bowedBy(Keyframe pose) => this;
 
-  /// curveOnPage is [curvePoints] where they are drawn on the page: the one
-  /// answer to where the curve is, which the selection box, the press, text
-  /// set on it and whatever follows it ask (render's curveOfElement, with
-  /// the bow keyed on a frame).
-  List<Offset> get curveOnPage {
+  /// curveOnPage is [curvePoints] where they are drawn on the page as the
+  /// element rests: through its turn and slant.
+  List<Offset> get curveOnPage => curvePlaced(placedBy(Keyframe.rest));
+
+  /// curvePlaced is [curvePoints] laid on the page by [place], where the
+  /// painter lays the element out on a frame: the one answer to where the
+  /// curve is, which the selection box, the press, text set on it and
+  /// whatever follows it ask (render's strokeOnPage, with the pose a frame
+  /// gives it).
+  List<Offset> curvePlaced(ElementPlace place) {
     var points = curvePoints;
-    var frame = boxFrame;
-    if (frame.upright) return points;
-    var middle = center;
-    return [for (var p in points) frame.place(p, middle)];
+    if (place.leavesAlone) return points;
+    return [for (var p in points) place.place(p)];
   }
 }

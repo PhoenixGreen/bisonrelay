@@ -1,9 +1,12 @@
 part of 'canvas_stage.dart';
 
 // A selected path's points and handles: which is under the pointer, and
-// one dragged. They are where the path is drawn, through its turn and slant
-// (PathElement.gripOnPage), and a drag is turned and slanted back into the
-// box, which is what a point keeps (PathElement.fractionAt). The gesture is
+// one dragged. They are where the path is drawn on this frame, moved by its
+// motion and through its turn and slant (PathElement.gripOnPage, by the
+// ElementPlace the painter lays it out by), and a drag is taken back by the
+// same place into the box, which is what a point keeps (PathElement
+// .fractionAt): a point is moved, not posed, whatever frame it is dragged
+// on, so it lands under the pointer on this frame. The gesture is
 // _PathPointDrag (stage_gesture.dart); the marks are paintPathControls
 // (stage_paint_elements.dart). Part of CanvasStageState: its fields,
 // lifecycle and build are in canvas_stage.dart.
@@ -14,15 +17,20 @@ extension StagePathPoints on CanvasStageState {
     return selected is PathElement ? selected : null;
   }
 
+  /// _pathPlace is where the painter lays [path] out on this frame.
+  ElementPlace _pathPlace(PathElement path) =>
+      path.placeAt(controller.frame, document, live: controller.liveMotion);
+
   /// _hitPathControl is the point or handle under [doc], by the point's
   /// place in the path and which of its grips. Handles first, so one on top
   /// of an unbent point can still be pulled out.
   ({int index, PathGrip grip})? _hitPathControl(PathElement path, Offset doc) {
     // In document units, so the grab area is one size on screen at any zoom.
     var reach = handleReach() / _scale;
+    var place = _pathPlace(path);
     bool near(PathNode node, PathGrip grip) =>
         node.hasGrip(grip) &&
-        (doc - path.gripOnPage(node, grip)).distance <= reach;
+        (doc - path.gripOnPage(node, grip, place)).distance <= reach;
     for (var i = 0; i < path.nodes.length; i++) {
       for (var grip in const [PathGrip.outHandle, PathGrip.inHandle]) {
         if (near(path.nodes[i], grip)) return (index: i, grip: grip);
@@ -43,8 +51,8 @@ extension StagePathPoints on CanvasStageState {
     if (path == null || index < 0 || index >= path.nodes.length) {
       return;
     }
-    // Turned and slanted back into the box, which is what a node keeps.
-    var to = path.fractionAt(doc);
+    // Taken back into the box, which is what a node keeps.
+    var to = path.fractionAt(doc, _pathPlace(path));
     var node = path.nodes[index];
     var d = to - node.point;
 

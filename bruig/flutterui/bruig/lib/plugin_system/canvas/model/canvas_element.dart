@@ -731,6 +731,46 @@ abstract class CanvasElement {
   Offset onPage(Offset p) => boxFrame.place(p, center);
   Offset fromPage(Offset p) => boxFrame.unplace(p, center);
 
+  /// placedBy is where paintElement lays this element's box on the page in
+  /// [pose]: see ElementPlace. With Keyframe.rest it places as [onPage]
+  /// does.
+  ElementPlace placedBy(Keyframe pose) => placedIn(bounds, pose);
+
+  /// placedIn is [placedBy] for the box [box], where the painter draws the
+  /// element somewhere other than its bounds (a page number mirrored onto a
+  /// left-hand page). Its moving loop's turn and size are read from [loop]
+  /// where that is given, as the painter does when the rest of the pose is
+  /// laid on outside it.
+  ElementPlace placedIn(Rect box, Keyframe pose, {Keyframe? loop}) {
+    var squash = pose.values[KeyframeChannel.squash];
+    var squashed = squash != null && (squash - 1).abs() > 1e-3 && squash > 0;
+    var looping = (loop ?? pose).values;
+    var loopTurn = looping[KeyframeChannel.loopTurn];
+    // About the element's anchor where it has been moved; otherwise where
+    // the loop itself turns: a swing hangs from its top.
+    var pivot = loopTurn == null
+        ? Offset.zero
+        : anchorCentred
+            ? Offset(looping[KeyframeChannel.loopPivotX] ?? 0.5,
+                looping[KeyframeChannel.loopPivotY] ?? 0.5)
+            : Offset(base.anchorX, base.anchorY);
+    return ElementPlace(
+      centre: box.center,
+      shift: Offset(pose.dx, pose.dy),
+      squash: squashed ? squash : 1,
+      squashAngle: squashed ? pose.values[KeyframeChannel.squashAngle] ?? 0 : 0,
+      frame: boxFrame,
+      anchor: pose.rotate != 0 || pose.scale != 1 ? anchorIn(box) : Offset.zero,
+      turn: pose.rotate,
+      size: pose.scale,
+      loopPivot: Offset(
+          box.left + box.width * pivot.dx, box.top + box.height * pivot.dy),
+      loopTurn: loopTurn ?? 0,
+      loopSx: loopTurn == null ? 1 : looping[KeyframeChannel.loopSx] ?? 1,
+      loopSy: loopTurn == null ? 1 : looping[KeyframeChannel.loopSy] ?? 1,
+    );
+  }
+
   double get opacity => base.opacity;
   bool get visible => base.visible;
   bool get locked => base.locked;
@@ -1053,4 +1093,182 @@ class BoxFrame {
         c0 + apply(p - c0)
     ];
   }
+}
+
+/// ElementPlace is where paintElement lays an element's box on the page on
+/// one frame, in the painter's order: moved by its pose, squashed along its
+/// travel about its middle, turned and slanted as it rests about its middle
+/// ([frame]), turned and sized by its pose about its anchor, and turned and
+/// sized by a moving loop about the loop's pivot. [applyTo] lays a canvas out
+/// so, and is what the painter calls; [place] takes a point of the box to
+/// the page by the same steps in the same order and [unplace] brings one
+/// back, so whatever asks where a part of an element is drawn (a stroke's
+/// curve, a path's points, a line's ends) is answered where the painter put
+/// it. Made by CanvasElement.placedIn. A step that does nothing is skipped,
+/// so an element at rest is placed exactly as [frame] alone places it.
+class ElementPlace {
+  /// centre is the middle of the box, which the turn, slant and squash are
+  /// about.
+  final Offset centre;
+
+  /// shift is the pose's move.
+  final Offset shift;
+
+  /// squash stretches by this along [squashAngle] (radians) and squeezes
+  /// across; one is none.
+  final double squash;
+  final double squashAngle;
+
+  /// frame is the element's own turn and slant.
+  final BoxFrame frame;
+
+  /// turn (degrees) and size are the pose's, about [anchor].
+  final Offset anchor;
+  final double turn;
+  final double size;
+
+  /// loopTurn (degrees), loopSx and loopSy are a moving loop's, about
+  /// [loopPivot].
+  final Offset loopPivot;
+  final double loopTurn;
+  final double loopSx;
+  final double loopSy;
+
+  // The turns' cosines and sines, worked out once: a stroke's every point
+  // is placed by them.
+  final (double, double) _squashTurn, _poseTurn, _loopTurn;
+
+  ElementPlace({
+    required this.centre,
+    this.shift = Offset.zero,
+    this.squash = 1,
+    this.squashAngle = 0,
+    required this.frame,
+    this.anchor = Offset.zero,
+    this.turn = 0,
+    this.size = 1,
+    this.loopPivot = Offset.zero,
+    this.loopTurn = 0,
+    this.loopSx = 1,
+    this.loopSy = 1,
+  })  : _squashTurn = _cosSin(squashAngle),
+        _poseTurn = _cosSin(turn * math.pi / 180),
+        _loopTurn = _cosSin(loopTurn * math.pi / 180);
+
+  static (double, double) _cosSin(double radians) =>
+      radians == 0 ? (1, 0) : (math.cos(radians), math.sin(radians));
+
+  bool get _squashed => squash != 1;
+  bool get _posed => turn != 0 || size != 1;
+  bool get _looped => loopTurn != 0 || loopSx != 1 || loopSy != 1;
+
+  /// leavesAlone is whether every point lands where it is in the box: an
+  /// upright element at rest.
+  bool get leavesAlone =>
+      shift == Offset.zero &&
+      !_squashed &&
+      !_posed &&
+      !_looped &&
+      frame.upright;
+
+  /// stretch is the most the pose and the loop lengthen anything drawn,
+  /// before the turn and slant the element rests in: what a stroke's width is
+  /// drawn at, so its bounds and its press grow with it.
+  double get stretch =>
+      size.abs() *
+      (_looped ? math.max(loopSx.abs(), loopSy.abs()) : 1) *
+      (_squashed ? math.max(squash, 1 / squash) : 1);
+
+  /// applyTo lays [canvas] out so what is drawn next in box space lands
+  /// where the element is on this frame.
+  void applyTo(Canvas canvas) {
+    if (shift != Offset.zero) canvas.translate(shift.dx, shift.dy);
+    if (_squashed) {
+      canvas.translate(centre.dx, centre.dy);
+      canvas.rotate(squashAngle);
+      canvas.scale(squash, 1 / squash);
+      canvas.rotate(-squashAngle);
+      canvas.translate(-centre.dx, -centre.dy);
+    }
+    frame.applyTo(canvas, centre);
+    if (_posed) {
+      canvas.translate(anchor.dx, anchor.dy);
+      if (turn != 0) canvas.rotate(turn * math.pi / 180);
+      if (size != 1) canvas.scale(size);
+      canvas.translate(-anchor.dx, -anchor.dy);
+    }
+    if (_looped) {
+      canvas.translate(loopPivot.dx, loopPivot.dy);
+      if (loopTurn != 0) canvas.rotate(loopTurn * math.pi / 180);
+      if (loopSx != 1 || loopSy != 1) canvas.scale(loopSx, loopSy);
+      canvas.translate(-loopPivot.dx, -loopPivot.dy);
+    }
+  }
+
+  /// place is [p], a point of the box as drawn before any of this, where it
+  /// lands on the page; unplace is the way back, for a press or a drag.
+  Offset place(Offset p) {
+    var q = p;
+    if (_looped) {
+      q = loopPivot +
+          _turned(
+              Offset((q.dx - loopPivot.dx) * loopSx,
+                  (q.dy - loopPivot.dy) * loopSy),
+              _loopTurn);
+    }
+    if (_posed) q = anchor + _turned((q - anchor) * size, _poseTurn);
+    q = frame.place(q, centre);
+    if (_squashed) {
+      var d = _turned(q - centre, _back(_squashTurn));
+      q = centre + _turned(Offset(d.dx * squash, d.dy / squash), _squashTurn);
+    }
+    return q + shift;
+  }
+
+  Offset unplace(Offset p) {
+    var q = p - shift;
+    if (_squashed) {
+      var d = _turned(q - centre, _back(_squashTurn));
+      q = centre + _turned(Offset(d.dx / squash, d.dy * squash), _squashTurn);
+    }
+    q = frame.unplace(q, centre);
+    if (_posed && size != 0) {
+      q = anchor + _turned(q - anchor, _back(_poseTurn)) / size;
+    }
+    if (_looped && loopSx != 0 && loopSy != 0) {
+      var d = _turned(q - loopPivot, _back(_loopTurn));
+      q = loopPivot + Offset(d.dx / loopSx, d.dy / loopSy);
+    }
+    return q;
+  }
+
+  /// _turned is [v] turned by the angle whose cosine and sine are [by].
+  static Offset _turned(Offset v, (double, double) by) {
+    var (c, s) = by;
+    if (s == 0 && c == 1) return v;
+    return Offset(v.dx * c - v.dy * s, v.dx * s + v.dy * c);
+  }
+
+  /// _back is the turn the other way.
+  static (double, double) _back((double, double) by) => (by.$1, -by.$2);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ElementPlace &&
+      other.centre == centre &&
+      other.shift == shift &&
+      other.squash == squash &&
+      other.squashAngle == squashAngle &&
+      other.frame == frame &&
+      other.anchor == anchor &&
+      other.turn == turn &&
+      other.size == size &&
+      other.loopPivot == loopPivot &&
+      other.loopTurn == loopTurn &&
+      other.loopSx == loopSx &&
+      other.loopSy == loopSy;
+
+  @override
+  int get hashCode => Object.hash(centre, shift, squash, squashAngle, frame,
+      anchor, turn, size, loopPivot, loopTurn, loopSx, loopSy);
 }

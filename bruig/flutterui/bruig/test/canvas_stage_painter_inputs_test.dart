@@ -251,6 +251,8 @@ void main() {
           pick("elements.tableColumns", (1.0, 0.0, 10.0), (2.0, 0.0, 10.0)),
         ]),
         selectedPath: pick("elements.selectedPath", path, otherPath),
+        pathPlace: pick("elements.pathPlace", path.placedBy(Keyframe.rest),
+            path.placedBy(const Keyframe(frame: 0, dx: 4))),
       ),
       tools: (
         vector: pick(

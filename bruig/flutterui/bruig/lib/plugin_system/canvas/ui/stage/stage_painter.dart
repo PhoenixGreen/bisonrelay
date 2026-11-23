@@ -160,7 +160,8 @@ class StagePainter extends CustomPainter {
     // cannot be usefully dragged.
     var path = inputs.elements.selectedPath;
     if (path != null) {
-      paintPathControls(canvas, path, _scale, _origin);
+      paintPathControls(canvas, path, _scale, _origin,
+          place: inputs.elements.pathPlace);
       return;
     }
     if (inputs.tools.layers case var layers?) {

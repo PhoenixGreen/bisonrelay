@@ -267,6 +267,9 @@ extension StagePress on CanvasStageState {
     // Inside the box of a selected element whose box is not its shape (a
     // curved line, a path, text on a line) takes hold of it. Selecting one
     // still needs the stroke, or a bowed line's empty box would steal clicks.
+    // Not on a handle drawn on the box's edge, whose inner half is inside
+    // it: that is the handle's (a line's end at a corner). A path shows its
+    // points, not its box or its handles.
     if (!_shiftHeld && controller.selection.length == 1) {
       var chosen = document.elementById(controller.selection.first);
       if (chosen != null &&
@@ -274,6 +277,7 @@ extension StagePress on CanvasStageState {
           chosen.visible &&
           _boxIsNotTheShape(chosen) &&
           _visualBounds(chosen).contains(doc) &&
+          (chosen is PathElement || _hitHandle(stage) == null) &&
           _hitElement(doc) == null) {
         _gesture = _BoxMove(_beginTransform());
         return true;

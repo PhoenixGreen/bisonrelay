@@ -212,9 +212,10 @@ extension StageDrag on CanvasStageState {
         for (var e in controller.selectedElements) e.id: e,
       },
       // Where each element is on this frame, which a move works from. A
-      // resize works from the resting bounds instead: it writes the base
-      // size, and a posed size would bake a scale in. A move from the
-      // resting bounds would lose the frame's pose.
+      // resize writes the resting size, as a posed size would bake a scale
+      // in, but is laid out here and taken back (_restingAfterResize), so
+      // the corner held stays where it is drawn. A move from the resting
+      // bounds would lose the frame's pose.
       posed: {
         for (var e in controller.selectedElements) e.id: _hit.posed(e),
       },
@@ -313,25 +314,30 @@ extension StageDrag on CanvasStageState {
 
   /// _applyLineEnd drags one end of a single straight line, if [handle] is
   /// on one, and says whether it did. A line is its two ends, not a box (a
-  /// box is at least eight pixels deep, so a line could never be level). The
-  /// end snaps to level, upright or diagonal within a few degrees, always
-  /// with Shift; Alt frees it.
+  /// box is at least eight pixels deep, so a line could never be level). Its
+  /// ends are where it is drawn on this frame, turned, slanted and moved by
+  /// its motion, and so at two corners of the box round it as drawn; the
+  /// corner nearer an end takes that end. The end goes under the pointer and
+  /// the other stays where it is drawn, the line's resting ends being laid
+  /// so (LineElement.withEndsDrawnAt): like a path's point, an end is moved,
+  /// not posed, whatever frame it is dragged on, and its motion is left as
+  /// it is. The end snaps to level, upright or diagonal on the page within a
+  /// few degrees, always with Shift; Alt frees it.
   bool _applyLineEnd(StageHandle handle, Offset delta, _BoxStart from) {
+    // A lone line's box is always upright (_boxIsDrawn); one copy of a
+    // reused line has a box of its own.
     if (from.visual.length != 1 || !_frameOfSelection.upright) return false;
     // The line at the drag's start: every step works from it, since crossing
     // one end past the other swaps the ends and their arrows.
     var line = from.elements[from.visual.keys.first];
-    // Its ends are its box's corners only while the box is not turned or
-    // slanted; a turned or slanted line's handles resize its box.
-    if (line is! LineElement ||
-        line.curvature != 0 ||
-        line.locked ||
-        !line.boxFrame.upright) {
+    if (line is! LineElement || line.curvature != 0 || line.locked) {
       return false;
     }
-    var was = line.bounds;
-    var start = line.flipped ? was.bottomLeft : was.topLeft;
-    var end = line.flipped ? was.topRight : was.bottomRight;
+    var pose = line.drawnPoseAt(controller.frame, document,
+        live: controller.liveMotion);
+    var place = line.placedBy(pose);
+    var start = place.place(line.start);
+    var end = place.place(line.end);
     var box = from.visual.values.first;
     var corner = switch (handle) {
       StageHandle.topLeft => box.topLeft,
@@ -348,8 +354,8 @@ extension StageDrag on CanvasStageState {
       moving = snapLineAngle(fixed, moving, always: _shiftHeld);
     }
     var next = movesStart
-        ? line.withEnds(moving, fixed)
-        : line.withEnds(fixed, moving);
+        ? line.withEndsDrawnAt(moving, fixed, pose)
+        : line.withEndsDrawnAt(fixed, moving, pose);
     controller.apply(document.withElement(next), transient: true);
     return true;
   }
@@ -504,16 +510,23 @@ extension StageDrag on CanvasStageState {
       if (element == null || element.locked) continue;
       var visual = entry.value;
       var real = start.bounds[entry.key] ?? visual;
+      var width = math.max(1.0, real.width * sx);
+      var height = math.max(1.0, real.height * sy);
+      // Laid out where it is drawn on this frame, as the box the handles are
+      // on is, then taken back to where it rests: on a frame its motion
+      // moves or sizes it, the corner held stays where it is drawn.
+      var (x, y) = _restingAfterResize(element, real, start.posed[entry.key],
+          left, top, group, sx, sy, width, height);
 
       // Keeping proportions scales everything inside (type, spacing, a chip's
       // padding), from the element at the drag's start.
       var from = start.elements[entry.key] ?? element;
       element = keep ? from.scaledBy(sx) : element;
       next = next.withElement(element.withBase(
-        x: left + (real.left - group.left) * sx,
-        y: top + (real.top - group.top) * sy,
-        width: math.max(1, real.width * sx),
-        height: math.max(1, real.height * sy),
+        x: x,
+        y: y,
+        width: width,
+        height: height,
         // The scale applied inside the box, kept where the shape switch reads
         // it (see ElementBase.typeScale), so a shape change does not undo the
         // drag by the wrong amount.
@@ -522,6 +535,47 @@ extension StageDrag on CanvasStageState {
     }
     controller.apply(next, transient: true);
     return caught;
+  }
+
+  /// _restingAfterResize is where an element resized to [width] by
+  /// [height] rests, its box at the drag's start resting at [rest] and drawn
+  /// at [posed] on this frame: [posed] laid out in the dragged box [group],
+  /// whose top left is now at [left], [top] and which is [sx] by [sy] what
+  /// it was, and taken back through the pose's move and its size about the
+  /// anchor (CanvasElement.boundsWith), which a resize leaves as they are.
+  /// Where nothing moves it, [rest] laid out so.
+  (double, double) _restingAfterResize(
+      CanvasElement e,
+      Rect rest,
+      Rect? posed,
+      double left,
+      double top,
+      Rect group,
+      double sx,
+      double sy,
+      double width,
+      double height) {
+    // A reused element's posed box is round all its copies, not its own.
+    if (posed == null || posed == rest || e.base.motion.instances != null) {
+      return (
+        left + (rest.left - group.left) * sx,
+        top + (rest.top - group.top) * sy,
+      );
+    }
+    // How far the pose puts its box's corner from where it rests, for a box
+    // [w] across: its move, and the corner drawn in or out about the anchor
+    // as the pose sizes it.
+    var size = rest.width > 0 ? posed.width / rest.width : 1.0;
+    double offset(double was, double now, double w, double share) =>
+        now - was - w * share * (1 - size);
+    var dx = offset(rest.left, posed.left, rest.width, e.base.anchorX);
+    var dy = offset(rest.top, posed.top, rest.height, e.base.anchorY);
+    var drawnLeft = left + (posed.left - group.left) * sx;
+    var drawnTop = top + (posed.top - group.top) * sy;
+    return (
+      drawnLeft - dx - width * e.base.anchorX * (1 - size),
+      drawnTop - dy - height * e.base.anchorY * (1 - size),
+    );
   }
 
   void _applyRotate(Offset doc, _BoxStart start) {

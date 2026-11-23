@@ -933,6 +933,10 @@ class CanvasStageState extends State<CanvasStage>
         layout: _layoutMarks(),
         tableColumns: EqualList(_selectedTableColumns()),
         selectedPath: _selectedPath(),
+        pathPlace: switch (_selectedPath()) {
+          var path? => _pathPlace(path),
+          null => null,
+        },
       );
 
   /// _toolMarks is what the tool in hand has the painter draw.

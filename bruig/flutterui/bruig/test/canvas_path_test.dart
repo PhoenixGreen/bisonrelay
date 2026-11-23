@@ -4,12 +4,14 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_paint_elements.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -356,6 +358,33 @@ void main() {
           }
         });
       }
+
+      test("a key of its own on the way between two others, eased its own way",
+          () {
+        // The middle key's fade is where a straight fade from the first to
+        // the last would be on its frame, but it eases in and out to the
+        // last: the frames after it play otherwise than if it were not
+        // there, so it is the follower's, and taking the bake back keeps it.
+        // The run ends before it, so no key the bake adds shows the bend.
+        const keys = [
+          Keyframe(frame: 0, opacity: 0),
+          Keyframe(frame: 4, opacity: 0.4, easing: KeyframeEasing.easeInOut),
+          Keyframe(frame: 10, opacity: 1),
+        ];
+        var own = ElementTrack(keys);
+        expect(own.at(6).opacity, isNot(closeTo(0.6, 0.01)),
+            reason: "the test is only meaningful where the easings differ");
+        var (c, path) = linked(keys, frames: 3);
+        c.applyPathFollow(path);
+        c.clearPathFollow(path);
+        var back = trackOf(c);
+        for (var f = 0; f <= 20; f++) {
+          expect(back.at(f).opacity, closeTo(own.at(f).opacity, 1e-9),
+              reason: "frame $f plays as it did");
+        }
+        expect([for (var k in back.keys) k.frame], [0, 4, 10]);
+        expect(back.keys[1].easing, KeyframeEasing.easeInOut);
+      });
 
       test("a follower keyed only where it was is left with no keys", () {
         var (c, path) = linked(const [Keyframe(frame: 4, dx: 30, dy: 10)]);
@@ -803,6 +832,136 @@ void main() {
             reason: "the point itself stays");
       });
     }
+  });
+
+  group("a path under motion, on the stage part-way through it", () {
+    const viewport = Size(800, 600);
+
+    /// moving is a path from (200, 200) to (600, 200), its first point's
+    /// outgoing handle pulled out, keyed from rest on frame 0 to [to] on
+    /// frame 20.
+    PathElement moving(Keyframe to) => PathElement(
+          ElementBase(
+              id: "p",
+              x: 200,
+              y: 200,
+              width: 400,
+              height: 200,
+              track: ElementTrack([const Keyframe(frame: 0), to])),
+          nodes: const [
+            PathNode(x: 0, y: 0, frame: 0, outDx: 0.25),
+            PathNode(x: 1, y: 0, frame: 10),
+          ],
+        );
+
+    /// onStage is [path] selected on a stage, with the playhead on frame 10.
+    Future<(CanvasController, CanvasStageState)> onStage(
+        WidgetTester tester, PathElement path) async {
+      // Nothing to snap to, so a drag lands where it is taken.
+      var controller = CanvasController(CanvasDocument(
+          frames: 24,
+          guides: const CanvasGuides(snap: false),
+          elements: [path]));
+      addTearDown(controller.dispose);
+      controller.frame = 10;
+      controller.selectOnly("p");
+      var key = GlobalKey<CanvasStageState>();
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasStage(key: key, controller: controller))));
+      await tester.pumpAndSettle();
+      return (controller, key.currentState!);
+    }
+
+    PathElement pathIn(CanvasController c) =>
+        c.document.elementById("p") as PathElement;
+
+    /// drawnAt is where [grip] of [path]'s point [index] is drawn on frame
+    /// 10 of [c]'s document.
+    Offset drawnAt(
+            CanvasController c, PathElement path, int index, PathGrip grip) =>
+        path.gripOnPage(path.nodes[index], grip, path.placeAt(10, c.document));
+
+    Future<void> drag(WidgetTester tester, CanvasStageState stage, Offset from,
+        Offset to) async {
+      var gesture = await tester.startGesture(stage.toStagePoint(from));
+      await gesture.moveTo(stage.toStagePoint(Offset.lerp(from, to, 0.3)!));
+      await gesture.moveTo(stage.toStagePoint(to));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    const turnedAndMoved = Keyframe(frame: 20, dx: 80, dy: 60, rotate: 30);
+
+    testWidgets("its points are drawn on its curve as drawn", (tester) async {
+      var path = moving(turnedAndMoved);
+      var doc = CanvasDocument(frames: 24, elements: [path]);
+      var recorder = ui.PictureRecorder();
+      paintPathControls(ui.Canvas(recorder), path, 1, Offset.zero,
+          place: path.placeAt(10, doc));
+      late ByteData pixels;
+      await tester.runAsync(() async {
+        var image = await recorder.endRecording().toImage(1000, 700);
+        pixels = (await image.toByteData())!;
+        image.dispose();
+      });
+      bool blueAt(Offset p) {
+        var i = (p.dy.floor() * 1000 + p.dx.floor()) * 4;
+        return pixels.getUint8(i + 2) > 200 && pixels.getUint8(i) < 120;
+      }
+
+      var curve = curveOfElement(path, 10, doc)!;
+      expect(blueAt(curve.first), isTrue, reason: "the first point");
+      expect(blueAt(curve.last), isTrue, reason: "the last point");
+    });
+
+    testWidgets("a point dragged follows the pointer", (tester) async {
+      var (c, stage) = await onStage(tester, moving(turnedAndMoved));
+      var from = drawnAt(c, pathIn(c), 1, PathGrip.point);
+      var to = from + const Offset(30, 50);
+      await drag(tester, stage, from, to);
+      var moved = pathIn(c);
+      expect(drawnAt(c, moved, 1, PathGrip.point), offsetCloseTo(to, 0.5));
+      expect(moved.bounds, const Rect.fromLTWH(200, 200, 400, 200),
+          reason: "the point, not the path");
+      expect(moved.nodes.first.point, Offset.zero, reason: "the other stays");
+    });
+
+    testWidgets("a handle dragged follows the pointer", (tester) async {
+      var (c, stage) = await onStage(tester, moving(turnedAndMoved));
+      var path = pathIn(c);
+      var from = drawnAt(c, path, 0, PathGrip.outHandle);
+      var to = from + const Offset(-20, 40);
+      await drag(tester, stage, from, to);
+      var moved = pathIn(c);
+      expect(drawnAt(c, moved, 0, PathGrip.outHandle), offsetCloseTo(to, 0.5));
+      expect(drawnAt(c, moved, 0, PathGrip.point),
+          offsetCloseTo(drawnAt(c, path, 0, PathGrip.point)),
+          reason: "the point itself stays");
+    });
+
+    testWidgets("a corner pulled sizes it, the far corner held where it is",
+        (tester) async {
+      // Corner to corner, so the other two corners are clear of its points.
+      var diagonal = moving(const Keyframe(frame: 20, dx: 80, dy: 60))
+          .copyWith(nodes: const [
+        PathNode(x: 0, y: 0, frame: 0),
+        PathNode(x: 1, y: 1, frame: 10),
+      ]);
+      var (c, stage) = await onStage(tester, diagonal);
+      var box = visualBoundsOf(pathIn(c), c.document, 10);
+      // Just outside it: inside the box, a press takes hold of the path.
+      var corner = box.bottomLeft + const Offset(-1, 1);
+      await drag(tester, stage, corner, corner + const Offset(-60, 40));
+      expect(pathIn(c).nodes, diagonal.nodes, reason: "no point was taken");
+      var now = visualBoundsOf(pathIn(c), c.document, 10);
+      // Within the room the box gives the stroke, which is not resized.
+      expect(now.topRight, offsetCloseTo(box.topRight, 3),
+          reason: "the corner opposite stays");
+      expect(now.width, greaterThan(box.width + 30), reason: "it grew");
+    });
   });
 }
 

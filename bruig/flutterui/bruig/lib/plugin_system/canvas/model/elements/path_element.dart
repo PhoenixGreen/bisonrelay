@@ -253,36 +253,62 @@ ElementTrack ownTrack(ElementTrack? track) {
   return ElementTrack(placeless);
 }
 
-/// _between is whether every key strictly between [keys]'s [i] and [j]
-/// plays, in all but place, as the way from one to the other gives it, with
-/// [held], the channels held from before [i].
+/// _between is whether the keys strictly between [keys]'s [i] and [j] can
+/// go: whether each of them, and every frame from [i] to [j], plays, in all
+/// but place, as the way from one to the other gives it, with [held], the
+/// channels held from [i] and before. Every frame, not only the keys': a key
+/// on the way that eases to the next its own way plays the frames after it
+/// otherwise, and is the follower's own; one the bake added eases straight
+/// to the next a frame on, so has no frames of its own between.
 bool _between(List<Keyframe> keys, int i, int j, Map<String, double> held) {
   var a = keys[i], b = keys[j];
   var span = b.frame - a.frame;
   if (span <= 0) return false;
-  for (var m = i + 1; m < j; m++) {
-    var way = a.lerp(b, a.ease((keys[m].frame - a.frame) / span));
-    if (!_sameAs(keys[m], way, {...held, ...way.values})) return false;
+  Keyframe wayAt(int frame) => a.lerp(b, a.ease((frame - a.frame) / span));
+  var heldThen = {...held};
+  for (var m = i; m < j; m++) {
+    var from = keys[m], to = keys[m + 1];
+    if (m > i) {
+      var way = wayAt(from.frame);
+      if (!_sameAs(from, way, {...held, ...way.values})) return false;
+      heldThen.addAll(from.values);
+    }
+    var gap = to.frame - from.frame;
+    for (var f = from.frame + 1; f < to.frame; f++) {
+      var played = from.lerp(to, from.ease((f - from.frame) / gap));
+      var way = wayAt(f);
+      if (!_playsAs(played, {...heldThen, ...played.values}, way,
+          {...held, ...way.values})) {
+        return false;
+      }
+    }
   }
   return true;
 }
 
-/// _sameAs is whether [k] plays as [as] does, in all but place, with
-/// [values] as the channels [as] gives.
-bool _sameAs(Keyframe k, Keyframe as, Map<String, double> values) {
-  bool near(double x, double y) => (x - y).abs() <= 1e-9 * (1 + x.abs());
-  if (!near(k.scale, as.scale) ||
-      !near(k.rotate, as.rotate) ||
-      !near(k.opacity, as.opacity) ||
-      k.values.length != values.length) {
+/// _playsAs is whether [k], with the channels [kValues], plays as [as] does
+/// with [asValues], in all but place.
+bool _playsAs(Keyframe k, Map<String, double> kValues, Keyframe as,
+    Map<String, double> asValues) {
+  if (!_near(k.scale, as.scale) ||
+      !_near(k.rotate, as.rotate) ||
+      !_near(k.opacity, as.opacity) ||
+      kValues.length != asValues.length) {
     return false;
   }
-  for (var e in k.values.entries) {
-    var v = values[e.key];
-    if (v == null || !near(e.value, v)) return false;
+  for (var e in kValues.entries) {
+    var v = asValues[e.key];
+    if (v == null || !_near(e.value, v)) return false;
   }
   return true;
 }
+
+bool _near(double x, double y) => (x - y).abs() <= 1e-9 * (1 + x.abs());
+
+/// _sameAs is whether [k] plays as [as] does, in all but place, with
+/// [values] as the channels [as] gives.
+bool _sameAs(Keyframe k, Keyframe as, Map<String, double> values) =>
+    _playsAs(k, k.values, as, values);
 
 /// PathElement is a stroke along a bezier curve through its nodes. Its
 /// stroke is a StrokedElement's: yellow, 3 wide, round, with an arrow at its
@@ -343,17 +369,20 @@ class PathElement extends StrokedElement {
   Offset _inBox(Offset fractional) =>
       Offset(x + fractional.dx * width, y + fractional.dy * height);
 
-  /// gripOnPage is where [grip] of [node] is drawn on the page: through the
-  /// element's turn and slant, as the curve is.
-  Offset gripOnPage(PathNode node, PathGrip grip) =>
-      onPage(_inBox(node.gripOf(grip)));
+  /// gripOnPage is where [grip] of [node] is drawn on the page: laid there
+  /// as the curve is, by [place] (where the painter lays the path out on a
+  /// frame), or through its turn and slant as it rests.
+  Offset gripOnPage(PathNode node, PathGrip grip, [ElementPlace? place]) {
+    var inBox = _inBox(node.gripOf(grip));
+    return place == null ? onPage(inBox) : place.place(inBox);
+  }
 
   /// fractionAt is [page], a point on the page, as a fraction of the box,
-  /// which is what a node keeps: the way back from [gripOnPage], for a
-  /// point or a handle dragged there. A box with no width or height is
-  /// taken as one unit across, so the fraction stays finite.
-  Offset fractionAt(Offset page) {
-    var p = fromPage(page);
+  /// which is what a node keeps: the way back from [gripOnPage] by the same
+  /// [place], for a point or a handle dragged there. A box with no width or
+  /// height is taken as one unit across, so the fraction stays finite.
+  Offset fractionAt(Offset page, [ElementPlace? place]) {
+    var p = place == null ? fromPage(page) : place.unplace(page);
     var w = width == 0 ? 1.0 : width;
     var h = height == 0 ? 1.0 : height;
     return Offset((p.dx - x) / w, (p.dy - y) / h);
