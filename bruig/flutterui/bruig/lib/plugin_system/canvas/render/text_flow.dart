@@ -188,9 +188,11 @@ List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
 
 /// _partsAt is [head]'s styled runs for the words from character [at] of
 /// [text] on, counted from the first of them.
-List<TextPart> _partsAt(TextElement head, String text, int at) => at <= 0
-    ? head.documentParts
-    : partsFrom(head.documentParts, wordsIn(text.substring(0, at)));
+List<TextPart> _partsAt(TextElement head, String text, int at) {
+  if (at <= 0) return head.documentParts;
+  var before = text.substring(0, at);
+  return partsFrom(head.documentParts, wordsIn(before), lettersIn(before));
+}
 
 /// _roomOf is where a box's words go: its bounds, less its padding.
 Rect _roomOf(TextElement e) => e.box.inner(e.bounds);

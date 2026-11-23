@@ -118,16 +118,25 @@ typedef _LayoutKey = (
   Color?,
   WordsPass,
   bool,
-  // The size of the box a fading colour runs across, not its place: the
-  // shader is in paragraph coordinates, and nothing else carries the height.
-  Size?,
+  // The box a fading colour runs across, its place too: the shader is drawn
+  // where the canvas is, not where the paragraph is, so a box the same size
+  // elsewhere has a fade of its own.
+  Rect?,
   // The parts, written out, and the words they count in where those are not
   // the words drawn.
   String,
   String?,
+  // Whether the case was applied here or the text came cased (a letter on
+  // a line).
+  bool,
 );
 
 final _layouts = <_LayoutKey, LaidOutWords>{};
+
+/// layoutsMade counts the paragraphs laid out rather than found in the
+/// cache, so a test can see the cache being missed.
+@visibleForTesting
+int layoutsMade = 0;
 
 /// _partsKeys remembers a parts list written out for the key: a list never
 /// changes once made, and writing it out on every lookup cost more than
@@ -191,24 +200,23 @@ LaidOutWords layOutWords(
 
 /// layOutGlyph is one letter laid out on its own, in [part] where one is
 /// over it, as text on a line is placed and drawn a letter at a time: the
-/// same layout as a paragraph's, its one run in its part.
+/// same layout as a paragraph's, its one run in its part. [glyph] is cut
+/// from words already in their case: a letter alone cannot be cased, as
+/// title case depends on where its word starts.
 LaidOutWords layOutGlyph(String glyph, TextSpec spec,
     {required TextPart? part,
     double scale = 1,
     WordsPass pass = WordsPass.letters}) {
-  if (part == null) {
-    return layOutWords(glyph, spec,
-        parts: const [], maxWidth: double.infinity, scale: scale, pass: pass);
-  }
   return _layOut(
       glyph,
       spec,
-      [part],
-      "whole ${_glyphKeys[part] ??= _partsKey([part])}",
+      part == null ? const [] : [part],
+      part == null ? "" : "whole ${_glyphKeys[part] ??= _partsKey([part])}",
       (shown) => [(start: 0, end: shown.length, part: part)],
       maxWidth: double.infinity,
       scale: scale,
-      pass: pass);
+      pass: pass,
+      cased: true);
 }
 
 LaidOutWords _layOut(String text, TextSpec spec, List<TextPart> parts,
@@ -219,7 +227,8 @@ LaidOutWords _layOut(String text, TextSpec spec, List<TextPart> parts,
     WordsPass pass = WordsPass.letters,
     bool fillWidth = false,
     Rect? over,
-    String? partsIn}) {
+    String? partsIn,
+    bool cased = false}) {
   var key = (
     text,
     spec,
@@ -229,15 +238,18 @@ LaidOutWords _layOut(String text, TextSpec spec, List<TextPart> parts,
     pass,
     fillWidth,
     // The gradient is baked into the style. See _LayoutKey.
-    over?.size,
+    over,
     partsKey,
     partsIn,
+    cased,
   );
   var hit = _layouts[key];
   if (hit != null) return hit;
+  layoutsMade++;
 
-  // The case transform is idempotent and applied here, so none can forget it.
-  var shown = spec.textCase.apply(text);
+  // The case is applied here, so none can forget it; applying it again to
+  // whole words changes nothing.
+  var shown = cased ? text : spec.textCase.apply(text);
 
   var style = textStyleOf(spec,
       scale: scale,

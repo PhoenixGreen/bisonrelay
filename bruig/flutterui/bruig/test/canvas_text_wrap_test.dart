@@ -498,6 +498,66 @@ void main() {
     });
   });
 
+  group("a line with a bigger word on it", () {
+    // A wrapped line was given the height of the plain type whatever was on
+    // it, so a word set twice the size reached down over the line below.
+    const spec = TextSpec(fontSize: 14, align: TextAlignSpec.left);
+    const big = [TextPart(from: 2, to: 2, scale: 2)];
+
+    test("is as tall as that word, so the next line starts below it", () {
+      var out = layoutWrapped(
+          _words,
+          spec,
+          const Rect.fromLTWH(0, 0, 400, 200),
+          [const WrapShape(Rect.fromLTWH(240, 40, 160, 80))],
+          const TextWrap(on: true),
+          parts: big);
+      var first = out.lines.first;
+      expect(first.words.height, greaterThan(out.lines.last.words.height * 1.5),
+          reason: "the second word is on the first line, twice the size");
+      expect(out.lines[1].box.top,
+          greaterThanOrEqualTo(first.box.top + first.words.height - 0.5),
+          reason: "the second line starts below the first one's words");
+    });
+
+    test("and the words beside it share its baseline", () {
+      // Something in the middle of the first line cuts it in two runs; the
+      // big word is in the left one.
+      var out = layoutWrapped(
+          _words,
+          spec,
+          const Rect.fromLTWH(0, 0, 400, 200),
+          [const WrapShape(Rect.fromLTWH(150, 0, 60, 80))],
+          const TextWrap(on: true),
+          parts: big);
+      var left = out.lines[0], right = out.lines[1];
+      expect(right.box.left, greaterThan(left.box.right - 0.5),
+          reason: "the two runs of the first line");
+      double baseline(WrappedLine l) =>
+          l.box.top + l.drop + l.words.lines.first.baseline;
+      expect(baseline(right), closeTo(baseline(left), 0.01));
+    });
+
+    test("and what does not fit below it passes on to the next box", () {
+      // Every line drawn is inside the box: the words that would hang out
+      // of the bottom are counted as not fitting, not drawn over the edge.
+      const room = Rect.fromLTWH(0, 0, 200, 60);
+      var out = layoutWrapped(
+          _words,
+          spec,
+          room,
+          [const WrapShape(Rect.fromLTWH(150, 0, 50, 20))],
+          const TextWrap(on: true),
+          parts: const [TextPart(from: 4, to: 4, scale: 2)]);
+      for (var line in out.lines) {
+        expect(line.box.top + line.drop + line.words.height,
+            lessThanOrEqualTo(room.bottom + 0.5),
+            reason: "line ${_words.substring(line.from, line.to)}");
+      }
+      expect(out.consumed, lessThan(_words.length));
+    });
+  });
+
   group("wrapped words are set like any others", () {
     /// _lit is how many pixels of a given kind a document puts down.
     Future<Map<int, int>> ink(CanvasDocument document) async {
@@ -605,6 +665,34 @@ void main() {
           reason: "the element's highlight behind the words");
       expect(marked[0x00FF00FF] ?? 0, greaterThan(200),
           reason: "and a part's underline under them, on every line");
+    });
+
+    testWidgets("and with a part counted in letters on a later line",
+        (tester) async {
+      // Each line's parts are counted again from its first word, and a part
+      // counted in letters was left out: its colour and its highlight were
+      // drawn on the first line and nowhere else.
+      late Map<int, int> marked;
+      await tester.runAsync(() async {
+        var doc = around(const TextSpec(fontSize: 14));
+        var e = doc.elementById("t") as TextElement;
+        marked = await ink(CanvasDocument(elements: [
+          e.copyWith(parts: const [
+            // Letters 120 to 160: well past the first line.
+            TextPart(
+                unit: TextUnit.characters,
+                from: 120,
+                to: 160,
+                color: Color(0xFF0000FF),
+                highlight: PartHighlight(color: Color(0xFFFF0000))),
+          ]),
+          _blocker(x: 240, width: 160),
+        ]));
+      });
+      expect(marked[0x0000FFFF] ?? 0, greaterThan(200),
+          reason: "the letters in the part's colour");
+      expect(marked[0xFF0000FF] ?? 0, greaterThan(200),
+          reason: "and its highlight behind them");
     });
   });
 }

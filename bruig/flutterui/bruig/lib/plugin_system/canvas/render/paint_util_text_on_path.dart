@@ -26,6 +26,8 @@ class PlacedGlyph {
 /// placeTextOnPath works out where every letter of [text] goes along [curve],
 /// apart from drawing so the selection box and the painter agree. [curve] is a
 /// polyline in document space, sampled finely enough to walk in straight steps.
+/// [text] is the words as drawn, already in their case (displayText), as
+/// they are cut into letters that cannot be cased alone (layOutGlyph).
 List<PlacedGlyph> placeTextOnPath(
   String text,
   TextSpec spec,
@@ -199,6 +201,37 @@ void paintTextOnPath(
             timings: timings,
             asOne: asOne,
             fillOnly: true));
+    return;
+  }
+
+  // A fade runs across the letters' box, as a picture showing through them
+  // does and a line's own fade runs across its bounds. Each letter is laid
+  // out turned on its own, so the fade is laid over the letters once drawn
+  // rather than set in each; outlines and marks keep their own colours.
+  if (spec.fade != null && !spec.fill.on && !outlineOnly && !fillOnly) {
+    var box = textOnPathBounds(glyphs, on) ?? _boundsOf(curve);
+    paintTextOnPath(canvas, text, spec, curve, on,
+        scale: scale,
+        animation: animation,
+        reveal: reveal,
+        parts: parts,
+        timings: timings,
+        asOne: asOne,
+        outlineOnly: true);
+    canvas.saveLayer(null, Paint());
+    // Solid letters, so a see-through colour is the fade's own, not twice.
+    paintTextOnPath(canvas, text,
+        spec.copyWith(color: spec.color.withValues(alpha: 1)), curve, on,
+        scale: scale,
+        animation: animation,
+        reveal: reveal,
+        parts: parts,
+        timings: timings,
+        asOne: asOne,
+        fillOnly: true);
+    canvas.drawPaint(PaintSpec(spec.color, gradient: spec.fade)
+        .into(Paint()..blendMode = ui.BlendMode.srcIn, box));
+    canvas.restore();
     return;
   }
 

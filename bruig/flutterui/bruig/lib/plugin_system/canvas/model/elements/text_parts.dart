@@ -377,18 +377,19 @@ bool partsOutline(List<TextPart> parts) {
 }
 
 /// partsFrom is [parts] for a slice of the text that begins [words] words
-/// in, as a box further along a chain draws: renumbered from the slice's
-/// first word, those ending before it dropped, those straddling it trimmed.
-List<TextPart> partsFrom(List<TextPart> parts, int words) {
-  if (words <= 0 || parts.isEmpty) return parts;
+/// and [letters] letters in (lettersIn), as a box further along a chain or
+/// a wrapped line draws: each renumbered from the slice's first word or
+/// letter, as it counts, those ending before it dropped, those straddling
+/// it trimmed.
+List<TextPart> partsFrom(List<TextPart> parts, int words, int letters) {
+  if ((words <= 0 && letters <= 0) || parts.isEmpty) return parts;
   var out = <TextPart>[];
   for (var part in parts) {
-    // Only word ranges shift; letter ranges are dropped.
-    if (part.unit != TextUnit.words) continue;
-    if (!part.toTheEnd && part.to <= words) continue;
+    var gone = part.unit == TextUnit.words ? words : letters;
+    if (!part.toTheEnd && part.to <= gone) continue;
     out.add(part.copyWith(
-      from: math.max(1, part.from - words),
-      to: part.toTheEnd ? 0 : part.to - words,
+      from: math.max(1, part.from - gone),
+      to: part.toTheEnd ? 0 : part.to - gone,
     ));
   }
   return out;
@@ -420,6 +421,16 @@ List<({int start, int end})> wordRanges(String text) {
 
 /// wordsIn is how many words [text] has.
 int wordsIn(String text) => wordRanges(text).length;
+
+/// lettersIn is how many letters [text] has, as a part counts them: every
+/// character but the spaces between words (see rangeOf).
+int lettersIn(String text) {
+  var out = 0;
+  for (var i = 0; i < text.length; i++) {
+    if (!isWordSpace(text[i])) out++;
+  }
+  return out;
+}
 
 /// partsAnimate is whether any of [parts] has its own arrival or drawn-on
 /// mark: the paragraph must then go through the animator even after the

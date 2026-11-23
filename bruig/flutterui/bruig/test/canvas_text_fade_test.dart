@@ -2,9 +2,15 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -172,4 +178,133 @@ void main() {
         reason: "the same glyph is further along a short box's fade, which "
             "it cannot be if the two share a cached shader");
   });
+
+  testWidgets("two boxes of one size in two places each have their own fade",
+      (tester) async {
+    // The shader is drawn where the canvas is, not where the paragraph is,
+    // so a box's place is as much a part of its fade as its size: a second
+    // box the same size further along took the first one's shader and was
+    // all the second colour, and a faded heading dragged left its fade
+    // behind.
+    var spec = plain.copyWith(fade: const GradientSpec(to: _to, angle: 90));
+    late List<(double, double)> ink;
+    await tester.runAsync(() async {
+      ink = await _inkAcross(300, (canvas) {
+        paintTextInBox(canvas, "HH", spec, const Rect.fromLTWH(0, 0, 100, 60));
+        paintTextInBox(
+            canvas, "HH", spec, const Rect.fromLTWH(200, 0, 100, 60));
+      });
+    });
+    var first = _mean(ink, 0, 100), second = _mean(ink, 200, 300);
+    expect(first, greaterThanOrEqualTo(0));
+    expect(second, closeTo(first, 0.05),
+        reason: "the same words at the same place in their own box");
+  });
+
+  group("a fade runs across the element's box however its words are set", () {
+    // In a box it did; in columns, wrapped round something, or riding a
+    // line the words were drawn in the first colour only. What anybody
+    // means by a fade across a text is one fade over all of it: the columns
+    // together, the wrapped lines together, the letters on the line
+    // together, not one restarting in each.
+    var spec = plain.copyWith(
+        fontSize: 20,
+        align: TextAlignSpec.left,
+        verticalAlign: VerticalAlignSpec.top,
+        fade: const GradientSpec(to: _to, angle: 90));
+    const words = "HHH HHH HHH HHH HHH HHH HHH HHH HHH HHH HHH HHH HHH HHH";
+
+    TextElement text(
+            {TextColumns columns = const TextColumns(),
+            TextWrap wrap = const TextWrap(),
+            TextOnCurve? curve}) =>
+        TextElement(const ElementBase(id: "t", width: 300, height: 120),
+            text: words,
+            textSpec: spec,
+            box: const BoxSpec(padding: 0),
+            columns: columns,
+            wrap: wrap,
+            curve: curve);
+
+    Future<List<(double, double)>> drawn(CanvasDocument doc) async =>
+        _inkAcross(300, (canvas) {
+          for (var e in doc.elements.whereType<TextElement>()) {
+            paintElement(canvas, e, 0, document: doc);
+          }
+        });
+
+    testWidgets("in columns, one fade across them all", (tester) async {
+      late List<(double, double)> ink;
+      await tester.runAsync(() async => ink = await drawn(CanvasDocument(
+          elements: [text(columns: const TextColumns(count: 2, gap: 20))])));
+      var left = _mean(ink, 0, 140), right = _mean(ink, 160, 300);
+      expect(left, greaterThanOrEqualTo(0), reason: "the first column drawn");
+      expect(right - left, greaterThan(0.15),
+          reason: "the second column further along the fade than the first");
+    });
+
+    testWidgets("wrapped, one fade across both sides", (tester) async {
+      late List<(double, double)> ink;
+      await tester
+          .runAsync(() async => ink = await drawn(CanvasDocument(elements: [
+                text(wrap: const TextWrap(on: true)),
+                ShapeElement(const ElementBase(
+                    id: "s", x: 130, y: 0, width: 40, height: 120)),
+              ])));
+      var left = _mean(ink, 0, 130), right = _mean(ink, 170, 300);
+      expect(left, greaterThanOrEqualTo(0), reason: "the left side drawn");
+      expect(right - left, greaterThan(0.15),
+          reason: "the right of the thing in the way further along");
+    });
+
+    testWidgets("on a line, across the letters' box", (tester) async {
+      late List<(double, double)> ink;
+      await tester.runAsync(() async =>
+          ink = await drawn(CanvasDocument(elements: [
+            LineElement(
+                const ElementBase(id: "l", x: 0, y: 60, width: 300, height: 0),
+                color: const Color(0x00000000)),
+            text(curve: const TextOnCurve(elementId: "l"))
+                .copyWith(text: "HHHHHHHHHH"),
+          ])));
+      var left = _mean(ink, 0, 60), right = _mean(ink, 140, 200);
+      expect(left, greaterThanOrEqualTo(0), reason: "the first letters drawn");
+      expect(right - left, greaterThan(0.15),
+          reason: "the last letters further along than the first");
+    });
+  });
+}
+
+/// _inkAcross paints with [paint] on black, [width] by 120, and gives every
+/// lit pixel's x and how far along the fade it is.
+Future<List<(double, double)>> _inkAcross(
+    int width, void Function(ui.Canvas) paint) async {
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  canvas.drawRect(Rect.fromLTWH(0, 0, width.toDouble(), 120),
+      Paint()..color = const Color(0xFF000000));
+  paint(canvas);
+  var image = await recorder.endRecording().toImage(width, 120);
+  var bytes = (await image.toByteData())!;
+  var out = <(double, double)>[];
+  for (var y = 0; y < 120; y++) {
+    for (var x = 0; x < width; x++) {
+      var lit = _pinkness(bytes.getUint32((y * width + x) * 4));
+      if (lit >= 0) out.add((x.toDouble(), lit));
+    }
+  }
+  image.dispose();
+  return out;
+}
+
+/// _mean is how far along the fade the ink between [from] and [to] across
+/// is on average, or -1 where there is none.
+double _mean(List<(double, double)> ink, double from, double to) {
+  var sum = 0.0, count = 0;
+  for (var (x, lit) in ink) {
+    if (x < from || x >= to) continue;
+    sum += lit;
+    count++;
+  }
+  return count == 0 ? -1 : sum / count;
 }

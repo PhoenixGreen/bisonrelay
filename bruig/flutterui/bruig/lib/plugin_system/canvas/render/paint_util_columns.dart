@@ -89,7 +89,13 @@ void paintTextInColumns(
   if (width <= 0) return;
 
   var words = layOutWords(text, spec,
-      parts: parts, maxWidth: width, scale: scale, fillWidth: true);
+      parts: parts,
+      maxWidth: width,
+      scale: scale,
+      fillWidth: true,
+      // The whole box, not a column: the shader is where the canvas is, so
+      // the columns together show one fade.
+      over: box);
   var metrics = words.lines;
   if (metrics.isEmpty) return;
 

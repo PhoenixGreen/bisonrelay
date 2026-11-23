@@ -4,11 +4,14 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,6 +80,40 @@ void main() {
       expect(const TextPart().says, "Every word");
       expect(const TextPart(unit: TextUnit.characters, from: 3, to: 3).says,
           "Letter 3");
+    });
+
+    test("a slice further on keeps the parts counted in letters", () {
+      // Where words are set a line at a time (wrapped round something) the
+      // parts are counted again from each line's first word, and a part
+      // counted in letters was left out: a highlight on some letters was
+      // drawn on the first line and on no other.
+      var at = sentence.indexOf("across");
+      var before = sentence.substring(0, at);
+      var slice = sentence.substring(at);
+      List<TextPart> moved(TextPart part) =>
+          partsFrom([part], wordsIn(before), lettersIn(before));
+
+      // "You" is letters 1 to 3 and "come" 4 to 7, so "across" is 8 to 13.
+      var across = moved(const TextPart(
+          unit: TextUnit.characters,
+          from: 8,
+          to: 13,
+          color: Color(0xFFFF0000)));
+      expect(across, hasLength(1));
+      var range = rangeOf(slice, across.single)!;
+      expect(slice.substring(range.start, range.end), "across");
+      expect(across.single.color, const Color(0xFFFF0000));
+
+      var straddling =
+          moved(const TextPart(unit: TextUnit.characters, from: 6, to: 9));
+      range = rangeOf(slice, straddling.single)!;
+      expect(slice.substring(range.start, range.end), "ac",
+          reason: "trimmed to the letters in the slice");
+      expect(moved(const TextPart(unit: TextUnit.characters, from: 1, to: 7)),
+          isEmpty,
+          reason: "one ending before the slice is not in it");
+      expect(moved(const TextPart(unit: TextUnit.characters, from: 9)).single,
+          isA<TextPart>().having((p) => p.toTheEnd, "to the end", isTrue));
     });
 
     test("where two overlap, the later one wins", () {
@@ -479,5 +516,70 @@ void main() {
       expect(drawn.height, lessThanOrEqualTo(80 + 0.5),
           reason: "drawn at ${spec.fontSize}, it is ${drawn.height} tall");
     });
+  });
+
+  group("a text with parts painted again", () {
+    // Laying a paragraph out is the dearest thing a frame does, and the
+    // same words in the same type are kept, so a still text is laid out
+    // once however often it is painted -- parts or none.
+    const parts = [
+      TextPart(from: 2, to: 3, weight: 900),
+      TextPart(unit: TextUnit.characters, from: 5, to: 9, scale: 1.5),
+    ];
+    TextElement text(
+            {TextColumns columns = const TextColumns(),
+            TextWrap wrap = const TextWrap(),
+            TextOnCurve? curve}) =>
+        TextElement(const ElementBase(id: "t", width: 300, height: 150),
+            text: "The parts of these words are drawn apart from the rest",
+            textSpec: const TextSpec(fontSize: 18, align: TextAlignSpec.left),
+            box: const BoxSpec(padding: 0),
+            parts: parts,
+            highlight: const PartHighlight(),
+            columns: columns,
+            wrap: wrap,
+            curve: curve);
+
+    /// made is how many paragraphs painting [doc] laid out.
+    int made(CanvasDocument doc) {
+      var before = layoutsMade;
+      var recorder = ui.PictureRecorder();
+      for (var e in doc.elements.whereType<TextElement>()) {
+        paintElement(ui.Canvas(recorder), e, 0, document: doc);
+      }
+      recorder.endRecording().dispose();
+      return layoutsMade - before;
+    }
+
+    for (var (name, doc) in [
+      ("in a box", CanvasDocument(elements: [text()])),
+      (
+        "in columns",
+        CanvasDocument(
+            elements: [text(columns: const TextColumns(count: 2, gap: 10))])
+      ),
+      (
+        "wrapped",
+        CanvasDocument(elements: [
+          text(wrap: const TextWrap(on: true)),
+          ShapeElement(
+              const ElementBase(id: "s", x: 120, y: 0, width: 40, height: 60)),
+        ])
+      ),
+      (
+        "on a line",
+        CanvasDocument(elements: [
+          LineElement(
+              const ElementBase(id: "l", x: 0, y: 80, width: 300, height: 0)),
+          text(curve: const TextOnCurve(elementId: "l")),
+        ])
+      ),
+    ]) {
+      test(name, () {
+        clearRenderCaches();
+        expect(made(doc), greaterThan(0), reason: "the first paint lays out");
+        expect(made(doc), 0, reason: "the second finds it all kept");
+      });
+    }
   });
 }

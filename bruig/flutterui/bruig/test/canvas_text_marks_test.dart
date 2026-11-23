@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -13,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_text_marks_test.dart is what is drawn *on* the words: a part's own
@@ -740,6 +743,30 @@ void main() {
       expect(big.height, closeTo(plain.height * 2, 1));
     });
 
+    test("and round where a keyed slide has taken them on this frame", () {
+      // The letters were placed at their resting slide for the selection
+      // box, so on a frame where the slide had carried them along the line
+      // the box stood round where they had been.
+      var doc = onALine();
+      var text = (doc.elementById("t") as TextElement).withBase(
+          track: ElementTrack([
+        Keyframe(frame: 0, values: {KeyframeChannel.slide: 0}),
+        Keyframe(frame: 20, values: {KeyframeChannel.slide: 0.5}),
+      ])) as TextElement;
+      doc = doc.withElement(text);
+      var line = curveUnderText(text, doc, 20)!;
+      Rect placed(double slide) => textOnPathBounds(
+          placeTextOnPath(text.displayText, text.textSpec, line,
+              text.curve!.copyWith(offset: slide),
+              parts: text.drawnParts),
+          text.curve!)!;
+
+      expect(visualBoundsOf(text, doc, 0), placed(0));
+      expect(visualBoundsOf(text, doc, 20), placed(0.5),
+          reason: "slid half the line's length along it");
+      expect(placed(0.5).left, greaterThan(placed(0).left + 100));
+    });
+
     testWidgets("and its highlight and underline are drawn", (tester) async {
       late Map<int, int> marked;
       await tester.runAsync(() async {
@@ -758,4 +785,43 @@ void main() {
           reason: "and a line under them");
     });
   });
+
+  group("text riding a line in a case of its own", () {
+    // A line is set a letter at a time, and the case was applied to each
+    // letter alone: Title Case made a capital of every one, since each
+    // letter on its own is the first of its word. In a real face, as the
+    // test face's capitals and small letters are the same size.
+    setUpAll(() async {
+      var loader = FontLoader(_face);
+      loader.addFont(File("assets/fonts/Inter-Regular.otf")
+          .readAsBytes()
+          .then((bytes) => ByteData.view(Uint8List.fromList(bytes).buffer)));
+      await loader.load();
+    });
+
+    var line = [const Offset(0, 100), const Offset(600, 100)];
+    List<double> widths(String text, TextCase textCase) => [
+          for (var g in placeTextOnPath(
+              text,
+              TextSpec(fontFamily: _face, fontSize: 20, textCase: textCase),
+              line,
+              const TextOnCurve(elementId: "l"),
+              parts: const []))
+            g.size.width,
+        ];
+
+    test("title case capitalises the first letter of each word only", () {
+      // The words as drawn are already in their case (displayText), so what
+      // is set is what was given.
+      expect(widths("Title Case", TextCase.title),
+          widths("Title Case", TextCase.none));
+      expect(widths("Title Case", TextCase.none),
+          isNot(widths("TITLE CASE", TextCase.none)),
+          reason: "the face tells a capital from a small letter");
+    });
+  });
 }
+
+/// _face is Inter under a name of this file's own, so loading it changes
+/// nothing for the tests set in the test face.
+const _face = "MarksTestInter";

@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
     show CanvasImageSource;
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 

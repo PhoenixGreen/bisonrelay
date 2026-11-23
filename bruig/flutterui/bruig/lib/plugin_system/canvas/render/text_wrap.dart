@@ -40,8 +40,12 @@ class WrappedLine {
   /// behind everything and never written on by the pen (see softFor).
   final LaidOutWords? soft;
 
+  /// drop is how far below the line's top these words are drawn, so the
+  /// runs either side of something in the way share one baseline.
+  final double drop;
+
   const WrappedLine(this.from, this.to, this.box, this.words,
-      {this.outline, this.soft});
+      {this.outline, this.soft, this.drop = 0});
 }
 
 class WrappedText {
@@ -292,8 +296,8 @@ WrappedText layoutWrapped(
     return const WrappedText([], 0, 0);
   }
 
-  // A line's height, measured once: every line shares it, the words on a
-  // line sharing one baseline. The type's own: no part is in the probe.
+  // The type's own line height: an empty line's, and the least a line with
+  // words on it takes (see _setLine).
   var probe = layOutWords("Ag", spec,
       parts: const [], maxWidth: double.infinity, scale: scale);
   var lineHeight = math.max(1.0, probe.height);
@@ -301,7 +305,7 @@ WrappedText layoutWrapped(
   var lines = <WrappedLine>[];
   var at = 0;
   var y = box.top;
-  var words = 0;
+  _Before before = (words: 0, letters: 0);
 
   while (at < text.length && y + lineHeight <= box.bottom + 0.5) {
     // An empty line between paragraphs, taken here because the word fitting
@@ -317,63 +321,127 @@ WrappedText layoutWrapped(
     }
     if (at >= text.length) break;
 
-    var runs = freeRuns(box, blocked, y, y + lineHeight, wrap.side);
-    if (runs.isEmpty) {
+    var line = _setLine(text, at, before, spec, box, blocked, wrap.side, y,
+        lineHeight, parts, scale);
+    // Taller than the type (a part set bigger), the line is set again in the
+    // band it really takes, as what is in the way may reach further lower
+    // down.
+    if (line.height > lineHeight + 0.5) {
+      line = _setLine(text, at, before, spec, box, blocked, wrap.side, y,
+          line.height, parts, scale);
+    }
+    if (line.placed.isEmpty) {
+      // Not one word fits beside what is in the way here: the line is
+      // skipped, which is how words get past a picture reaching the edge.
       y += lineHeight;
       continue;
     }
+    // A line that would hang out of the bottom is not drawn, and its words
+    // pass on, as in a box.
+    if (y + line.height > box.bottom + 0.5) break;
 
-    var placedOnLine = false;
-    for (var run in runs) {
-      if (at >= text.length) break;
-      var width = run.$2 - run.$1;
-
-      var (end, laid) = _fit(text, at, spec, width, parts, words, scale);
-      if (end <= at) {
-        // Not one word fits in this run. Another run may be wider; if none
-        // is, the line is skipped, which is how words get past a picture
-        // reaching the edge.
-        continue;
-      }
-
+    for (var p in line.placed) {
+      var shown = text.substring(p.from, p.end).trimRight();
       lines.add(WrappedLine(
-          at, end, Rect.fromLTWH(run.$1, y, width, lineHeight), laid,
+          p.from,
+          p.end,
+          Rect.fromLTWH(p.left, y, p.width, line.height),
+          // A fade runs across the whole box, so the lines together show
+          // one; measured without it, as it changes no glyph's place.
+          spec.fade == null
+              ? p.laid
+              : _line(shown, spec, parts, before, scale, over: box),
+          drop: line.baseline - _baselineOf(p.laid),
           outline: outlineSpec == null
               ? null
-              : _line(text.substring(at, end).trimRight(), outlineSpec, parts,
-                  words, scale, pass: WordsPass.outline),
+              : _line(shown, outlineSpec, parts, before, scale,
+                  pass: WordsPass.outline),
           soft: !spec.softPasses
               ? null
-              : _line(text.substring(at, end).trimRight(), spec, parts, words,
-                  scale,
+              : _line(shown, spec, parts, before, scale,
                   pass: WordsPass.soft)));
-      words += wordsIn(text.substring(at, end));
-      at = end;
-      placedOnLine = true;
-
-      // A hard break ends the line whatever room is left beside it.
-      if (at < text.length && text[at] == "\n") {
-        at++;
-        break;
-      }
+      before = _past(before, text.substring(p.from, p.end));
     }
-
-    y += lineHeight;
-    if (!placedOnLine &&
-        runs.length == 1 &&
-        runs.first.$2 - runs.first.$1 <= 4) {
-      continue;
-    }
+    at = line.next;
+    y += line.height;
   }
 
   return WrappedText(lines, at, lines.isEmpty ? 0 : y - box.top);
 }
 
+/// _Placed is one run of a wrapped line: where its room starts across and
+/// how wide it is, its characters, and their paragraph.
+typedef _Placed = ({
+  double left,
+  double width,
+  int from,
+  int end,
+  LaidOutWords laid,
+});
+
+/// _SetLine is one line of a wrap before it is kept: its runs, where the
+/// next line starts, how tall the line is and how far down it its runs'
+/// baseline lies.
+typedef _SetLine = ({
+  List<_Placed> placed,
+  int next,
+  double height,
+  double baseline,
+});
+
+/// _setLine fits the words from [at] into the room left between [top] and
+/// [top] + [height]. The line is as tall as the tallest thing on it, and
+/// never less than [height], as a paragraph's lines are.
+_SetLine _setLine(
+    String text,
+    int at,
+    _Before before,
+    TextSpec spec,
+    Rect box,
+    List<WrapShape> blocked,
+    WrapSide side,
+    double top,
+    double height,
+    List<TextPart> parts,
+    double scale) {
+  var placed = <_Placed>[];
+  for (var run in freeRuns(box, blocked, top, top + height, side)) {
+    if (at >= text.length) break;
+    var width = run.$2 - run.$1;
+    var (end, laid) = _fit(text, at, spec, width, parts, before, scale);
+    // Not one word fits in this run; another may be wider.
+    if (end <= at) continue;
+    placed.add((left: run.$1, width: width, from: at, end: end, laid: laid));
+    before = _past(before, text.substring(at, end));
+    at = end;
+
+    // A hard break ends the line whatever room is left beside it.
+    if (at < text.length && text[at] == "\n") {
+      at++;
+      break;
+    }
+  }
+
+  var baseline = 0.0;
+  for (var p in placed) {
+    baseline = math.max(baseline, _baselineOf(p.laid));
+  }
+  var tall = height;
+  for (var p in placed) {
+    tall = math.max(tall, baseline - _baselineOf(p.laid) + p.laid.height);
+  }
+  return (placed: placed, next: at, height: tall, baseline: baseline);
+}
+
+/// _baselineOf is how far down a line laid out on its own its baseline is.
+double _baselineOf(LaidOutWords line) =>
+    line.lines.isEmpty ? 0 : line.lines.first.baseline;
+
 /// _fit is the longest run of words from [at] that fits in [width], and its
 /// paragraph. Word by word, not bisection: the answer is usually a few
 /// words in, and measurements are cached.
 (int, LaidOutWords) _fit(String text, int at, TextSpec spec, double width,
-    List<TextPart> parts, int wordsBefore, double scale) {
+    List<TextPart> parts, _Before before, double scale) {
   var end = at;
   var best = at;
   LaidOutWords? bestLine;
@@ -393,7 +461,7 @@ WrappedText layoutWrapped(
     if (next == end) break;
 
     var candidate = text.substring(at, next).trimRight();
-    var line = _line(candidate, spec, parts, wordsBefore, scale);
+    var line = _line(candidate, spec, parts, before, scale);
     if (line.width > width + 0.5 && best > at) break;
 
     best = next;
@@ -405,19 +473,33 @@ WrappedText layoutWrapped(
   // Nothing fits: the run is narrower than the first word. The caller tries
   // the next run.
   if (bestLine == null) {
-    return (at, _line("", spec, parts, wordsBefore, scale));
+    return (at, _line("", spec, parts, before, scale));
   }
   return (best, bestLine);
 }
 
+/// _Before is how far into the text a line starts, as parts count it: in
+/// words and in letters.
+typedef _Before = ({int words, int letters});
+
+/// _past is [before] moved on past [slice].
+_Before _past(_Before before, String slice) => (
+      words: before.words + wordsIn(slice),
+      letters: before.letters + lettersIn(slice)
+    );
+
 /// _line lays one line out, with whatever styled runs fall inside it.
 LaidOutWords _line(String text, TextSpec spec, List<TextPart> parts,
-        int wordsBefore, double scale, {WordsPass pass = WordsPass.letters}) =>
+        _Before before, double scale,
+        {WordsPass pass = WordsPass.letters, Rect? over}) =>
     layOutWords(text, spec,
-        parts: parts.isEmpty ? const [] : partsFrom(parts, wordsBefore),
+        parts: parts.isEmpty
+            ? const []
+            : partsFrom(parts, before.words, before.letters),
         maxWidth: double.infinity,
         scale: scale,
-        pass: pass);
+        pass: pass,
+        over: over);
 
 /// paintWrapped draws what layoutWrapped worked out.
 ///
@@ -494,7 +576,7 @@ Offset _lineAt(WrappedLine line, TextSpec spec) {
     TextAlignSpec.center => math.max(0.0, room / 2),
     TextAlignSpec.right => math.max(0.0, room),
   };
-  return Offset(line.box.left + dx, line.box.top);
+  return Offset(line.box.left + dx, line.box.top + line.drop);
 }
 
 /// paintWrappedMarks draws the highlights ([behind]) or underlines of
@@ -506,11 +588,11 @@ void paintWrappedMarks(ui.Canvas canvas, WrappedText wrapped, String text,
     {required bool behind, List<PartTiming> timings = const []}) {
   if (parts.isEmpty) return;
   for (var line in wrapped.lines) {
-    var words = wordsIn(text.substring(0, line.from));
+    var before = text.substring(0, line.from);
     var lineParts = <TextPart>[];
     var lineTimings = <PartTiming>[];
     for (var (i, part) in parts.indexed) {
-      for (var moved in partsFrom([part], words)) {
+      for (var moved in partsFrom([part], wordsIn(before), lettersIn(before))) {
         lineParts.add(moved);
         lineTimings.add(i < timings.length ? timings[i] : PartTiming.there);
       }

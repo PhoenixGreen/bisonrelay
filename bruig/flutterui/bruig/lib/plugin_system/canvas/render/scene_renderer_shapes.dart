@@ -29,8 +29,13 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
   if (element is TextElement) {
     var curve = _curveFor(element, doc, frame);
     if (curve != null) {
-      var glyphs = placeTextOnPath(
-          element.displayText, element.textSpec, curve, element.curve!,
+      // Slid along the line where the pose says, as the painter places them
+      // (_paintTextBody).
+      var on = element.curve!;
+      var slide = poseWithMotion(element, frame, doc, live: live)
+          .values[KeyframeChannel.slide];
+      var glyphs = placeTextOnPath(element.displayText, element.textSpec, curve,
+          slide == null ? on : on.copyWith(offset: slide),
           parts: element.drawnParts);
       var box = textOnPathBounds(glyphs, element.curve!);
       // No letters placed (empty, or slid off the end): the line itself.

@@ -236,9 +236,16 @@ placed:
 - *Round something in the way* (`layoutWrapped`, `text_wrap.dart`): its
   own line breaking, since each line has runs of different widths between
   the obstacles; each candidate line is a layout of its words with their
-  parts.
+  parts, and a line is as tall as the tallest thing on it, its runs on one
+  baseline.
 - *On a line* (`placeTextOnPath`): a letter at a time along the curve, each
-  laid out by `layOutGlyph` in the part over it.
+  laid out by `layOutGlyph` in the part over it, cut from words already in
+  their case (a letter alone cannot be title-cased).
+
+A fade runs across the element's box in all four: the shader is drawn where
+the canvas is, so one laid out over the box gives the columns, or the
+wrapped lines, one fade between them; on a line it is laid over the letters
+once drawn, across their box.
 
 **The measuring sites** ask the same layout: Fit to box (`fitFontSize`),
 what a chained box passes on (`_consumed`, `text_flow.dart`), a slotted
