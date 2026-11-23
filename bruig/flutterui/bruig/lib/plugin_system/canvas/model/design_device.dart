@@ -223,7 +223,7 @@ List<DesignSetting> _box(
     ];
 
 /// _stroke is a line's or a path's stroke, with [bow] (a line's) among its
-/// Stroke group.
+/// Stroke group, written within what its panel can set.
 List<DesignSetting> _stroke({List<DesignSetting> bow = const []}) {
   StrokeSpec of(CanvasElement e) => (e as StrokedElement).stroke;
   CanvasElement put(CanvasElement e, StrokeSpec s) =>
@@ -231,13 +231,31 @@ List<DesignSetting> _stroke({List<DesignSetting> bow = const []}) {
   return [
     DesignSetting("strokeColour", "Stroke", (e) => _argb(of(e).color),
         (e, v) => put(e, of(e).copyWith(color: _colour(v)))),
-    DesignSetting("stroke", "Stroke", (e) => of(e).strokeWidth,
-        (e, v) => put(e, of(e).copyWith(strokeWidth: v))),
+    DesignSetting(
+        "stroke",
+        "Stroke",
+        (e) => of(e).strokeWidth,
+        (e, v) => put(
+            e,
+            of(e).copyWith(
+                strokeWidth:
+                    v.clamp(StrokeRange.minWidth, StrokeRange.maxWidth)))),
     ...bow,
-    DesignSetting("dash", "Ends and dashes", (e) => of(e).dash,
-        (e, v) => put(e, of(e).copyWith(dash: v))),
-    DesignSetting("endSize", "Ends and dashes", (e) => of(e).endSize,
-        (e, v) => put(e, of(e).copyWith(endSize: v))),
+    DesignSetting(
+        "dash",
+        "Ends and dashes",
+        (e) => of(e).dash,
+        (e, v) =>
+            put(e, of(e).copyWith(dash: v.clamp(0.0, StrokeRange.maxDash)))),
+    DesignSetting(
+        "endSize",
+        "Ends and dashes",
+        (e) => of(e).endSize,
+        (e, v) => put(
+            e,
+            of(e).copyWith(
+                endSize:
+                    v.clamp(StrokeRange.minEndSize, StrokeRange.maxEndSize)))),
   ];
 }
 
@@ -293,7 +311,8 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               "stroke",
               "Outline",
               (e) => (e as ShapeElement).strokeWidth,
-              (e, v) => (e as ShapeElement).copyWith(strokeWidth: v)),
+              (e, v) => (e as ShapeElement)
+                  .copyWith(strokeWidth: v.clamp(0.0, StrokeRange.maxWidth))),
           DesignSetting(
               "strokeColour",
               "Outline",

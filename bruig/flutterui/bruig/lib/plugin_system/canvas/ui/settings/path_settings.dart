@@ -5,10 +5,11 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/stroke_controls.dart';
 
 // path_settings.dart is a path's panel (see element_panel.dart): quick
-// strip, Content (points), Look and More (its follower).
+// strip, Content (points), Look and More (its follower). Its stroke's
+// controls are stroke_controls.dart's, which a line's panel uses too.
 
 Widget pathPanel(
     BuildContext context,
@@ -17,64 +18,7 @@ Widget pathPanel(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  void now(PathElement next) {
-    begin();
-    write(next);
-    commit();
-  }
-
-  return elementPanel(context, controller, e, write, begin, commit,
-      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
-        panelRow([
-          cell(
-              CanvasColorButton(
-                key: const ValueKey("quickPathColour"),
-                label: "Colour",
-                color: e.color,
-                onChanged: (c) => now(e.copyWith(color: c)),
-              ),
-              width: 104),
-          cell(
-              CanvasStepper(
-                key: const ValueKey("quickPathWidth"),
-                label: "Width",
-                value: e.strokeWidth,
-                min: 0,
-                max: 200,
-                decimals: 1,
-                step: 1,
-                suffix: " px",
-                fill: true,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(strokeWidth: v));
-                },
-                onCommit: commit,
-              ),
-              width: 132),
-        ]),
-        const SizedBox(height: 8),
-        CanvasToggle(
-          key: const ValueKey("quickPathClosed"),
-          label: "Closed",
-          value: e.closed,
-          onChanged: (v) => now(e.copyWith(closed: v)),
-        ),
-      ]),
-      // Its points are why its settings are opened: not folded away.
-      contentOpen: true,
-      bits: pathBits(context, controller, e, write, begin, commit));
-}
-
-/// pathBits are a curve and its follower, chosen from one flat list of the
-/// canvas's elements and every team's players: one decision.
-List<PanelBit> pathBits(
-    BuildContext context,
-    CanvasController controller,
-    PathElement e,
-    SettingsWrite write,
-    VoidCallback begin,
-    VoidCallback commit) {
+  var s = StrokeEdit(e, write, begin, commit);
   void now(PathElement next) {
     begin();
     write(next);
@@ -90,11 +34,46 @@ List<PanelBit> pathBits(
     commit();
   }
 
-  var followed = e.follow == null
-      ? "Nobody follows it"
-      : "${controller.followerLabel(e.follow)} · "
-          "frames ${e.firstFrame}–${e.lastFrame}";
-  return [
+  return elementPanel(context, controller, e, write, begin, commit,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(strokeColour(s, key: const ValueKey("quickPathColour")),
+              width: 104),
+          cell(
+              strokeWidth(s,
+                  key: const ValueKey("quickPathWidth"), quick: true),
+              width: 132),
+        ]),
+        const SizedBox(height: 8),
+        _closedToggle(e, now, key: const ValueKey("quickPathClosed")),
+      ]),
+      // Its points are why its settings are opened: not folded away.
+      contentOpen: true,
+      bits: [
+        _strokeBit(e, s, now),
+        _runBit(controller, e, begin, now, relink),
+        PanelBit(PanelSection.content,
+            summary: "${e.nodes.length} points",
+            children: [_pathNodeList(controller, e, relink)]),
+        // A follower still rides a path that arrives: this is the line
+        // itself. Motion lives in the Chain's Motion view.
+      ]);
+}
+
+/// _closedToggle joins the path's end back to its start.
+Widget _closedToggle(PathElement e, void Function(PathElement) now,
+        {Key? key}) =>
+    CanvasToggle(
+      key: key,
+      label: "Closed",
+      value: e.closed,
+      onChanged: (v) => now(e.copyWith(closed: v)),
+    );
+
+/// _strokeBit is the route's stroke, whether it joins up, whether it is
+/// only a guide, and its ends and dashes, in Look.
+PanelBit _strokeBit(
+        PathElement e, StrokeEdit s, void Function(PathElement) now) =>
     PanelBit(PanelSection.look,
         summary: [
           "${shortNumber(e.strokeWidth)} wide",
@@ -109,32 +88,9 @@ List<PanelBit> pathBits(
                 "is worked out, and left out of what is exported.",
             rule: false,
             children: [
-              CanvasColorButton(
-                label: "Colour",
-                color: e.color,
-                gradient: e.fade,
-                onChanged: (c) => now(e.copyWith(color: c)),
-                onGradientChanged: (g) => now(
-                    g == null ? e.copyWith(flat: true) : e.copyWith(fade: g)),
-              ),
-              CanvasNumberField(
-                label: "Width",
-                value: e.strokeWidth,
-                min: 0.5,
-                max: 60,
-                decimals: 1,
-                width: 54,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(strokeWidth: v));
-                },
-                onCommit: commit,
-              ),
-              CanvasToggle(
-                label: "Closed",
-                value: e.closed,
-                onChanged: (v) => now(e.copyWith(closed: v)),
-              ),
+              strokeColour(s),
+              strokeWidth(s, quick: false),
+              _closedToggle(e, now),
               CanvasToggle(
                 // A route is scaffolding: the line helps while the move is
                 // worked out and spoils the finished picture.
@@ -147,149 +103,122 @@ List<PanelBit> pathBits(
           CanvasControlGroup(
             label: "Ends and dashes",
             help: "How the stroke is finished at each end, and how long each "
-                "dash is -- 0 is a solid line.",
+                "dash is -- 0 is a solid line. Swap ends puts each end's "
+                "mark on the other. Closed, it has no ends: only the cap on "
+                "each dash.",
             rule: false,
             children: [
-              ...strokeEndControls(
-                cap: e.cap,
-                startEnd: e.startEnd,
-                endEnd: e.endEnd,
-                endSize: e.endSize,
-                onCap: (v) => now(e.copyWith(cap: v)),
-                onStart: (v) => now(e.copyWith(startEnd: v)),
-                onEnd: (v) => now(e.copyWith(endEnd: v)),
-                onEndSize: (v) {
-                  begin();
-                  write(e.copyWith(endSize: v));
-                },
-                onCommit: commit,
-              ),
-              CanvasNumberField(
-                label: "Dash",
-                value: e.dash,
-                min: 0,
-                max: 200,
-                decimals: 1,
-                width: 54,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(dash: v));
-                },
-                onCommit: commit,
-              ),
+              ...strokeEndControls(s),
+              strokeDash(s, quick: false),
             ],
           ),
-        ]),
-    PanelBit(PanelSection.more, summary: followed, children: [
-      CanvasControlGroup(
-        label: "The run",
-        help: "What runs along the path -- anything on the canvas, or "
-            "one player of a team -- and the frames the run starts and "
-            "ends on. The points between are timed in Points.",
-        rule: false,
-        children: [
-          CanvasDropdown<String>(
-            label: "Who follows",
-            value: _followKey(e.follow),
-            // The least it can be: wider, and the frame fields and button
-            // wrap onto their own line in a narrow sidebar.
-            width: 112,
-            options: _followOptions(controller),
-            onChanged: (v) {
-              var follow = _followFromKey(v);
-              if (follow == null) {
-                controller.clearPathFollow(e);
-                now(e.copyWith(clearFollow: true));
-                return;
-              }
-              // Detach the old follower first, or its baked keyframes stay
-              // and it keeps running a route nothing is attached to.
-              controller.clearPathFollow(e);
-              relink(e.copyWith(follow: follow, guide: true));
-            },
-          ),
-          // The run's two ends on their own line, under who runs it.
-          const CanvasLineBreak(),
-          CanvasNumberField(
-            key: const ValueKey("pathStartFrame"),
-            label: "Start",
-            value: e.firstFrame.toDouble(),
-            min: 0,
-            max: (controller.document.frames - 1).toDouble(),
-            width: 54,
-            onChanged: (v) => relink(e.spreadFrames(v.round(), e.lastFrame)),
-          ),
-          CanvasNumberField(
-            key: const ValueKey("pathEndFrame"),
-            label: "End",
-            value: e.lastFrame.toDouble(),
-            min: 0,
-            max: (controller.document.frames - 1).toDouble(),
-            width: 54,
-            onChanged: (v) => relink(e.spreadFrames(e.firstFrame, v.round())),
-          ),
-          const CanvasLineBreak(),
-          CanvasTextButton(
-            key: const ValueKey("pathSpread"),
-            icon: Icons.horizontal_distribute,
-            label: "Space the points evenly",
-            onPressed: () => relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
-          ),
-          CanvasTextButton(
-            key: const ValueKey("pathRelink"),
-            icon: Icons.sync,
-            label: "Apply again",
-            onPressed: e.follow == null ? null : () => relink(e),
-          ),
-          CanvasTextButton(
-            key: const ValueKey("pathCarryOn"),
-            icon: Icons.add,
-            label: "Carry it on",
-            onPressed: () =>
-                relink(e.appendNode(maxFrame: controller.document.frames - 1)),
-          ),
-        ],
-      ),
-    ]),
-    PanelBit(PanelSection.content,
-        summary: "${e.nodes.length} points",
-        children: [_pathNodeList(controller, e, relink)]),
-    // A follower still rides a path that arrives: this is the line itself.
-    // Motion lives in the Chain's Motion view.
-  ];
+        ]);
+
+/// _runBit is what follows the path and the frames its run starts and ends
+/// on, chosen from one flat list of the canvas's elements and every team's
+/// players: one decision. In More.
+PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
+    void Function(PathElement) now, void Function(PathElement) relink) {
+  var followed = e.follow == null
+      ? "Nobody follows it"
+      : "${controller.followerLabel(e.follow)} · "
+          "frames ${e.firstFrame}–${e.lastFrame}";
+  return PanelBit(PanelSection.more, summary: followed, children: [
+    CanvasControlGroup(
+      label: "The run",
+      help: "What runs along the path -- anything on the canvas, or "
+          "one player of a team -- and the frames the run starts and "
+          "ends on. The points between are timed in Points.",
+      rule: false,
+      children: [
+        CanvasDropdown<PathFollow>(
+          label: "Who follows",
+          value: e.follow ?? _nobody,
+          // The least it can be: wider, and the frame fields and button
+          // wrap onto their own line in a narrow sidebar.
+          width: 112,
+          options: _followOptions(controller),
+          onChanged: (follow) {
+            // Detach the old follower first, or its baked keyframes stay
+            // and it keeps running a route nothing is attached to: in the
+            // same step as what follows, so one undo takes back both.
+            begin();
+            controller.clearPathFollow(e);
+            if (follow == _nobody) {
+              now(e.copyWith(clearFollow: true));
+              return;
+            }
+            relink(e.copyWith(follow: follow, guide: true));
+          },
+        ),
+        // The run's two ends on their own line, under who runs it.
+        const CanvasLineBreak(),
+        CanvasNumberField(
+          key: const ValueKey("pathStartFrame"),
+          label: "Start",
+          value: e.firstFrame.toDouble(),
+          min: 0,
+          max: (controller.document.frames - 1).toDouble(),
+          width: 54,
+          onChanged: (v) => relink(e.spreadFrames(v.round(), e.lastFrame)),
+        ),
+        CanvasNumberField(
+          key: const ValueKey("pathEndFrame"),
+          label: "End",
+          value: e.lastFrame.toDouble(),
+          min: 0,
+          max: (controller.document.frames - 1).toDouble(),
+          width: 54,
+          onChanged: (v) => relink(e.spreadFrames(e.firstFrame, v.round())),
+        ),
+        const CanvasLineBreak(),
+        CanvasTextButton(
+          key: const ValueKey("pathSpread"),
+          icon: Icons.horizontal_distribute,
+          label: "Space the points evenly",
+          onPressed: () => relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
+        ),
+        CanvasTextButton(
+          key: const ValueKey("pathRelink"),
+          icon: Icons.sync,
+          label: "Apply again",
+          onPressed: e.follow == null ? null : () => relink(e),
+        ),
+        CanvasTextButton(
+          key: const ValueKey("pathCarryOn"),
+          icon: Icons.add,
+          label: "Carry it on",
+          onPressed: () =>
+              relink(e.appendNode(maxFrame: controller.document.frames - 1)),
+        ),
+      ],
+    ),
+  ]);
 }
 
-/// _followKey encodes a follower as one comparable dropdown value: an id
-/// and maybe an index.
-String _followKey(PathFollow? follow) =>
-    follow == null ? "" : "${follow.elementId}/${follow.playerIndex ?? -1}";
-
-PathFollow? _followFromKey(String key) {
-  if (key.isEmpty) return null;
-  var at = key.lastIndexOf("/");
-  if (at < 0) return PathFollow(elementId: key);
-  var index = int.tryParse(key.substring(at + 1)) ?? -1;
-  return PathFollow(
-    elementId: key.substring(0, at),
-    playerIndex: index < 0 ? null : index,
-  );
-}
+/// _nobody is the choice of nothing following: no element has an empty id.
+/// A follower no longer on the canvas is none of the choices, so the list
+/// shows no name rather than saying nothing follows.
+const _nobody = PathFollow(elementId: "");
 
 /// _followOptions is everything that could follow a path, players included
 /// and paths excluded (a path following a path is a knot).
-List<(String, String)> _followOptions(CanvasController controller) {
-  var out = <(String, String)>[("", "Nothing")];
+List<(PathFollow, String)> _followOptions(CanvasController controller) {
+  var out = <(PathFollow, String)>[(_nobody, "Nothing")];
   for (var element in controller.document.elements) {
     if (element is PathElement) continue;
     if (element is TeamElement) {
       for (var i = 0; i < element.players.length; i++) {
         var spot = element.players[i];
         var who = spot.name.isNotEmpty ? spot.name : "#${spot.number}";
-        out.add(("${element.id}/$i", "$who — ${element.name}"));
+        out.add((
+          PathFollow(elementId: element.id, playerIndex: i),
+          "$who — ${element.name}"
+        ));
       }
       continue;
     }
-    out.add(("${element.id}/-1", element.name));
+    out.add((PathFollow(elementId: element.id), element.name));
   }
   return out;
 }
@@ -356,7 +285,7 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
                 icon: Icons.add,
                 tooltip: "Add a point after this one",
                 // Only between two points: past the last there is no segment
-                // to halve, which is what the Follow row's Add is for.
+                // to halve, which is what the run's Carry it on is for.
                 onPressed: i >= e.nodes.length - 1
                     ? null
                     : () => relink(e.insertAfter(i,

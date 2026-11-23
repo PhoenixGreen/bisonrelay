@@ -143,10 +143,15 @@ class SpeechBubbleSpec {
   final double tailAngle;
 
   /// tailLength is the tail's reach past the bubble, of its half-height;
-  /// tailWidth its width where it meets the bubble, the same way.
+  /// tailWidth its width where it meets the bubble, the same way. Each is
+  /// set, and read, within its least and most below: past them the body
+  /// gives up all its room to the tail and collapses.
   final double tailLength;
 
   final double tailWidth;
+
+  static const double minTailLength = 0.05, maxTailLength = 1.2;
+  static const double minTailWidth = 0.05, maxTailWidth = 1;
 
   /// curl bends a curved tail. Ignored by the others.
   final double curl;
@@ -196,13 +201,14 @@ class SpeechBubbleSpec {
         tail: BubbleTail.fromName(jsonStr(json["tail"])),
         // A turn either way is every angle there is; a curl is held to ten
         // times what the panel offers, so a received one cannot fling the
-        // tail across the page.
+        // tail across the page; a length and a width to what the panel
+        // offers.
         tailAngle:
             jsonDouble(json["angle"], _defaults.tailAngle).clamp(-360.0, 360.0),
-        tailLength:
-            jsonDouble(json["length"], _defaults.tailLength).clamp(0.0, 2.0),
-        tailWidth:
-            jsonDouble(json["width"], _defaults.tailWidth).clamp(0.02, 2.0),
+        tailLength: jsonDouble(json["length"], _defaults.tailLength)
+            .clamp(minTailLength, maxTailLength),
+        tailWidth: jsonDouble(json["width"], _defaults.tailWidth)
+            .clamp(minTailWidth, maxTailWidth),
         curl: jsonDouble(json["curl"], _defaults.curl).clamp(-15.0, 15.0),
       );
 }
@@ -400,6 +406,74 @@ class ShapeElement extends CanvasElement {
           painted: painted ?? this.painted,
           animation: animation ?? this.animation);
 
+  @override
+  bool get scalesInside => true;
+
+  /// scaledBy sizes what is measured in design units by [by]: its words'
+  /// type, its outline, its corners and its padding. What its kind draws (a
+  /// star's depth, a bubble's tail) is a share of its box, which is sized
+  /// apart.
+  @override
+  ShapeElement scaledBy(double by) {
+    var c = corners.scaledBy(by), r = pad.scaledBy(by);
+    return copyWith(
+        textSpec: textSpec.scaledBy(by),
+        strokeWidth: strokeWidth * by,
+        cornerRadius: c.all,
+        radTL: c.tl,
+        radTR: c.tr,
+        radBR: c.br,
+        radBL: c.bl,
+        clearCorners: true,
+        padding: r.all,
+        padL: r.l,
+        padT: r.t,
+        padR: r.r,
+        padB: r.b,
+        clearRoom: true);
+  }
+
+  /// withKind is this shape as [kind], wherever it is chosen. A square or a
+  /// circle is drawn square in the middle of its box (shapeBox), so its box
+  /// is made square on its shorter side, about its middle, and held so as
+  /// it is resized: what is drawn is then the whole box. Another kind after
+  /// one of those leaves the box as it is and lets its proportions go, since
+  /// a square or a circle held them; a box held for any other reason is
+  /// left held. Only choosing does this: a saved oblong square or circle is
+  /// read and drawn as it was.
+  ShapeElement withKind(ShapeKind kind) {
+    var next = copyWith(shape: kind);
+    if (!kind.isRegular) {
+      if (!shape.isRegular || !base.lockAspect) return next;
+      return next.withBase(lockAspect: false) as ShapeElement;
+    }
+    var side = math.min(width, height);
+    return next.withBase(
+        x: x + (width - side) / 2,
+        y: y + (height - side) / 2,
+        width: side,
+        height: side,
+        lockAspect: true) as ShapeElement;
+  }
+
+  /// withOutline is this shape with its outline coloured [color], faded to
+  /// [fade], or made flat ([flat]). An outline with no width is not drawn
+  /// however it is coloured, so a colour or a fade asked for is an outline
+  /// asked for: one with none is given a width to see it by.
+  ShapeElement withOutline(
+          {Color? color, GradientSpec? fade, bool flat = false}) =>
+      copyWith(
+          strokeColor: color,
+          strokeFade: fade,
+          flatStroke: flat,
+          strokeWidth: strokeWidth > 0 || (color == null && fade == null)
+              ? null
+              : _outlineToSee());
+
+  /// _outlineToSee is the width for a shape outlined for the first time:
+  /// enough to see on a big shape, not enough to swallow a small one.
+  double _outlineToSee() => (math.min(width, height) * 0.015).clamp(1.0, 6.0);
+
   /// mapOwnColours maps the shape's fill, its outline (hidden with no
   /// width) and their fades, the picture or pattern it is painted with
   /// (hidden unless painted), its words' type (hidden with no words) and its
@@ -498,8 +572,3 @@ class ShapeElement extends CanvasElement {
           animation: jsonSpec(
               json["anim"], ElementAnimation.fromJson, _defaults.animation));
 }
-
-/// strokeToSee is the width for a shape stroked for the first time: enough
-/// to see on a big shape, not enough to swallow a small one.
-double strokeToSee(ShapeElement e) =>
-    (math.min(e.width, e.height) * 0.015).clamp(1.0, 6.0);

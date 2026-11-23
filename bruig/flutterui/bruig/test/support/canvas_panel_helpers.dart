@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 
 // canvas_panel_helpers.dart opens the parts of a sectioned settings panel a
@@ -125,4 +126,72 @@ Future<void> openFold(WidgetTester tester, String remember,
   await tester.pumpAndSettle();
   await tester.tap(head);
   await tester.pumpAndSettle();
+}
+
+/// openEverything opens every card, folding group and "more" group under
+/// [root] that is shut, and what that shows, until nothing more opens.
+Future<void> openEverything(WidgetTester tester, Finder root) async {
+  for (var round = 0; round < 12; round++) {
+    var presses = <VoidCallback>[];
+    for (var el in find
+        .descendant(
+            of: root,
+            matching: find.byWidgetPredicate((w) =>
+                w is CanvasMoreGroup ||
+                (w is CanvasExpander && !w.flat) ||
+                (w is CanvasControlGroup &&
+                    w.folded == true &&
+                    w.onFold != null)))
+        .evaluate()) {
+      var w = el.widget;
+      if (w is CanvasControlGroup) {
+        presses.add(w.onFold!);
+      } else if (w is CanvasMoreGroup) {
+        var button = _first<CanvasIconButton>(
+            el,
+            (b) =>
+                b.key == ValueKey("more-${w.remember ?? w.label}") &&
+                !b.active);
+        if (button?.onPressed case var press?) presses.add(press);
+      } else if (_expanderShut(el)) {
+        if (_first<InkWell>(el, (_) => true)?.onTap case var press?) {
+          presses.add(press);
+        }
+      }
+    }
+    if (presses.isEmpty) return;
+    for (var press in presses) {
+      press();
+    }
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+  fail("the sidebar was still opening after twelve rounds");
+}
+
+/// _expanderShut is whether the expander at [el] is shut: its chevron is
+/// unturned in a card, and points right outside one.
+bool _expanderShut(Element el) {
+  var turned = _first<AnimatedRotation>(el, (_) => true);
+  if (turned != null) return turned.turns == 0;
+  var icon = _first<Icon>(el, (_) => true);
+  return icon?.icon == Icons.chevron_right;
+}
+
+/// _first is the first widget of type [T] under [el] that [test] takes.
+T? _first<T extends Widget>(Element el, bool Function(T) test) {
+  T? found;
+  void visit(Element e) {
+    if (found != null) return;
+    var w = e.widget;
+    if (w is T && test(w)) {
+      found = w;
+      return;
+    }
+    e.visitChildren(visit);
+  }
+
+  el.visitChildren(visit);
+  return found;
 }

@@ -2,6 +2,7 @@ import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -106,7 +107,7 @@ void main() {
           find
               .ancestor(
                   of: find.text("Who follows"),
-                  matching: find.byType(CanvasDropdown<String>))
+                  matching: find.byType(CanvasDropdown<PathFollow>))
               .first);
       var space = at(tester, find.text("Space the points evenly"));
       var start = at(tester, find.byKey(const ValueKey("pathStartFrame")));

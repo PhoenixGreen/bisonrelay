@@ -297,21 +297,21 @@ void _add(CanvasController c, List<CanvasElement> elements,
 }
 
 /// _shape is a plain box for the game, a stand-in until a picture replaces
-/// it.
+/// it: of [kind] as choosing it makes one (ShapeElement.withKind).
 ShapeElement _shape(String name, Rect r, Color fill, PlaySpec play,
         {ShapeKind kind = ShapeKind.rectangle, double corner = 6}) =>
     ShapeElement(
-        ElementBase(
-            id: newElementId(),
-            name: name,
-            x: r.left,
-            y: r.top,
-            width: r.width,
-            height: r.height,
-            play: play),
-        shape: kind,
-        fill: fill,
-        cornerRadius: corner);
+            ElementBase(
+                id: newElementId(),
+                name: name,
+                x: r.left,
+                y: r.top,
+                width: r.width,
+                height: r.height,
+                play: play),
+            fill: fill,
+            cornerRadius: corner)
+        .withKind(kind);
 
 /// addPlayer adds a player at the left, standing on the ground.
 void addPlayer(CanvasController c) {

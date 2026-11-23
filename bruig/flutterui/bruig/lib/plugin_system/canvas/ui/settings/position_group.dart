@@ -405,7 +405,10 @@ List<Widget> _pageShapeRow(_Placing p) {
     const CanvasLineBreak(gap: 8),
     // How big the contents are on this shape: the box stays and type,
     // spacing and padding scale, as a banner headline is a feed line
-    // (ElementBase.typeScale). Pictures, shapes and charts scale already.
+    // (ElementBase.typeScale). Offered where something inside is measured
+    // apart from the box (scalesInside): words, a table's type and padding,
+    // a shape's outline, corners and label, a stroke's width. A picture is
+    // drawn to its box.
     if (e.scalesInside) ...[
       CanvasStepper(
         key: const ValueKey("elementTypeScale"),

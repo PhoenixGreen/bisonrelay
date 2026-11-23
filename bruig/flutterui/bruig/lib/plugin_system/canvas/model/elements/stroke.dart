@@ -29,14 +29,27 @@ enum LineStrokeCap {
       );
 }
 
-/// maxEndSize is the largest end size a stroke is read with: ten times what
-/// the panels offer, so nothing made here is changed, while a received
-/// canvas cannot draw an arrowhead a billion times the page.
-const double maxEndSize = 80;
+/// StrokeRange is how far each of a stroke's numbers can be set: the range
+/// its panel offers and the Chain's Design table writes within, and what a
+/// received stroke is read within.
+abstract final class StrokeRange {
+  /// minWidth and maxWidth are a stroke's width. A shape's outline runs from
+  /// 0, which is none, to the same maxWidth.
+  static const double minWidth = 0.2, maxWidth = 200;
 
-/// maxDash is the longest dash a stroke is read with: what a line's panel
-/// offers.
-const double maxDash = 400;
+  /// minEndSize and maxEndSize are what is drawn on its ends, as a multiple
+  /// of its width.
+  static const double minEndSize = 0.2, maxEndSize = 8;
+
+  /// maxDash is the longest dash; 0 is a solid stroke.
+  static const double maxDash = 400;
+
+  /// readEndSize is the largest end size a stroke is read with: ten times
+  /// what can be set, so nothing made before the range was held is changed,
+  /// while a received canvas cannot draw an arrowhead a billion times the
+  /// page.
+  static const double readEndSize = maxEndSize * 10;
+}
 
 /// LineEnd is what is drawn at one end of a stroke, set for each end.
 enum LineEnd {
@@ -195,6 +208,9 @@ class StrokeSpec {
           endSize: endSize ?? this.endSize,
           dash: dash ?? this.dash);
 
+  /// endsSwapped is this stroke with each end's mark on the other end.
+  StrokeSpec get endsSwapped => copyWith(startEnd: endEnd, endEnd: startEnd);
+
   /// cutBack is how far back from its end the stroke is drawn short under
   /// [end], in design units: to where the end's own ink reaches
   /// (LineEnd.cover), and further by what a round or square cap reaches
@@ -239,27 +255,28 @@ class StrokeSpec {
   /// name that is no cap is flat. An end that is written is read as written
   /// (no end, where it is no end's name), so only an end left out is the
   /// default.
-  factory StrokeSpec.fromJson(Map<String, dynamic> json, StrokeSpec defaults) =>
-      StrokeSpec(
-          color: colorFromJson(json["color"], defaults.color),
-          fade: json["fade"] is Map
-              ? GradientSpec.fromJson(
-                  (json["fade"] as Map).cast<String, dynamic>())
-              : null,
-          strokeWidth: jsonLength(json["sw"], defaults.strokeWidth),
-          cap: json[
-                  "strokeCap"] is String
-              ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
-              : defaults.cap,
-          startEnd: json.containsKey("startEnd")
-              ? LineEnd.fromName(jsonStr(json["startEnd"]))
-              : defaults.startEnd,
-          endEnd: json.containsKey("endEnd")
-              ? LineEnd.fromName(jsonStr(json["endEnd"]))
-              : defaults.endEnd,
-          endSize: jsonDouble(json["endSize"], defaults.endSize)
-              .clamp(0.0, maxEndSize),
-          dash: jsonDouble(json["dash"], defaults.dash).clamp(0.0, maxDash));
+  factory StrokeSpec.fromJson(Map<String, dynamic> json, StrokeSpec defaults) {
+    var endSize = jsonDouble(json["endSize"], defaults.endSize);
+    var dash = jsonDouble(json["dash"], defaults.dash);
+    return StrokeSpec(
+        color: colorFromJson(json["color"], defaults.color),
+        fade: json["fade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fade"] as Map).cast<String, dynamic>())
+            : null,
+        strokeWidth: jsonLength(json["sw"], defaults.strokeWidth),
+        cap: json["strokeCap"] is String
+            ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
+            : defaults.cap,
+        startEnd: json.containsKey("startEnd")
+            ? LineEnd.fromName(jsonStr(json["startEnd"]))
+            : defaults.startEnd,
+        endEnd: json.containsKey("endEnd")
+            ? LineEnd.fromName(jsonStr(json["endEnd"]))
+            : defaults.endEnd,
+        endSize: endSize.clamp(0.0, StrokeRange.readEndSize),
+        dash: dash.clamp(0.0, StrokeRange.maxDash));
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -327,12 +344,29 @@ abstract class StrokedElement extends CanvasElement {
       endSize: endSize,
       dash: dash);
 
+  /// drawsEnds is whether anything is drawn on its ends: not on a closed
+  /// path, which has none to put them on.
+  bool get drawsEnds => true;
+
   /// drawnStroke is [stroke] as it is drawn: without the ends where none
-  /// are drawn, so nothing (the selection box) allows room for them.
-  StrokeSpec get drawnStroke => stroke;
+  /// are drawn ([drawsEnds]), so nothing (the selection box) allows room
+  /// for them.
+  StrokeSpec get drawnStroke => drawsEnds
+      ? stroke
+      : stroke.copyWith(startEnd: LineEnd.none, endEnd: LineEnd.none);
 
   /// withStroke is this element drawn with [stroke] instead.
   StrokedElement withStroke(StrokeSpec stroke);
+
+  @override
+  bool get scalesInside => true;
+
+  /// scaledBy sizes its width and dash by [by]. What is drawn on its ends is
+  /// a multiple of its width, so it follows; its curve is a share of its
+  /// box, which is sized apart.
+  @override
+  StrokedElement scaledBy(double by) => withStroke(
+      stroke.copyWith(strokeWidth: strokeWidth * by, dash: dash * by));
 
   /// curve is the line the stroke runs along, in the box as it is drawn
   /// before its turn and slant: what paintStroke strokes once paintElement

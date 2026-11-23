@@ -145,6 +145,15 @@ class PathFollow {
 
   const PathFollow({required this.elementId, this.playerIndex});
 
+  @override
+  bool operator ==(Object other) =>
+      other is PathFollow &&
+      other.elementId == elementId &&
+      other.playerIndex == playerIndex;
+
+  @override
+  int get hashCode => Object.hash(elementId, playerIndex);
+
   Map<String, dynamic> toJson() => {
         "id": elementId,
         if (playerIndex != null) "player": playerIndex,
@@ -591,12 +600,9 @@ class PathElement extends StrokedElement {
   @override
   PathElement withStroke(StrokeSpec stroke) => _with(base, stroke);
 
-  /// drawnStroke has no ends on a closed path, which has none to put them
-  /// on.
+  /// drawsEnds is false on a closed path, which has no ends to put them on.
   @override
-  StrokeSpec get drawnStroke => closed
-      ? stroke.copyWith(startEnd: LineEnd.none, endEnd: LineEnd.none)
-      : stroke;
+  bool get drawsEnds => !closed;
 
   PathElement _with(ElementBase base, StrokeSpec stroke) =>
       PathElement._of(base, stroke,

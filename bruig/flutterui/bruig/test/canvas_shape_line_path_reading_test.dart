@@ -91,6 +91,23 @@ void main() {
       }
     });
 
+    test("a bubble's tail is held to the length and width it can be set to",
+        () {
+      // Past what the panel offers, the body gives up all its room to the
+      // tail and collapses.
+      var bubble = _shape.copyWith(shape: ShapeKind.speechBubble);
+      var far = _read(bubble, {
+        "bubble": {"length": 2, "width": 2},
+      }).bubble;
+      expect((far.tailLength, far.tailWidth),
+          (SpeechBubbleSpec.maxTailLength, SpeechBubbleSpec.maxTailWidth));
+      var near = _read(bubble, {
+        "bubble": {"length": 0, "width": 0},
+      }).bubble;
+      expect((near.tailLength, near.tailWidth),
+          (SpeechBubbleSpec.minTailLength, SpeechBubbleSpec.minTailWidth));
+    });
+
     test("every value its panel can set reads back as it was", () {
       for (var s in [
         _shape.copyWith(strokeWidth: 0),
@@ -101,8 +118,18 @@ void main() {
         _shape.copyWith(shape: ShapeKind.star, points: 3, innerRatio: 0.05),
         _shape.copyWith(shape: ShapeKind.star, points: 24, innerRatio: 0.95),
         for (var (angle, length, width, curl) in [
-          (-360.0, 0.05, 0.05, -1.5),
-          (360.0, 1.2, 1.0, 1.5),
+          (
+            -360.0,
+            SpeechBubbleSpec.minTailLength,
+            SpeechBubbleSpec.minTailWidth,
+            -1.5
+          ),
+          (
+            360.0,
+            SpeechBubbleSpec.maxTailLength,
+            SpeechBubbleSpec.maxTailWidth,
+            1.5
+          ),
         ])
           _shape.copyWith(
               shape: ShapeKind.speechBubble,
@@ -123,15 +150,23 @@ void main() {
       for (var far in [_huge, -_huge]) {
         var l = _read(_line, {"sw": far, "endSize": far, "curve": far});
         expect(l.strokeWidth, inInclusiveRange(0, maxDesignLength));
-        expect(l.endSize, inInclusiveRange(0, 80));
+        expect(l.endSize, inInclusiveRange(0, StrokeRange.readEndSize));
         expect(l.curvature, inInclusiveRange(-10, 10));
       }
     });
 
     test("every value its panel can set reads back as it was", () {
       for (var l in [
-        _line.copyWith(strokeWidth: 0.2, endSize: 0.2, curvature: -1, dash: 0),
-        _line.copyWith(strokeWidth: 200, endSize: 8, curvature: 1, dash: 400),
+        _line.copyWith(
+            strokeWidth: StrokeRange.minWidth,
+            endSize: StrokeRange.minEndSize,
+            curvature: -1,
+            dash: 0),
+        _line.copyWith(
+            strokeWidth: StrokeRange.maxWidth,
+            endSize: StrokeRange.maxEndSize,
+            curvature: 1,
+            dash: StrokeRange.maxDash),
       ]) {
         expect(jsonEncode(_again(l).toJson()), jsonEncode(l.toJson()));
       }
@@ -143,7 +178,7 @@ void main() {
       for (var far in [_huge, -_huge]) {
         var p = _read(_path, {"sw": far, "endSize": far});
         expect(p.strokeWidth, inInclusiveRange(0, maxDesignLength));
-        expect(p.endSize, inInclusiveRange(0, 80));
+        expect(p.endSize, inInclusiveRange(0, StrokeRange.readEndSize));
       }
     });
 
@@ -206,10 +241,14 @@ void main() {
 
     test("every value its panel can set reads back as it was", () {
       for (var p in [
-        _path.copyWith(strokeWidth: 0, endSize: 0.2, dash: 0),
-        _path.copyWith(strokeWidth: 0.5, endSize: 8, dash: 200),
-        _path.copyWith(strokeWidth: 60),
-        _path.copyWith(strokeWidth: 200),
+        _path.copyWith(
+            strokeWidth: StrokeRange.minWidth,
+            endSize: StrokeRange.minEndSize,
+            dash: 0),
+        _path.copyWith(
+            strokeWidth: StrokeRange.maxWidth,
+            endSize: StrokeRange.maxEndSize,
+            dash: StrokeRange.maxDash),
       ]) {
         expect(jsonEncode(_again(p).toJson()), jsonEncode(p.toJson()));
       }

@@ -370,7 +370,7 @@ void main() {
       // Where the tail points is a measurement, so it is behind the button
       // on the end of that line.
       await tail(tester);
-      expect(find.text("Points"), findsOneWidget);
+      expect(find.text("Points to"), findsOneWidget);
     });
 
     testWidgets("and still shows them once it has one", (tester) async {

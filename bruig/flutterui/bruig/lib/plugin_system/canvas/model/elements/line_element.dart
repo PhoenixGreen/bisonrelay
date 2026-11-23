@@ -83,12 +83,30 @@ class LineElement extends StrokedElement {
   Offset get start => flipped ? bounds.bottomLeft : bounds.topLeft;
   Offset get end => flipped ? bounds.topRight : bounds.bottomRight;
 
-  /// length and angle are the line between its two ends, the angle in
-  /// degrees clockwise from pointing right.
-  double get length => (end - start).distance;
+  /// drawnStart and drawnEnd are where its two ends are drawn on the page
+  /// as it rests: [start] and [end] through its turn and slant.
+  Offset get drawnStart => onPage(start);
+  Offset get drawnEnd => onPage(end);
+
+  /// length and angle are the line as it is drawn at rest, from its start
+  /// to its end: what a person sees, which a turn or a slant makes other
+  /// than its box's. The angle is in degrees clockwise from pointing right.
+  double get length => (drawnEnd - drawnStart).distance;
   double get angle {
-    var d = end - start;
+    var d = drawnEnd - drawnStart;
     return math.atan2(d.dy, d.dx) * 180 / math.pi;
+  }
+
+  /// withLength and withAngle are this line drawn [length] long, or
+  /// pointing at [angle] degrees, from where its start is drawn: the rest of
+  /// what is drawn kept as it is.
+  LineElement withLength(double length) => _drawnFromStart(angle, length);
+  LineElement withAngle(double angle) => _drawnFromStart(angle, length);
+
+  LineElement _drawnFromStart(double angle, double length) {
+    var r = angle * math.pi / 180;
+    return withEndsDrawnAt(
+        drawnStart, drawnStart + Offset(math.cos(r), math.sin(r)) * length);
   }
 
   /// withEnds is this line drawn from [a] to [b]. A level line would be a box
@@ -129,16 +147,17 @@ class LineElement extends StrokedElement {
     return withEnds(by, apart + by);
   }
 
-  /// level and plumb are this line turned flat or upright about its start,
-  /// keeping its length and the side it points to.
+  /// level and plumb are this line drawn flat or upright about where its
+  /// start is drawn, keeping its length and the side it points to: level on
+  /// the page, whatever its turn or slant.
   LineElement get level {
-    var d = end - start;
-    return withEnds(start, start + Offset(d.dx < 0 ? -length : length, 0));
+    var a = drawnStart, d = drawnEnd - a;
+    return withEndsDrawnAt(a, a + Offset(d.dx < 0 ? -length : length, 0));
   }
 
   LineElement get plumb {
-    var d = end - start;
-    return withEnds(start, start + Offset(0, d.dy < 0 ? -length : length));
+    var a = drawnStart, d = drawnEnd - a;
+    return withEndsDrawnAt(a, a + Offset(0, d.dy < 0 ? -length : length));
   }
 
   /// controlPoint is the control point of a bowed line's quadratic, in the

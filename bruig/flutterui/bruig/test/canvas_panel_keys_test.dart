@@ -2,19 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 
 import 'support/canvas_app.dart';
+import 'support/canvas_panel_helpers.dart';
 import 'support/canvas_sidebar_host.dart';
 import 'support/element_samples.dart';
 import 'support/kept_lists.dart';
@@ -24,8 +31,9 @@ import 'support/kept_lists.dart';
 // group open: every key in order and every piece of text in order, for each
 // kind as first added and as filled (element_samples.dart), and for the few
 // places that the place-and-size group shows something of its own (a page
-// number, a Camera's depth, several page shapes, words on a line) and
-// for a panel with two boxes.
+// number, a Camera's depth, several page shapes, words on a line), for a
+// panel with two boxes, and for what a shape's, a line's and a path's
+// panels show beyond the samples (_strokeStates).
 //
 // It is how a change to how panels are built is shown to change nothing a
 // person sees. Set PANEL_KEYS to a folder and run this file on the code as
@@ -88,73 +96,79 @@ List<_State> _states() {
           text.copyWith(curve: const TextOnCurve(elementId: "line"))),
       id: text.id,
     ),
+    ..._strokeStates(),
   ];
 }
 
-/// _openEverything opens every card, folding group and "more" group in the
-/// sidebar that is shut, and what that shows, until nothing more opens.
-Future<void> _openEverything(WidgetTester tester) async {
-  for (var round = 0; round < 12; round++) {
-    var presses = <VoidCallback>[];
-    for (var el in find
-        .descendant(
-            of: find.byType(CanvasSidebarHost),
-            matching: find.byWidgetPredicate((w) =>
-                w is CanvasMoreGroup ||
-                (w is CanvasExpander && !w.flat) ||
-                (w is CanvasControlGroup &&
-                    w.folded == true &&
-                    w.onFold != null)))
-        .evaluate()) {
-      var w = el.widget;
-      if (w is CanvasControlGroup) {
-        presses.add(w.onFold!);
-      } else if (w is CanvasMoreGroup) {
-        var button = _first<CanvasIconButton>(
-            el,
-            (b) =>
-                b.key == ValueKey("more-${w.remember ?? w.label}") &&
-                !b.active);
-        if (button?.onPressed case var press?) presses.add(press);
-      } else if (_expanderShut(el)) {
-        if (_first<InkWell>(el, (_) => true)?.onTap case var press?) {
-          presses.add(press);
-        }
-      }
-    }
-    if (presses.isEmpty) return;
-    for (var press in presses) {
-      press();
-    }
-    await _settle(tester);
-  }
-  fail("the sidebar was still opening after twelve rounds");
-}
-
-/// _expanderShut is whether the expander at [el] is shut: its chevron is
-/// unturned in a card, and points right outside one.
-bool _expanderShut(Element el) {
-  var turned = _first<AnimatedRotation>(el, (_) => true);
-  if (turned != null) return turned.turns == 0;
-  var icon = _first<Icon>(el, (_) => true);
-  return icon?.icon == Icons.chevron_right;
-}
-
-/// _first is the first widget of type [T] under [el] that [test] takes.
-T? _first<T extends Widget>(Element el, bool Function(T) test) {
-  T? found;
-  void visit(Element e) {
-    if (found != null) return;
-    var w = e.widget;
-    if (w is T && test(w)) {
-      found = w;
-      return;
-    }
-    e.visitChildren(visit);
-  }
-
-  el.visitChildren(visit);
-  return found;
+/// _strokeStates are what a shape's, a line's and a path's panels can show
+/// beyond the samples: a bubble of each body, a picture and a pattern
+/// inside a shape, words on a plain one, a turned line and a line whose bow
+/// is keyed, a path with its follower on the canvas, a guide and a closed
+/// one with no ends, and each of the three in a canvas laid out for two
+/// page shapes.
+List<_State> _strokeStates() {
+  var shape = newElement(ElementKind.shape, _doc) as ShapeElement;
+  var line = newElement(ElementKind.line, _doc) as LineElement;
+  var path = newElement(ElementKind.path, _doc) as PathElement;
+  var follower = newElement(ElementKind.text, _doc) as TextElement;
+  _State alone(String name, CanvasElement e) =>
+      (name: name, document: _doc.addElement(e), id: e.id);
+  return [
+    for (var (body, tail) in const [
+      (BubbleBody.rounded, BubbleTail.pointer),
+      (BubbleBody.oval, BubbleTail.thought),
+      (BubbleBody.burst, BubbleTail.none),
+    ])
+      alone(
+          "Shape, a ${body.name} bubble with a ${tail.name} tail",
+          shape.copyWith(
+              shape: ShapeKind.speechBubble,
+              bubble: SpeechBubbleSpec(body: body, tail: tail))),
+    alone("Shape, with words", shape.copyWith(text: "Words on it")),
+    alone(
+        "Shape, painted with a picture",
+        shape.copyWith(
+            painted: const TextFill(
+                kind: TextFillKind.image, assetId: "a-picture", tile: true))),
+    alone(
+        "Shape, painted with a pattern",
+        shape.copyWith(
+            painted: const TextFill(
+                kind: TextFillKind.pattern,
+                pattern: ProceduralSpec(style: ProceduralStyle.lineGrid)))),
+    alone("Line, turned", line.withBase(rotation: 30) as LineElement),
+    alone(
+        "Line, with ends, a dash and a fade",
+        line.copyWith(
+            startEnd: LineEnd.circle,
+            endEnd: LineEnd.arrow,
+            endSize: 2,
+            dash: 12,
+            fade: const GradientSpec(to: Color(0xFF3D7EFF)))),
+    alone(
+        "Line, bowed with its bow keyed",
+        line.copyWith(curvature: 0.2).withBase(
+                track: ElementTrack(const [
+              Keyframe(frame: 0, values: {KeyframeChannel.bow: 0.4}),
+              Keyframe(frame: 40, values: {KeyframeChannel.bow: -0.3}),
+            ])) as LineElement),
+    (
+      name: "Path, with its follower on the canvas",
+      document: _doc.addElement(follower.withBase(name: "Runner")).addElement(
+          path.copyWith(follow: PathFollow(elementId: follower.id))),
+      id: path.id,
+    ),
+    alone("Path, a guide", path.copyWith(guide: true)),
+    alone("Path, closed", path.copyWith(closed: true)),
+    // What each does on the page shape shown, in a canvas laid out for two.
+    for (var e in <CanvasElement>[shape, line, path])
+      (
+        name: "${e.kind.label}, on two page shapes",
+        document:
+            const CanvasDocument(targets: ["feedAd", "wide"]).addElement(e),
+        id: e.id,
+      ),
+  ];
 }
 
 /// _steadyIds is [keys] with the ids made fresh each run (newElementId's:
@@ -200,7 +214,7 @@ void main() {
       c.selectOnly(state.id);
       await tester.pumpWidget(canvasApp(designSidebar(c)));
       await _settle(tester);
-      await _openEverything(tester);
+      await openEverything(tester, find.byType(CanvasSidebarHost));
 
       var (shown, words) = shownUnder(tester, find.byType(CanvasSidebarHost));
       expect(shown, isNotEmpty, reason: state.name);

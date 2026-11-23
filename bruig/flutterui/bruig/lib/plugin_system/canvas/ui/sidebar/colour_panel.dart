@@ -290,14 +290,8 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
             gradient: s.strokeFade,
             withColour: (c) => c == null
                 ? s.copyWith(strokeWidth: 0)
-                : s.copyWith(
-                    strokeColor: c,
-                    strokeWidth: s.strokeWidth > 0 ? null : strokeToSee(s)),
-            withGradient: (g) => g == null
-                ? s.copyWith(flatStroke: true)
-                : s.copyWith(
-                    strokeFade: g,
-                    strokeWidth: s.strokeWidth > 0 ? null : strokeToSee(s))),
+                : s.withOutline(color: c),
+            withGradient: (g) => s.withOutline(fade: g, flat: g == null)),
       ];
     case StrokedElement l:
       return [

@@ -3,6 +3,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -332,6 +334,89 @@ void main() {
       expect(again.elements.single.base.typeScale, 0.5);
       expect(wordsIn(again).textSpec.fontSize, closeTo(30, 0.5),
           reason: "and the 16:9 is as it was left");
+    });
+  });
+
+  group("a shape, a line and a path on another page shape", () {
+    // A page shape a little over half the height: everything inside the
+    // box comes down with it, as a text's type does, or an outline that
+    // fits its shape on one page is twice as heavy on the other.
+    var by =
+        sizeOf(CanvasRatio.wide).height / sizeOf(CanvasRatio.feedAd).height;
+    CanvasElement onWide(CanvasElement e) =>
+        CanvasDocument(size: sizeOf(CanvasRatio.feedAd), elements: [e])
+            .forShape(sizeOf(CanvasRatio.wide))
+            .elements
+            .single;
+
+    test("a shape's words, outline, corners and padding come down", () {
+      var s = onWide(const ShapeElement(
+        ElementBase(id: "s", x: 100, y: 50, width: 400, height: 200),
+        text: "Spend",
+        textSpec: TextSpec(fontSize: 40),
+        strokeWidth: 6,
+        cornerRadius: 20,
+        radTL: 10,
+        padding: 12,
+        padL: 4,
+      )) as ShapeElement;
+      expect(s.textSpec.fontSize, closeTo(40 * by, 0.01));
+      expect(s.strokeWidth, closeTo(6 * by, 0.01));
+      expect(s.cornerRadius, closeTo(20 * by, 0.01));
+      expect(s.radTL, closeTo(10 * by, 0.01));
+      expect(s.radTR, isNull, reason: "a corner of its own stays unset");
+      expect(s.padding, closeTo(12 * by, 0.01));
+      expect(s.padL, closeTo(4 * by, 0.01));
+    });
+
+    test("and what is a share of its box stays as it is", () {
+      var s = onWide(const ShapeElement(
+              ElementBase(id: "s", x: 100, y: 50, width: 400, height: 200),
+              shape: ShapeKind.speechBubble,
+              bubble: SpeechBubbleSpec(tailLength: 0.8, tailWidth: 0.5)))
+          as ShapeElement;
+      expect((s.bubble.tailLength, s.bubble.tailWidth), (0.8, 0.5));
+    });
+
+    for (var e in <StrokedElement>[
+      const LineElement(
+          ElementBase(id: "l", x: 100, y: 50, width: 400, height: 200),
+          strokeWidth: 8,
+          dash: 20,
+          endSize: 2),
+      PathElement(
+          const ElementBase(id: "p", x: 100, y: 50, width: 400, height: 200),
+          nodes: PathElement.defaultNodes(),
+          strokeWidth: 8,
+          dash: 20,
+          endSize: 2),
+    ]) {
+      test(
+          "a ${e.kind.label.toLowerCase()}'s width and dash come down, its "
+          "ends with its width", () {
+        var s = (onWide(e) as StrokedElement).stroke;
+        expect(s.strokeWidth, closeTo(8 * by, 0.01));
+        expect(s.dash, closeTo(20 * by, 0.01));
+        expect(s.endSize, 2, reason: "a multiple of the width");
+      });
+    }
+
+    test("and each goes back as it was on the shape it was made on", () {
+      var doc = CanvasDocument(size: sizeOf(CanvasRatio.feedAd), elements: [
+        const ShapeElement(
+            ElementBase(id: "s", x: 100, y: 50, width: 400, height: 200),
+            strokeWidth: 6),
+        const LineElement(
+            ElementBase(id: "l", x: 100, y: 50, width: 400, height: 200),
+            strokeWidth: 8),
+      ]);
+      var back = doc
+          .forShape(sizeOf(CanvasRatio.wide))
+          .forShape(sizeOf(CanvasRatio.feedAd));
+      expect((back.elementById("s") as ShapeElement).strokeWidth,
+          closeTo(6, 1e-9));
+      expect(
+          (back.elementById("l") as LineElement).strokeWidth, closeTo(8, 1e-9));
     });
   });
 

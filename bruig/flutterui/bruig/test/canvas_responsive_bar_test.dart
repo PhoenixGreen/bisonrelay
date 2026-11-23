@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -212,7 +213,10 @@ void main() {
   test("only the elements with measurements inside say they scale", () {
     expect(TextElement(const ElementBase(id: "t"), text: "x").scalesInside,
         isTrue);
-    expect(ShapeElement(const ElementBase(id: "s")).scalesInside, isFalse);
+    // A shape's outline, corners, padding and words; a stroke's width.
+    expect(ShapeElement(const ElementBase(id: "s")).scalesInside, isTrue);
+    expect(const LineElement(ElementBase(id: "l")).scalesInside, isTrue);
+    // A picture is drawn to its box.
     expect(ImageElement(const ElementBase(id: "i")).scalesInside, isFalse);
   });
 }

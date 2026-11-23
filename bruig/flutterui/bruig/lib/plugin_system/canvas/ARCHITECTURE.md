@@ -304,6 +304,18 @@ answer them all. A speech bubble is drawn inside its box whatever its tail
 does: the body gives up room on the tail's side for the tail or a thought's
 whole trail, and a cloud's lumps reach the body's edge and no further.
 
+A kind is chosen through `ShapeElement.withKind`, wherever it is chosen (the
+tiles, the quick strip, a game's stand-ins): a square or a circle makes its
+box square on its shorter side, about its middle, and holds it so
+(`lockAspect`, which the stage's handles and the size fields honour), so
+what is drawn is the whole box; another kind after one of those lets the
+box go. A canvas saved with an oblong square or circle reads and draws as
+it was: only choosing squares a box. A colour or a fade given to an outline
+with no width gives it one (`withOutline`), from the panel and the Colour
+panel alike. On another page shape a shape's words, outline, corners and
+padding are sized with the page (`scaledBy`), as a text's type is; what its
+kind draws is a share of its box.
+
 ### A stroke
 
 A line and a path are one stroke along their curve, and say so by
@@ -337,6 +349,15 @@ line's.
 A stroke's fade is laid over the stroke as drawn, the curve's bounds grown
 by half its width, so it runs across the thickness of a level or upright
 stroke as well as along it.
+
+How far each of its numbers can be set is said once, in `StrokeRange`: the
+range its panel offers, what the Chain's Design table writes within, and
+what a received stroke is read within. Its controls are built once too
+(`ui/settings/stroke_controls.dart`), each by one function that a line's
+and a path's panels use in the quick strip and in Look alike, writing
+through `withStroke`; a stroke that draws no ends (`drawsEnds`, false on a
+closed path) is offered only its cap. On another page shape its width and
+dash are sized with the page (`scaledBy`); the ends follow the width.
 
 ### A line's and a path's curve
 
@@ -379,6 +400,10 @@ slanted a second time. A straight line's ends are at two of that box's
 corners, and its corner handles move them (`_applyLineEnd`): the end goes
 under the pointer and the other stays where it is drawn, the line's resting
 ends laid so through the place it is drawn by (`LineElement.withEndsDrawnAt`).
+A line's panel reads and sets it the same way, as it is drawn at rest:
+`length` and `angle` are between `drawnStart` and `drawnEnd`, and
+`withLength`, `withAngle`, `level` and `plumb` keep where its start is drawn,
+so Level makes a turned line level on the page.
 A bowed line's or a path's corner handles resize its box. A handle drawn on
 the box's edge is pressed before the inside of the box, whose press takes
 hold of a stroke to move it. A path shows its points, not its box.

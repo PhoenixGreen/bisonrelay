@@ -61,7 +61,16 @@ Widget shapePanel(BuildContext context, CanvasController controller,
   (`flex`) or a fixed `width`, and says the least it can be drawn at
   (`min`). Too narrow for all of them, the row stacks.
 
-`shape_settings.dart` is a complete panel of ordinary size to copy from.
+`shape_settings.dart` is a complete panel of ordinary size to copy from:
+its sections' bits are named pieces (`_kindBit`, `_lookBit`, `_wordsBit`,
+`_bubbleBit`), each handed the element and how to write it.
+
+A control in the quick strip is the twin of one in a section. Build the two
+with one function that is told which it is (`quick:`), so their range, what
+they offer and what they write cannot part: the shape's `_outlineWidth`,
+and a stroke's controls in `stroke_controls.dart`. Take every range from
+the model (`StrokeRange`, `SpeechBubbleSpec.maxTailLength`), never a number
+written in the panel.
 
 Seven kinds still hand the frame whole sections of their own (a team, a 3D
 character, a sprite, a tile map, a camera, a 3D object, a background). Those
@@ -155,6 +164,7 @@ Do not build any of this again for an element:
 | `box_group.dart` | `boxGroup`, and the side and corner fields it is made of | a text's box, a counter's two, a button, a chart's card, audio, video, a picture's frame, sheet music, a Layout's cells |
 | `fill_controls.dart` | `fillBits`: a picture or a pattern as a fill | a text's letters, a box, a shape |
 | `type_parts.dart` | how words are set, a control at a time, and `typeGroups` | wherever words are drawn |
+| `stroke_controls.dart` | a stroke's colour, width, cap, ends and dash, each built once, writing through `withStroke`; `fadedColour` and `widthField` | a line, a path, a shape's outline |
 
 A control only one panel uses lives with that panel: a text's cutting
 pieces and the easing dropdown are in `text_settings_parts.dart`.
@@ -219,6 +229,13 @@ line of controls.
   sizes. A new kind is covered without being told.
 - `test/support/canvas_panel_helpers.dart` has `openSection`, `typeNumber`
   and `typeInto` for tests of a panel's own.
+- `test/canvas_shape_line_path_panels_test.dart` presses or sets every
+  control of a shape's, a line's and a path's panels in the real sidebar,
+  one row of a table each, and holds each to changing what it says in one
+  undo step: the pattern for a panel's every control.
+- `test/canvas_panel_keys_test.dart` keeps every key and word each panel
+  shows, so a change to how a panel is built can be shown to change nothing
+  else.
 - A model test does not see a dead control or a row that wraps. Pump the
   real panel at a known width and measure
   (`test/canvas_control_wrap_test.dart` is the pattern), and check that the
