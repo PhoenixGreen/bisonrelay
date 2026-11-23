@@ -25,7 +25,7 @@ import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/counter_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/marker_note.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

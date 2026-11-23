@@ -91,7 +91,7 @@ void main() {
       // words further along, so they have to be counted from its own first
       // word. Left as they were, a chain showed the headings and the bold of
       // the first box only and the rest arrived as plain words.
-      var (text, parts) = readDocument(
+      var (:text, :parts) = readDocument(
           "# A heading here\n\nSome words and **bold ones** after them, "
           "with more words to push the rest into the second box entirely.",
           markdown: true);
@@ -111,7 +111,7 @@ void main() {
       var bold =
           second.parts.firstWhere((p) => p.weight == 700 && p.scale == null);
       var range = rangeOf(second.text, bold)!;
-      expect(second.text.substring(range.$1, range.$2), contains("bold"));
+      expect(second.text.substring(range.start, range.end), contains("bold"));
 
       // And what the first box drew is the head's own list, unmoved.
       expect(flowFor(a, doc, const Rect.fromLTWH(0, 0, 300, 22), spec).parts,

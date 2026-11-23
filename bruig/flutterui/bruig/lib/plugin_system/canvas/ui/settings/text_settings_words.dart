@@ -4,23 +4,19 @@ part of 'text_settings.dart';
 // named text styles, and how each markdown piece is drawn. Part of
 // text_settings.dart.
 
-/// textWordsCard is where the words come from and how they sit in the box
-/// (fitted, from a document, round overlaps), under Position.
-Widget textWordsCard(
+/// _textWordsCard is where the words come from and how they sit in the box
+/// (fitted, a field the page fills in, from a document, round overlaps),
+/// in Content under the words typed there.
+Widget _textWordsCard(
     BuildContext context,
     CanvasController controller,
     TextElement e,
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  void now(TextElement next) {
-    begin();
-    write(next);
-    commit();
-  }
+  var w = _TextWrites(e, write, begin, commit);
 
-  // Three switches, each with what it needs below. No Content field: words
-  // are typed on the canvas (see CanvasTextEditor).
+  // Each switch with what it needs below it.
   return CanvasControlGroup(
       key: const ValueKey("textWords"),
       label: "Words",
@@ -35,7 +31,7 @@ Widget textWordsCard(
         CanvasToggle(
           label: "Fit to box",
           value: e.autoSize,
-          onChanged: (v) => now(e.copyWith(autoSize: v)),
+          onChanged: (v) => w.now(e.copyWith(autoSize: v)),
         ),
         // A field the page fills in (text_fields.dart), put at the end of
         // the words of the layer picked: its Name typed over on the canvas.
@@ -56,7 +52,7 @@ Widget textWordsCard(
                       ? "$words${kind.written}"
                       : "$words ${kind.written}";
               var piece = controller.textLayer(e);
-              now(piece == null || piece.isIcon
+              w.now(piece == null || piece.isIcon
                   ? e.copyWith(text: joined(e.text))
                   : e.copyWith(items: [
                       for (var it in e.items)
@@ -74,7 +70,7 @@ Widget textWordsCard(
             key: const ValueKey("textOwnWordsHere"),
             label: "Own words here",
             value: e.base.ownText,
-            onChanged: (v) => now(e.withBase(ownText: v) as TextElement),
+            onChanged: (v) => w.now(e.withBase(ownText: v) as TextElement),
           ),
         // Words from the Writing library, not typed. Not on a box being
         // flowed into, whose words belong to the box before it.
@@ -87,7 +83,7 @@ Widget textWordsCard(
               if (!v) {
                 // Back to what was typed before the document took over, or the
                 // switch would be off with the document's words still showing.
-                now(e.copyWith(
+                w.now(e.copyWith(
                     text: e.document.wasText.isEmpty
                         ? e.text
                         : e.document.wasText,
@@ -98,7 +94,7 @@ Widget textWordsCard(
               var picked = await pickLibraryDocument(context);
               var fresh = freshOf(controller, e);
               if (picked == null || fresh == null) return;
-              now(fresh.copyWith(
+              w.now(fresh.copyWith(
                   document: picked.copyWith(wasText: fresh.text),
                   documentParts: const []));
               await refreshTextDocuments(controller);
@@ -115,7 +111,7 @@ Widget textWordsCard(
               if (picked == null || fresh == null) return;
               // The remembered words are the element's own, not the last
               // document's, so changing the document leaves them alone.
-              now(fresh.copyWith(
+              w.now(fresh.copyWith(
                   document: fresh.document
                       .copyWith(folder: picked.folder, name: picked.name),
                   documentParts: const []));
@@ -128,7 +124,7 @@ Widget textWordsCard(
             label: "Markdown",
             value: e.document.markdown,
             onChanged: (v) async {
-              now(e.copyWith(document: e.document.copyWith(markdown: v)));
+              w.now(e.copyWith(document: e.document.copyWith(markdown: v)));
               await refreshTextDocuments(controller);
             },
           ),
@@ -147,7 +143,7 @@ Widget textWordsCard(
           key: const ValueKey("textWrap"),
           label: "Wrap text",
           value: e.wrap.on,
-          onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
+          onChanged: (v) => w.now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
         ),
         if (e.wrap.on) ...[
           const CanvasLineBreak(),
@@ -170,7 +166,7 @@ Widget textWordsCard(
             value: e.wrap.side,
             width: 132,
             options: [for (var s in WrapSide.values) (s, s.label)],
-            onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
+            onChanged: (v) => w.now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
           ),
           const CanvasHint(
               "The words are set line by line around every visible "
@@ -184,9 +180,9 @@ Widget textWordsCard(
       ]);
 }
 
-/// textStyleCard is the document's named text styles for [e]: apply, make
+/// _textStyleCard is the document's named text styles for [e]: apply, make
 /// or change one. Under Presets, the other reuse of a look.
-Widget textStyleCard(CanvasController controller, TextElement e) {
+Widget _textStyleCard(CanvasController controller, TextElement e) {
   var styles = controller.textStyles;
   var styled = styles.any((t) => t.name == e.style);
   return CanvasControlGroup(
@@ -194,7 +190,7 @@ Widget textStyleCard(CanvasController controller, TextElement e) {
     label: "Text style",
     help: "The document's named styles. Set this text in one, make "
         "its type a new one, or change the one it is in -- which "
-        "changes every text set in it.",
+        "changes every text set in it whose type was not changed by hand.",
     rule: false,
     children: [
       if (styles.isNotEmpty)
@@ -221,7 +217,7 @@ Widget textStyleCard(CanvasController controller, TextElement e) {
           key: const ValueKey("textStyleUpdate"),
           icon: Icons.sync,
           tooltip: "Change the style to this text's type -- every text in "
-              "\"${e.style}\" changes with it",
+              "\"${e.style}\" not changed by hand changes with it",
           onPressed: () => controller.updateTextStyle(e.style, e.textSpec),
         ),
         CanvasTextField(
@@ -356,7 +352,7 @@ Widget _markdownSection(CanvasController controller, TextElement e,
               width: 132,
               options: [
                 ("", "Same as the text"),
-                for (var f in canvasFonts) (f, f),
+                ...fontOptions(allow.lookFor(kind).family ?? ""),
               ],
               onChanged: (v) => set(
                   kind,

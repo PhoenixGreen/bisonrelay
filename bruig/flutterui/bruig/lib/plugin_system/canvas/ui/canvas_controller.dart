@@ -98,7 +98,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
+import 'package:bruig/plugin_system/canvas/storage/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/fretting.dart' show FretPlace, placesAt;
 import 'package:bruig/plugin_system/canvas/model/instances.dart' show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
@@ -143,7 +143,7 @@ import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart' show MetronomeShow, metronomeShowOf;
-import 'package:bruig/plugin_system/canvas/render/motion_document.dart' show cameraFraming, designedNow, cameraHalfExtents, cameraLookAt, LiveMotion, MotionPreview, PointerLive, cameraOf, facesPointer, isStageScene, motionSoundPeaks, placedPlaying, poseWithMotion, sceneFraming, settledFrameOf;
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart' show cameraFraming, designedNow, cameraHalfExtents, cameraLookAt, LiveMotion, MotionPreview, MovedElement, PointerLive, cameraOf, facesPointer, isStageScene, motionSoundPeaks, placedPlaying, poseWithMotion, sceneFraming, settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -1258,6 +1258,10 @@ class CanvasController extends ChangeNotifier {
   /// _layouts is the cell picked in each Layout (layouts.dart): made anew
   /// for another canvas, as _playTasks is.
   _LayoutState _layouts = _LayoutState();
+
+  /// _texts is the piece picked in each text (text_styles.dart): made anew
+  /// for another canvas, as _layouts is.
+  _TextState _texts = _TextState();
   final Set<String> _codeTaskBusy = {};
 
   /// codeRunHost runs code for Run panels: set by the app (the browser and

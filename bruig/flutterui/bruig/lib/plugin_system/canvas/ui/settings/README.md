@@ -66,8 +66,9 @@ Widget shapePanel(BuildContext context, CanvasController controller,
 Seven kinds still hand the frame whole sections of their own (a team, a 3D
 character, a sprite, a tile map, a camera, a 3D object, a background). Those
 are placed by name through `_placed` in `ui/element_settings.dart`. New
-panels use `PanelBit`s. Text and pictures build the same frame by hand
-(`text_settings.dart`, `image_sections.dart`) because theirs carry more.
+panels use `PanelBit`s. Text builds the same frame by hand
+(`text_settings.dart`) because its panel carries more; pictures go through
+`elementPanel` (`image_sections.dart`).
 
 ## Changing the element
 

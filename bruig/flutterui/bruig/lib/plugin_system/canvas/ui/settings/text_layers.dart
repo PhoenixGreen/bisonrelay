@@ -105,7 +105,7 @@ class _TextLayersListState extends State<TextLayersList> {
   }
 
   void _add(_TextAdd what) {
-    var slot = freeTextSlot(e);
+    var slot = _freeTextSlot(e);
     var item = what == _TextAdd.text
         ? TextItem.fresh(slot, e.textSpec)
         : TextItem.freshIcon(slot);
@@ -280,8 +280,7 @@ class _TextLayersListState extends State<TextLayersList> {
           overflow: TextOverflow.clip,
           style: TextStyle(
             fontFamily: spec.fontFamily,
-            fontWeight: FontWeight
-                .values[((spec.weight / 100).round() - 1).clamp(0, 8).toInt()],
+            fontWeight: spec.fontWeight,
             fontStyle: spec.italic ? FontStyle.italic : FontStyle.normal,
             fontSize: h * 0.5,
             height: 1,
@@ -560,9 +559,9 @@ class _TextLayersListState extends State<TextLayersList> {
   }
 }
 
-/// freeTextSlot is where [e]'s next piece goes: the first empty slot, so
+/// _freeTextSlot is where [e]'s next piece goes: the first empty slot, so
 /// two pieces added in turn do not land on each other.
-TextSlot freeTextSlot(TextElement e) {
+TextSlot _freeTextSlot(TextElement e) {
   var taken = {for (var item in e.items) item.slot};
   for (var slot in const [
     TextSlot.topLeft,

@@ -642,6 +642,54 @@ extension CanvasKeyframes on CanvasController {
     }
     writeTargetTrack(next);
   }
+
+  /// staggerArrivals has elements [ids] arrive [gap] frames apart, left to
+  /// right or, [downwards], top to bottom. The first keeps its timing; the
+  /// rest have their keyframes shifted to start [gap] after the one before.
+  void staggerArrivals(List<String> ids, int gap, {bool downwards = false}) {
+    var rate = math.max(1, _document.frameRate);
+    // Its arrival's start; or, with none, its first keyframe or clip.
+    int? arrivalOf(CanvasElement e) {
+      if (ownSpan(e, MotionKind.arrive, rate) case (var at, _)) return at;
+      var keys = e.base.track?.keys ?? const <Keyframe>[];
+      if (keys.isNotEmpty) return keys.first.frame;
+      var placed = e.base.motion.placed;
+      if (placed.isEmpty) return null;
+      return (placed.map((p) => p.start).reduce(math.min) * rate).round();
+    }
+
+    var picked = [
+      for (var id in ids)
+        if (_document.elementById(id) case var e? when arrivalOf(e) != null) e,
+    ];
+    if (picked.length < 2) return;
+    picked.sort((a, b) => downwards
+        ? a.base.y.compareTo(b.base.y)
+        : a.base.x.compareTo(b.base.x));
+
+    var first = arrivalOf(picked.first)!;
+    var next = _document;
+    for (var (i, e) in picked.indexed) {
+      var by = first + i * gap - arrivalOf(e)!;
+      if (by == 0) continue;
+      // Keyframes and clips alike: whatever it does moves with it.
+      var track = e.base.track;
+      next = next.withElement(e.withBase(
+          track: track == null || track.isEmpty ? track : _shifted(track, by),
+          motion: e.base.motion.shiftedBy(by / rate)));
+    }
+    apply(next);
+  }
+
+  /// _runStartOf is where [id]'s frames count from: its scene's start, or 0.
+  int _runStartOf(String id) {
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (scene.elements.any((e) => e.id == id)) {
+        return _document.hasScenes ? _document.startOfScene(i) : 0;
+      }
+    }
+    return 0;
+  }
 }
 
 /// exitHoldSeconds is how long something is up between its arrival and a

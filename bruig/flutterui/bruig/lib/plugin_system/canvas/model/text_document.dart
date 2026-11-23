@@ -241,8 +241,8 @@ class TextDocumentRef {
 
   factory TextDocumentRef.fromJson(Map<String, dynamic> json) =>
       TextDocumentRef(
-        folder: jsonString(json["folder"], _defaults.folder),
-        name: jsonString(json["name"], _defaults.name),
+        folder: jsonLabel(json["folder"], _defaults.folder),
+        name: jsonLabel(json["name"], _defaults.name),
         markdown: jsonBool(json["markdown"], false),
         allow: json["allow"] is Map<String, dynamic>
             ? MarkdownAllow.fromJson(json["allow"] as Map<String, dynamic>)
@@ -251,11 +251,16 @@ class TextDocumentRef {
       );
 }
 
+/// _listMark is a list item's bullet or number, and _link a link, as
+/// readDocument reads them: made once, not for every line or letter.
+final _listMark = RegExp(r"^\s*([-*+]|\d+\.)\s+");
+final _link = RegExp(r"\[([^\]]*)\]\(([^)]*)\)");
+
 /// readDocument turns markdown into the words a text draws and the parts
 /// that style them. A small subset: two heading levels, bold, italic,
 /// underline and links. Quotes and lists keep their words; code fence lines
 /// are dropped. [markdown] off strips every mark and returns no parts.
-(String, List<TextPart>) readDocument(String raw,
+({String text, List<TextPart> parts}) readDocument(String raw,
     {bool markdown = false, MarkdownAllow allow = const MarkdownAllow()}) {
   var out = StringBuffer();
   var parts = <TextPart>[];
@@ -266,7 +271,7 @@ class TextDocumentRef {
 
   void write(String s) {
     for (var i = 0; i < s.length; i++) {
-      var space = s[i].trim().isEmpty;
+      var space = isWordSpace(s[i]);
       if (!space && !inWord) words++;
       inWord = !space;
       out.write(s[i]);
@@ -297,8 +302,8 @@ class TextDocumentRef {
       text = text.substring(2);
     } else if (text.startsWith(">")) {
       text = text.substring(1).trimLeft();
-    } else if (RegExp(r"^\s*([-*+]|\d+\.)\s+").hasMatch(text)) {
-      text = text.replaceFirst(RegExp(r"^\s*([-*+]|\d+\.)\s+"), "");
+    } else if (_listMark.hasMatch(text)) {
+      text = text.replaceFirst(_listMark, "");
     } else if (text.trim().startsWith("```")) {
       continue;
     }
@@ -319,9 +324,7 @@ class TextDocumentRef {
     }
 
     while (i < text.length) {
-      var rest = text.substring(i);
-
-      var link = RegExp(r"^\[([^\]]*)\]\(([^)]*)\)").firstMatch(rest);
+      var link = _link.matchAsPrefix(text, i);
       if (link != null) {
         flush();
         var shown = link.group(1) ?? "";
@@ -338,13 +341,15 @@ class TextDocumentRef {
         continue;
       }
 
-      (String, String)? paired(String mark) {
-        if (!rest.startsWith(mark)) return null;
-        var end = rest.indexOf(mark, mark.length);
+      // paired is the words between [mark] here and the next, and how many
+      // characters the pair takes; null where there is no closing mark.
+      ({String inner, int length})? paired(String mark) {
+        if (!text.startsWith(mark, i)) return null;
+        var end = text.indexOf(mark, i + mark.length);
         if (end < 0) return null;
         return (
-          rest.substring(mark.length, end),
-          rest.substring(0, end + mark.length)
+          inner: text.substring(i + mark.length, end),
+          length: end + mark.length - i
         );
       }
 
@@ -353,14 +358,14 @@ class TextDocumentRef {
         flush();
         if (markdown && allow.allows(MarkdownKind.bold)) {
           styled(
-              bold.$1,
+              bold.inner,
               (from, to) => allow
                   .lookFor(MarkdownKind.bold)
                   .partFor(MarkdownKind.bold, from, to));
         } else {
-          write(bold.$1);
+          write(bold.inner);
         }
-        i += bold.$2.length;
+        i += bold.length;
         continue;
       }
 
@@ -369,14 +374,14 @@ class TextDocumentRef {
         flush();
         if (markdown && allow.allows(MarkdownKind.underline)) {
           styled(
-              under.$1,
+              under.inner,
               (from, to) => allow
                   .lookFor(MarkdownKind.underline)
                   .partFor(MarkdownKind.underline, from, to));
         } else {
-          write(under.$1);
+          write(under.inner);
         }
-        i += under.$2.length;
+        i += under.length;
         continue;
       }
 
@@ -385,14 +390,14 @@ class TextDocumentRef {
         flush();
         if (markdown && allow.allows(MarkdownKind.italic)) {
           styled(
-              italic.$1,
+              italic.inner,
               (from, to) => allow
                   .lookFor(MarkdownKind.italic)
                   .partFor(MarkdownKind.italic, from, to));
         } else {
-          write(italic.$1);
+          write(italic.inner);
         }
-        i += italic.$2.length;
+        i += italic.length;
         continue;
       }
 
@@ -407,5 +412,5 @@ class TextDocumentRef {
     }
   }
 
-  return (out.toString(), parts);
+  return (text: out.toString(), parts: parts);
 }

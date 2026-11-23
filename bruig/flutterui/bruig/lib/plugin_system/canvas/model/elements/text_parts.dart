@@ -135,11 +135,11 @@ class PartHighlight {
             ? GradientSpec.fromJson(
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
-        padLeft: jsonDouble(json["l"], _defaults.padLeft),
-        padTop: jsonDouble(json["t"], _defaults.padTop),
-        padRight: jsonDouble(json["r"], _defaults.padRight),
-        padBottom: jsonDouble(json["b"], _defaults.padBottom),
-        radius: jsonDouble(json["radius"], _defaults.radius),
+        padLeft: jsonLength(json["l"], _defaults.padLeft, signed: true),
+        padTop: jsonLength(json["t"], _defaults.padTop, signed: true),
+        padRight: jsonLength(json["r"], _defaults.padRight, signed: true),
+        padBottom: jsonLength(json["b"], _defaults.padBottom, signed: true),
+        radius: jsonLength(json["radius"], _defaults.radius),
       );
 }
 
@@ -217,9 +217,10 @@ class PartUnderline {
             ? GradientSpec.fromJson(
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
-        width: jsonDouble(json["width"], _defaults.width).clamp(0.1, 80),
+        width: jsonDouble(json["width"], _defaults.width)
+            .clamp(0.1, maxDesignLength),
         style: PartLineStyle.fromName(jsonStr(json["style"])),
-        away: jsonDouble(json["away"], _defaults.away),
+        away: jsonLength(json["away"], _defaults.away, signed: true),
       );
 }
 
@@ -393,16 +394,32 @@ List<TextPart> partsFrom(List<TextPart> parts, int words) {
   return out;
 }
 
-int wordsIn(String text) {
-  var words = 0;
-  var inWord = false;
-  for (var i = 0; i < text.length; i++) {
-    var space = text[i].trim().isEmpty;
-    if (!space && !inWord) words++;
-    inWord = !space;
+/// isWordSpace is whether [c], one character, comes between words:
+/// whitespace, as String.trim sees it. Parts count words by it, so whatever
+/// cuts a text into words (an arrival, a line, a chain of boxes, a
+/// document's runs) goes by it too, or a part and an arrival would mean
+/// different words by "the third".
+bool isWordSpace(String c) => c.trim().isEmpty;
+
+/// wordRanges is where each word of [text] starts and ends.
+List<({int start, int end})> wordRanges(String text) {
+  var out = <({int start, int end})>[];
+  var i = 0;
+  while (i < text.length) {
+    while (i < text.length && isWordSpace(text[i])) {
+      i++;
+    }
+    var start = i;
+    while (i < text.length && !isWordSpace(text[i])) {
+      i++;
+    }
+    if (i > start) out.add((start: start, end: i));
   }
-  return words;
+  return out;
 }
+
+/// wordsIn is how many words [text] has.
+int wordsIn(String text) => wordRanges(text).length;
 
 /// partsAnimate is whether any of [parts] has its own arrival or drawn-on
 /// mark: the paragraph must then go through the animator even after the
@@ -547,12 +564,13 @@ class TextPart {
         animation: animation ?? this.animation,
       );
 
-  /// scaledBy sizes the part's outline and marks by [by]; its own size is a
-  /// share of the element's, which scales already.
+  /// scaledBy sizes the part's outline and marks, drawn ones too, by [by];
+  /// its own size is a share of the element's, which scales already.
   TextPart scaledBy(double by) => copyWith(
         outlineWidth: outlineWidth == null ? null : outlineWidth! * by,
         highlight: highlight?.scaledBy(by),
         underline: underline?.scaledBy(by),
+        animation: animation.copyWith(draw: animation.draw.scaledBy(by)),
       );
 
   /// mapColours maps the part's own colour and outline colour (none is the
@@ -585,7 +603,6 @@ class TextPart {
         if (italic != null) "italic": italic,
         if (scale != null) "scale": scale,
         if (family != null) "family": family,
-        if (scale != null) "scale": scale,
         if (outlineWidth != null) "outlineWidth": outlineWidth,
         if (outlineColor != null) "outlineColor": colorToJson(outlineColor!),
         if (highlight != null) "highlight": highlight!.toJson(),
@@ -600,14 +617,16 @@ class TextPart {
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
-        weight: json["weight"] is num ? (json["weight"] as num).toInt() : null,
+        weight: json["weight"] is num
+            ? jsonInt(json["weight"], 400).clamp(1, 1000)
+            : null,
         italic: json["italic"] is bool ? json["italic"] as bool : null,
         scale: json["scale"] is num
             ? (json["scale"] as num).toDouble().clamp(0.05, 20.0)
             : null,
-        family: jsonStr(json["family"]),
+        family: json["family"] is String ? jsonLabel(json["family"], "") : null,
         outlineWidth: json["outlineWidth"] is num
-            ? (json["outlineWidth"] as num).toDouble().clamp(0.0, 80.0)
+            ? jsonLength(json["outlineWidth"], 0)
             : null,
         outlineColor: json["outlineColor"] == null
             ? null
@@ -625,43 +644,32 @@ class TextPart {
       );
 }
 
-/// rangeOf is the characters a part covers in [text], as start and end
-/// offsets. Null where the part starts past the end, rather than clamping
-/// it onto the wrong words.
-(int, int)? rangeOf(String text, TextPart part) {
+/// rangeOf is the characters a part covers in [text], from [start] up to
+/// [end]. Null where the part starts past the end, rather than clamping it
+/// onto the wrong words.
+({int start, int end})? rangeOf(String text, TextPart part) {
   if (text.isEmpty || part.from < 1) return null;
 
   if (part.unit == TextUnit.characters) {
     // Letters skip whitespace: the third letter is the third visible one.
     var at = <int>[];
     for (var i = 0; i < text.length; i++) {
-      if (text[i].trim().isNotEmpty) at.add(i);
+      if (!isWordSpace(text[i])) at.add(i);
     }
     if (at.length < part.from) return null;
     var last = part.toTheEnd ? at.length : part.to;
     if (last < part.from) return null;
     var end = at[(last.clamp(part.from, at.length)) - 1] + 1;
-    return (at[part.from - 1], end);
+    return (start: at[part.from - 1], end: end);
   }
 
-  var words = <(int, int)>[];
-  var i = 0;
-  while (i < text.length) {
-    while (i < text.length && text[i].trim().isEmpty) {
-      i++;
-    }
-    var start = i;
-    while (i < text.length && text[i].trim().isNotEmpty) {
-      i++;
-    }
-    if (i > start) words.add((start, i));
-  }
+  var words = wordRanges(text);
   if (words.length < part.from) return null;
   var last = part.toTheEnd ? words.length : part.to;
   if (last < part.from) return null;
   return (
-    words[part.from - 1].$1,
-    words[last.clamp(part.from, words.length) - 1].$2
+    start: words[part.from - 1].start,
+    end: words[last.clamp(part.from, words.length) - 1].end
   );
 }
 
@@ -671,7 +679,7 @@ TextPart? partAt(String text, List<TextPart> parts, int index) {
   for (var part in parts) {
     var range = rangeOf(text, part);
     if (range == null) continue;
-    if (index >= range.$1 && index < range.$2) found = part;
+    if (index >= range.start && index < range.end) found = part;
   }
   return found;
 }
@@ -695,7 +703,7 @@ class TextIcon {
   final PartUnderline? underline;
 
   /// turn is how far the picture is turned about its middle, in degrees
-  /// clockwise; its room in the line or the slot stays square and upright.
+  /// clockwise; its room in the slot stays square and upright.
   final double turn;
 
   const TextIcon({
@@ -774,8 +782,7 @@ class TextIcon {
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
-        outlineWidth:
-            jsonDouble(json["ow"], _defaults.outlineWidth).clamp(0, 200),
+        outlineWidth: jsonLength(json["ow"], _defaults.outlineWidth),
         outlineColor: colorFromJson(json["oc"], _defaults.outlineColor),
         box: json["box"] is Map<String, dynamic>
             ? BoxSpec.fromJson(json["box"] as Map<String, dynamic>)

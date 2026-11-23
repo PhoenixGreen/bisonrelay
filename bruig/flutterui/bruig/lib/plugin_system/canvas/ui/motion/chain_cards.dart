@@ -196,7 +196,7 @@ class LookCard extends StatelessWidget {
     var t = c.playheadSeconds;
     var spans = c.phaseSpansFor(e.id);
     var layers = e is TextElement ? textLayerChoices(e) : null;
-    var on = layers?.where((l) => l.$1 == d.layer).firstOrNull?.$2;
+    var on = layers?.where((l) => l.layer == d.layer).firstOrNull?.name;
     void write(MotionDevice next) {
       c.beginInteraction();
       c.setMotionDevices(e.id,
@@ -250,9 +250,9 @@ class LookCard extends StatelessWidget {
             StudioDrop<String>(
               key: ValueKey("mdevLayer-${d.id}"),
               label: "On",
-              value: layers.any((l) => l.$1 == d.layer) ? d.layer : "",
+              value: layers.any((l) => l.layer == d.layer) ? d.layer : "",
               width: double.infinity,
-              options: layers,
+              options: [for (var l in layers) (l.layer, l.name)],
               onChanged: (v) => write(d.withLayer(v)),
             ),
         ];

@@ -114,11 +114,14 @@ void main() {
         var root = written(element);
         var long = "x" * 2000000;
         var many = List<String>.filled(400000, "abcd");
+        // A list of maps as well: a reader that keeps only the entries that
+        // are maps lets a list of strings through for nothing.
+        var manyMaps = List<Map<String, dynamic>>.filled(400000, {});
         var failures = <String>[];
         for (var map in maps(root)) {
           for (var key in map.keys.toList()) {
             var was = map[key];
-            for (var big in <Object>[long, many]) {
+            for (var big in <Object>[long, many, manyMaps]) {
               map[key] = big;
               try {
                 var size = jsonEncode(elementFromJson(root).toJson()).length;

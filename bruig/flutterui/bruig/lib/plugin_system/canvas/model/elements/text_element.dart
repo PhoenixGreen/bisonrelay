@@ -57,7 +57,7 @@ class TextWrap {
 
   factory TextWrap.fromJson(Map<String, dynamic> json) => TextWrap(
         on: jsonBool(json["on"], false),
-        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0, 400),
+        gap: jsonLength(json["gap"], _defaults.gap),
         side: WrapSide.fromName(jsonStr(json["side"])),
       );
 }
@@ -152,7 +152,7 @@ class TextColumns {
   factory TextColumns.fromJson(Map<String, dynamic> json) => TextColumns(
         noBlankStart: jsonBool(json["noBlankStart"], true),
         count: jsonInt(json["count"], _defaults.count).clamp(1, 12),
-        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, 400.0),
+        gap: jsonLength(json["gap"], _defaults.gap),
         ruleStyle: ColumnRuleStyle.fromName(jsonString(json["ruleStyle"], "")),
         ruleWidth:
             jsonDouble(json["ruleWidth"], _defaults.ruleWidth).clamp(0.0, 40.0),
@@ -225,14 +225,20 @@ class TextOnCurve {
       };
 
   factory TextOnCurve.fromJson(Map<String, dynamic> json) => TextOnCurve(
-        elementId: jsonString(json["id"], ""),
-        offset: jsonDouble(json["offset"], _defaults.offset),
+        elementId: jsonId(json["id"], ""),
+        // A share of the line: the panel slides two lines' length each way.
+        offset: jsonDouble(json["offset"], _defaults.offset).clamp(-100, 100),
         away: jsonBool(json["away"], false),
-        spacing: jsonDouble(json["spacing"], _defaults.spacing),
+        spacing: jsonLength(json["spacing"], _defaults.spacing, signed: true),
         hideHost: jsonBool(json["hideHost"], false),
         mask: jsonBool(json["mask"], false),
       );
 }
+
+/// maxTextPieces and maxTextParts are the most pieces and parts a text is
+/// read with: far more than anyone adds by hand, while a received text's
+/// million would each be laid out on every frame.
+const maxTextPieces = 1000, maxTextParts = 10000;
 
 /// TextElement is a paragraph in a box. The letters' look is in [textSpec]
 /// and the box in [box]; a new type control belongs in TextSpec.
@@ -280,7 +286,8 @@ class TextElement extends CanvasElement {
   final TextWrap wrap;
 
   /// style names the document's text style this is set in, or "" for its
-  /// own (see CanvasDocument.textStyles); changing the style restyles all.
+  /// own (see CanvasDocument.textStyles). Changing the style restyles it
+  /// while its type is still the style's (CanvasController.updateTextStyle).
   final String style;
 
   /// curve attaches the text to a line, or is null for its own box.
@@ -329,6 +336,18 @@ class TextElement extends CanvasElement {
         ...box.assetIds,
       };
 
+  /// handlesPiece is whether piece [item] is handled on the canvas by a box
+  /// of its own, moved by the arrows and dragged: a picture chosen, shown
+  /// and unlocked, in an unlocked text in its own box (on a line, pieces are
+  /// not drawn).
+  bool handlesPiece(TextItem item) =>
+      !locked &&
+      curve == null &&
+      item.isIcon &&
+      item.icon!.on &&
+      !item.hidden &&
+      !item.locked;
+
   /// drawnParts are the parts the painter works from: the element's own marks
   /// as a part over every word, then the parts. Marks first, so a part's
   /// highlight draws over them and a part still decides its words' look.
@@ -351,7 +370,8 @@ class TextElement extends CanvasElement {
   @override
   bool get scalesInside => true;
 
-  /// scaledBy scales the words, pieces, box, marks and gaps by [by], but not
+  /// scaledBy scales the words, pieces, box, marks (drawn ones too) and gaps
+  /// by [by], but not
   /// a curve's offset (a fraction of the line) or the column count.
   @override
   CanvasElement scaledBy(double by) => copyWith(
@@ -365,6 +385,7 @@ class TextElement extends CanvasElement {
         documentParts: [for (var part in documentParts) part.scaledBy(by)],
         wrap: wrap.copyWith(gap: wrap.gap * by),
         curve: curve?.copyWith(spacing: curve!.spacing * by),
+        animation: animation.copyWith(draw: animation.draw.scaledBy(by)),
       );
 
   @override
@@ -473,7 +494,7 @@ class TextElement extends CanvasElement {
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
         if (flowTo.isNotEmpty) "flowTo": flowTo,
-        if (wrap.toJson().isNotEmpty) "wrap": wrap.toJson(),
+        if (wrap.toJson() case var w when w.isNotEmpty) "wrap": w,
         if (style.isNotEmpty) "style": style,
         if (document.on) "document": document.toJson(),
         if (documentParts.isNotEmpty)
@@ -481,65 +502,40 @@ class TextElement extends CanvasElement {
         if (curve != null) "curve": curve!.toJson(),
       };
 
-  factory TextElement.fromJson(Map<String, dynamic> json,
-          ElementBase b) =>
-      TextElement(b,
-          text: jsonString(json["text"], _defaults.text),
-          textSpec: jsonSpec(json["textSpec"], TextSpec.fromJson,
-              _defaults.textSpec),
-          box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
-          autoSize: jsonBool(json["autoSize"], false),
-          animation:
-              jsonSpec(json["animation"], TextAnimation.fromJson,
-                  _defaults.animation),
-          slot:
-              json[
-                      "slot"] is String
-                  ? TextSlot.fromName(jsonStr(json["slot"]))
-                  : null,
-          items: [
-            if (json["items"] case List raw)
-              for (var i in raw)
-                if (i is Map<String, dynamic>) TextItem.fromJson(i),
-          ],
-          parts: [
-            if (json["parts"] case List raw)
-              for (var p in raw)
-                if (p is Map<String, dynamic>) TextPart.fromJson(p),
-          ],
-          highlight:
-              json["highlight"] is Map<String,
-                      dynamic>
-                  ? PartHighlight.fromJson(json["highlight"] as Map<String,
-                      dynamic>)
-                  : null,
-          underline:
-              json["underline"] is Map<String,
-                      dynamic>
-                  ? PartUnderline.fromJson(json["underline"] as Map<String,
-                      dynamic>)
-                  : null,
-          document:
-              json["document"] is Map<String,
-                      dynamic>
-                  ? TextDocumentRef.fromJson(json["document"] as Map<String,
-                      dynamic>)
-                  : const TextDocumentRef(),
-          documentParts: [
-            if (json["documentParts"] case List raw)
-              for (var p in raw)
-                if (p is Map<String, dynamic>) TextPart.fromJson(p),
-          ],
-          flowTo: jsonString(json["flowTo"], _defaults.flowTo),
-          style: jsonString(json["style"], _defaults.style),
-          wrap:
-              json["wrap"]
-                      is Map<String, dynamic>
-                  ? TextWrap.fromJson(json["wrap"] as Map<String, dynamic>)
-                  : const TextWrap(),
-          columns: jsonSpec(
-              json["columns"], TextColumns.fromJson, _defaults.columns),
-          curve: json["curve"] is Map<String, dynamic>
-              ? TextOnCurve.fromJson(json["curve"] as Map<String, dynamic>)
-              : null);
+  factory TextElement.fromJson(Map<String, dynamic> json, ElementBase b) {
+    PartHighlight? highlight =
+        jsonSpec(json["highlight"], PartHighlight.fromJson, null);
+    PartUnderline? underline =
+        jsonSpec(json["underline"], PartUnderline.fromJson, null);
+    TextOnCurve? curve = jsonSpec(json["curve"], TextOnCurve.fromJson, null);
+    return TextElement(b,
+        text: jsonString(json["text"], _defaults.text),
+        textSpec:
+            jsonSpec(json["textSpec"], TextSpec.fromJson, _defaults.textSpec),
+        box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),
+        autoSize: jsonBool(json["autoSize"], false),
+        animation: jsonSpec(
+            json["animation"], TextAnimation.fromJson, _defaults.animation),
+        slot: json["slot"] is String
+            ? TextSlot.fromName(jsonStr(json["slot"]))
+            : null,
+        items:
+            jsonObjects(json["items"], TextItem.fromJson, most: maxTextPieces),
+        parts:
+            jsonObjects(json["parts"], TextPart.fromJson, most: maxTextParts),
+        highlight: highlight,
+        underline: underline,
+        document: jsonSpec(
+            json["document"], TextDocumentRef.fromJson, _defaults.document),
+        // A document's runs: one for every ten of its letters is far more
+        // than the most marked-up writing has.
+        documentParts: jsonObjects(json["documentParts"], TextPart.fromJson,
+            most: maxTextLength ~/ 10),
+        flowTo: jsonId(json["flowTo"], _defaults.flowTo),
+        style: jsonString(json["style"], _defaults.style),
+        wrap: jsonSpec(json["wrap"], TextWrap.fromJson, _defaults.wrap),
+        columns:
+            jsonSpec(json["columns"], TextColumns.fromJson, _defaults.columns),
+        curve: curve);
+  }
 }

@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_cell_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/counter_input.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';

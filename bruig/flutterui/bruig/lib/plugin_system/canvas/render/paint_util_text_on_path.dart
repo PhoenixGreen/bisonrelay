@@ -98,7 +98,7 @@ int _animatedPartAt(String text, List<TextPart> parts, int index) {
     if (!part.animation.on) continue;
     var range = rangeOf(text, part);
     if (range == null) continue;
-    if (index >= range.$1 && index < range.$2) found = i;
+    if (index >= range.start && index < range.end) found = i;
   }
   return found;
 }
@@ -247,7 +247,7 @@ void paintTextOnPath(
       var word = -1;
       var inWord = false;
       for (var i in mine) {
-        var space = glyphs[i].glyph.trim().isEmpty;
+        var space = isWordSpace(glyphs[i].glyph);
         if (!space && !inWord) word++;
         inWord = !space;
         place[i] = math.max(0, word);
@@ -319,7 +319,7 @@ void paintTextOnPath(
           outlineOnly: outlineOnly, fillOnly: fillOnly);
     }
 
-    // Stroke-on: the outline is written letter after letter (applyMotion
+    // Stroke-on: the outline is written letter after letter (applyMotionSpec
     // leaves opacity alone). The letters are already there unless
     // TextDrawStart.fadeText brings them in with it.
     var strokeOn = anim != null && anim.preset.motion == TextMotion.strokeOn;
@@ -493,13 +493,15 @@ void _paintCurvePartMarks(
   for (var (n, part) in parts.indexed) {
     if ((behind ? part.highlight : part.underline) == null) continue;
     var range = rangeOf(text, part);
-    if (range == null || g.index < range.$1 || g.index >= range.$2) continue;
+    if (range == null || g.index < range.start || g.index >= range.end) {
+      continue;
+    }
     var drawn = n < timings.length ? timings[n].mark : 1.0;
-    if (g.index - range.$1 >= drawn * (range.$2 - range.$1)) continue;
+    if (g.index - range.start >= drawn * (range.end - range.start)) continue;
     var box = Rect.fromCenter(
         center: local.center, width: advance, height: local.height);
-    var first = g.index == range.$1;
-    var last = g.index + g.glyph.length >= range.$2;
+    var first = g.index == range.start;
+    var last = g.index + g.glyph.length >= range.end;
     _fadeInto(canvas, box, alpha, () {
       if (!behind) {
         _paintPartUnderline(

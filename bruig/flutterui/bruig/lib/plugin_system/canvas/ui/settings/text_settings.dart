@@ -44,12 +44,7 @@ Widget textPanel(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  void now(TextElement next) {
-    begin();
-    write(next);
-    commit();
-  }
-
+  var w = _TextWrites(e, write, begin, commit);
   var layer = controller.textLayer(e);
   var at = layer == null ? -1 : e.items.indexOf(layer);
   // At CanvasDense's measure.
@@ -60,7 +55,7 @@ Widget textPanel(
         key: const ValueKey("textLayersList"),
         controller: controller,
         element: e,
-        onChanged: now),
+        onChanged: w.now),
     quick: layer == null
         ? _bodyQuick(controller, e, write, begin, commit)
         : _pieceQuick(context, controller, e, at, layer, write, begin, commit),
@@ -69,6 +64,36 @@ Widget textPanel(
         : _pieceSections(
             context, controller, e, at, layer, write, begin, commit),
   ));
+}
+
+/// _TextWrites is how the text panel writes [e]: [now] as one undo step,
+/// [live] as one step of typing or a drag, kept until commit, and [piece]
+/// either way for one of its pieces.
+class _TextWrites {
+  final TextElement e;
+  final SettingsWrite write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+  const _TextWrites(this.e, this.write, this.begin, this.commit);
+
+  void now(TextElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  void live(TextElement next) {
+    begin();
+    write(next);
+  }
+
+  /// piece writes [next] in place of piece [at].
+  void piece(int at, TextItem next, {bool live = false}) {
+    var whole = e.copyWith(items: [
+      for (var (i, it) in e.items.indexed) i == at ? next : it,
+    ]);
+    live ? this.live(whole) : now(whole);
+  }
 }
 
 /// _bodyEdit changes the words' type: a size typed while fitted stops the
@@ -141,12 +166,7 @@ List<Widget> _bodySections(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  void now(TextElement next) {
-    begin();
-    write(next);
-    commit();
-  }
-
+  var w = _TextWrites(e, write, begin, commit);
   var t = _bodyEdit(e, write, begin, commit);
   var spec = e.textSpec;
   var words = e.displayText.replaceAll("\n", " ");
@@ -175,27 +195,14 @@ List<Widget> _bodySections(
                     value: e.text,
                     maxLines: 3,
                     width: 200,
-                    onChanged: (v) {
-                      begin();
-                      write(e.copyWith(text: v));
-                    },
+                    onChanged: (v) => w.live(e.copyWith(text: v)),
                     onCommit: commit,
                   ),
-                CanvasSegmented<TextCase>(
-                  key: const ValueKey("textCase"),
-                  label: "Case",
-                  value: spec.textCase,
-                  options: const [
-                    (TextCase.none, "As typed"),
-                    (TextCase.upper, "UPPER"),
-                    (TextCase.lower, "lower"),
-                    (TextCase.title, "Title"),
-                  ],
-                  keyOf: (c) => "textCase-${c.name}",
-                  onChanged: (v) => t.now(spec.copyWith(textCase: v)),
-                ),
+                typeCaseButtons(t,
+                    key: const ValueKey("textCase"),
+                    keyOf: (c) => "textCase-${c.name}"),
               ]),
-          textWordsCard(context, controller, e, write, begin, commit),
+          _textWordsCard(context, controller, e, write, begin, commit),
           CanvasControlGroup(
               key: const ValueKey("textWhere"),
               label: "In the box",
@@ -210,7 +217,7 @@ List<Widget> _bodySections(
                     ("", "Fills the box"),
                     for (var s in TextSlot.values) (s.name, s.label),
                   ],
-                  onChanged: (v) => now(v.isEmpty
+                  onChanged: (v) => w.now(v.isEmpty
                       ? e.copyWith(clearSlot: true)
                       : e.copyWith(slot: TextSlot.fromName(v))),
                 ),
@@ -223,25 +230,8 @@ List<Widget> _bodySections(
                 if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
                 // How the lines sit in the box: vertically, and justified
                 // across it (Align, in the strip above, is the rest).
-                panelRow([
-                  cell(CanvasDropdown<VerticalAlignSpec>(
-                    key: const ValueKey("typeVertical"),
-                    label: "Up and down",
-                    value: spec.verticalAlign,
-                    width: 80,
-                    options: [
-                      for (var a in VerticalAlignSpec.values) (a, a.label)
-                    ],
-                    onChanged: (v) => t.now(spec.copyWith(verticalAlign: v)),
-                  )),
-                ]),
-                CanvasToggle(
-                  key: const ValueKey("typeJustify"),
-                  label: "Justified",
-                  value: spec.align == TextAlignSpec.justify,
-                  onChanged: (v) => t.now(spec.copyWith(
-                      align: v ? TextAlignSpec.justify : TextAlignSpec.left)),
-                ),
+                panelRow([cell(typeVertical(t))]),
+                typeJustify(t),
               ]),
         ]),
     section(e, "look",
@@ -296,20 +286,14 @@ List<Widget> _bodySections(
                   underline: e.underline,
                   textColor: e.textSpec.color,
                   keyPrefix: "text",
-                  setHighlight: (h) => now(h == null
+                  setHighlight: (h) => w.now(h == null
                       ? e.copyWith(clearHighlight: true)
                       : e.copyWith(highlight: h)),
-                  setUnderline: (u) => now(u == null
+                  setUnderline: (u) => w.now(u == null
                       ? e.copyWith(clearUnderline: true)
                       : e.copyWith(underline: u)),
-                  liveHighlight: (h) {
-                    begin();
-                    write(e.copyWith(highlight: h));
-                  },
-                  liveUnderline: (u) {
-                    begin();
-                    write(e.copyWith(underline: u));
-                  },
+                  liveHighlight: (h) => w.live(e.copyWith(highlight: h)),
+                  liveUnderline: (u) => w.live(e.copyWith(underline: u)),
                   done: commit,
                 ),
               ]),
@@ -368,7 +352,7 @@ List<Widget> _bodySections(
                 key: const ValueKey("textColumnsNoBlankStart"),
                 label: "No blank first line",
                 value: e.columns.noBlankStart,
-                onChanged: (v) => now(
+                onChanged: (v) => w.now(
                     e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
               ),
             // The rest means something only once there is a gutter.
@@ -390,8 +374,8 @@ List<Widget> _bodySections(
                 value: e.columns.ruleStyle,
                 width: 92,
                 options: [for (var v in ColumnRuleStyle.values) (v, v.label)],
-                onChanged: (v) =>
-                    now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
+                onChanged: (v) => w
+                    .now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
               ),
               if (e.columns.ruleStyle != ColumnRuleStyle.none) ...[
                 CanvasNumberField(
@@ -411,7 +395,7 @@ List<Widget> _bodySections(
                 CanvasColorButton(
                   label: "Colour",
                   color: e.columns.ruleColor,
-                  onChanged: (c) => now(
+                  onChanged: (c) => w.now(
                       e.copyWith(columns: e.columns.copyWith(ruleColor: c))),
                 ),
               ],
@@ -428,7 +412,7 @@ List<Widget> _bodySections(
                 value: e.curve?.elementId ?? "",
                 width: 156,
                 options: curveOptions(controller),
-                onChanged: (v) => now(v.isEmpty
+                onChanged: (v) => w.now(v.isEmpty
                     ? e.copyWith(clearCurve: true)
                     : e.copyWith(
                         curve: (e.curve ?? const TextOnCurve(elementId: ""))
@@ -478,14 +462,14 @@ List<Widget> _bodySections(
                   label: "Below",
                   value: e.curve!.away,
                   onChanged: (v) =>
-                      now(e.copyWith(curve: e.curve!.copyWith(away: v))),
+                      w.now(e.copyWith(curve: e.curve!.copyWith(away: v))),
                 ),
                 CanvasToggle(
                   key: const ValueKey("textCurveMask"),
                   label: "Mask",
                   value: e.curve!.mask,
                   onChanged: (v) =>
-                      now(e.copyWith(curve: e.curve!.copyWith(mask: v))),
+                      w.now(e.copyWith(curve: e.curve!.copyWith(mask: v))),
                 ),
                 CanvasToggle(
                   // Not the line element's Hide: a hidden element is skipped
@@ -493,7 +477,7 @@ List<Widget> _bodySections(
                   label: "Hide line",
                   value: e.curve!.hideHost,
                   onChanged: (v) =>
-                      now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
+                      w.now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
                 ),
                 const CanvasHint(
                     "Slide carries the words along the line, and past either "
@@ -564,7 +548,7 @@ List<Widget> _bodySections(
               label: "Presets",
               rule: false,
               children: [presetsSection(controller, e)]),
-          textStyleCard(controller, e),
+          _textStyleCard(controller, e),
         ]),
   ];
 }

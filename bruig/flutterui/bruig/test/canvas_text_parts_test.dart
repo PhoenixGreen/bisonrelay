@@ -31,22 +31,22 @@ void main() {
       // making somebody say "the fifth" is making them do arithmetic to talk
       // to a settings panel.
       var range = rangeOf(sentence, const TextPart(from: 5, to: 5))!;
-      expect(sentence.substring(range.$1, range.$2), "idea");
+      expect(sentence.substring(range.start, range.end), "idea");
 
       var first = rangeOf(sentence, const TextPart(from: 1, to: 1))!;
-      expect(sentence.substring(first.$1, first.$2), "You");
+      expect(sentence.substring(first.start, first.end), "You");
     });
 
     test("a run of words is one range", () {
       var range = rangeOf(sentence, const TextPart(from: 2, to: 4))!;
-      expect(sentence.substring(range.$1, range.$2), "come across an");
+      expect(sentence.substring(range.start, range.end), "come across an");
     });
 
     test("nothing for the end means to the end", () {
       // Which is what "words ten till the end" needs, and what a number
       // cannot say once the words are edited.
       var range = rangeOf(sentence, const TextPart(from: 4))!;
-      expect(sentence.substring(range.$1, range.$2), "an idea");
+      expect(sentence.substring(range.start, range.end), "an idea");
       expect(const TextPart(from: 4).toTheEnd, isTrue);
     });
 
@@ -54,11 +54,11 @@ void main() {
       // "The third letter" means the third one somebody can see.
       var range = rangeOf(
           sentence, const TextPart(unit: TextUnit.characters, from: 1, to: 3))!;
-      expect(sentence.substring(range.$1, range.$2), "You");
+      expect(sentence.substring(range.start, range.end), "You");
 
       var later = rangeOf(
           sentence, const TextPart(unit: TextUnit.characters, from: 4, to: 4))!;
-      expect(sentence.substring(later.$1, later.$2), "c",
+      expect(sentence.substring(later.start, later.end), "c",
           reason: "the fourth letter is the first of the second word");
     });
 
@@ -86,7 +86,7 @@ void main() {
         TextPart(from: 1, to: 5, color: Color(0xFFFF0000)),
         TextPart(from: 5, to: 5, color: Color(0xFF00FF00)),
       ];
-      var at = rangeOf(sentence, parts.last)!.$1;
+      var at = rangeOf(sentence, parts.last)!.start;
       expect(partAt(sentence, parts, at)?.color, const Color(0xFF00FF00));
       expect(partAt(sentence, parts, 0)?.color, const Color(0xFFFF0000));
       expect(partAt(sentence, const [], 0), isNull);

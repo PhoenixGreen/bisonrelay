@@ -49,29 +49,6 @@ extension CanvasPictures on CanvasController {
     notifyListeners();
   }
 
-  /// textLayer is the piece of [e] picked in its Layers, or null for its
-  /// own words (also returned for a piece since removed).
-  TextItem? textLayer(TextElement e) {
-    var id = _pictures.textLayers[e.id];
-    if (id == null) return null;
-    for (var item in e.items) {
-      if (item.id == id) return item;
-    }
-    return null;
-  }
-
-  /// pickTextLayer picks piece [itemId] of text element [elementId] in its
-  /// Layers, or its own words with null.
-  void pickTextLayer(String elementId, String? itemId) {
-    if (_pictures.textLayers[elementId] == itemId) return;
-    if (itemId == null) {
-      _pictures.textLayers.remove(elementId);
-    } else {
-      _pictures.textLayers[elementId] = itemId;
-    }
-    notifyListeners();
-  }
-
   /// positionTool is the Position section's tool open on its shelf (Place
   /// until another is picked), or null with all shut. The Warp tool shows
   /// the picked picture's grid on the canvas while open.
@@ -721,10 +698,6 @@ class _PictureState {
   String layerId = baseLayerId;
 
   FrameTool? frameTool = FrameTool.image;
-
-  /// textLayers is the piece picked in each text element's Layers, by
-  /// element id; one not here has its own words picked.
-  final Map<String, String> textLayers = {};
 
   PositionTool? positionTool = PositionTool.place;
 

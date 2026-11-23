@@ -14,10 +14,10 @@ import 'package:flutter/foundation.dart';
 // differs. A poll because the library is a folder of files with no change
 // feed; a canvas with no document-backed element does no work.
 
-/// canvasDocumentPoll is how often the library is looked at while a canvas is
+/// _canvasDocumentPoll is how often the library is looked at while a canvas is
 /// open: cheap, and quick enough that an edit made in Writing is there on
 /// switching back.
-const Duration canvasDocumentPoll = Duration(seconds: 3);
+const Duration _canvasDocumentPoll = Duration(seconds: 3);
 
 /// refreshTextDocuments re-reads every document-backed text element in
 /// [controller]'s canvas (each scene, the master and the Cast; see
@@ -55,7 +55,7 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
       if (e is! TextElement || !e.document.on) continue;
       var raw = read[(e.document.folder, e.document.name)];
       if (raw == null) continue;
-      var (text, parts) = readDocument(raw,
+      var (:text, :parts) = readDocument(raw,
           markdown: e.document.markdown, allow: e.document.allow);
       if (text == e.text && _same(parts, e.documentParts)) continue;
       out[i] = e.copyWith(text: text, documentParts: parts);
@@ -104,7 +104,7 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
       continue;
     }
     if (raw == null) continue;
-    var (text, _) = readDocument(raw);
+    var text = readDocument(raw).text;
     var script = text.trim();
     if (script == spec.script) continue;
     controller.setSpeech(lane.key, spec.withScript(script), transient: true);
@@ -136,7 +136,7 @@ class TextDocumentWatch {
   void start() {
     stop();
     unawaited(_tick());
-    _timer = Timer.periodic(canvasDocumentPoll, (_) => unawaited(_tick()));
+    _timer = Timer.periodic(_canvasDocumentPoll, (_) => unawaited(_tick()));
   }
 
   void stop() {

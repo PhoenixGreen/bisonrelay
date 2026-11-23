@@ -446,6 +446,39 @@ void main() {
       expect(item.side, closeTo(0, 1e-9));
     });
 
+    test("in a text whose turn is keyed, the way the arrow points now", () {
+      // The stage drags it in the turn the text is drawn at; the arrows
+      // go the same way, not by the turn it rests at.
+      var e = withPicture().withBase(
+              track: ElementTrack(const [Keyframe(frame: 0, rotate: 90)]))
+          as TextElement;
+      var c = CanvasController(const CanvasDocument(frames: 24).addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly("t");
+      c.pickTextLayer("t", "pic");
+      c.nudgeSelected(10, 0);
+      var item = (c.document.elementById("t") as TextElement).items.single;
+      expect(item.down, closeTo(-10, 1e-9));
+      expect(item.side, closeTo(0, 1e-9));
+    });
+
+    test("a picture piece with no picture yet leaves the arrows to the text",
+        () {
+      // The canvas shows it no box to drag, so the arrows are the text's,
+      // as a press on it is.
+      var e = withPicture().copyWith(items: const [
+        TextItem(id: "pic", slot: TextSlot.topRight, icon: TextIcon()),
+      ]);
+      var c = CanvasController(const CanvasDocument().addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly("t");
+      c.pickTextLayer("t", "pic");
+      c.nudgeSelected(10, 0);
+      var moved = c.document.elementById("t") as TextElement;
+      expect(moved.items.single.side, 0);
+      expect(moved.bounds.left, e.bounds.left + 10);
+    });
+
     test("its move and turn are kept", () {
       var item = const TextItem(
           id: "p",

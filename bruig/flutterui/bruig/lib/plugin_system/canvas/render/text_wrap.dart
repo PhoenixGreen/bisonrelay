@@ -377,14 +377,14 @@ WrappedText layoutWrapped(
 
   while (end < text.length) {
     var next = end;
+    // A word at a time, as parts count them (isWordSpace); a line break
+    // ends the line.
     while (
-        next < text.length && text[next] != "\n" && text[next].trim().isEmpty) {
+        next < text.length && text[next] != "\n" && isWordSpace(text[next])) {
       next++;
     }
     if (next < text.length && text[next] == "\n") break;
-    while (next < text.length &&
-        text[next].trim().isNotEmpty &&
-        text[next] != "\n") {
+    while (next < text.length && !isWordSpace(text[next])) {
       next++;
     }
     if (next == end) break;

@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 
 // vector_text.dart sets a drawing's text in the font's own outlines, as the

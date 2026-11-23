@@ -538,42 +538,116 @@ void main() {
       expect(find.byKey(const ValueKey("textDrawStart")), findsOneWidget);
     });
 
-    testWidgets(
-      "a style changed later leaves a size typed by hand alone",
-      (tester) async {
-        // The size typed here is this text's own: the text stops following
-        // the style, keeping the rest of the style's look.
-        var text = TextElement(
-          ElementBase(id: newElementId(), width: 400, height: 200),
-          text: "A heading",
-          style: "Heading",
-          textSpec: const TextSpec(fontSize: 30),
-        );
-        var controller = CanvasController(CanvasDocument(textStyles: const [
-          NamedTextStyle("Heading", TextSpec(fontSize: 30))
-        ], elements: [
-          text
-        ]));
-        addTearDown(controller.dispose);
-        controller.selectOnly(text.id);
-        await pump(tester, designSidebar(controller));
-        await tester.pumpAndSettle();
-        var size = find.byKey(const ValueKey("typeSize")).first;
-        await tester.ensureVisible(size);
-        await tester.pumpAndSettle();
-        await enterValue(tester, size, "50");
-        await tester.pumpAndSettle();
-        expect(textIn(controller).textSpec.fontSize, 50);
+    testWidgets("a face a received canvas names is shown, not a blank",
+        (tester) async {
+      // As the chart and table panels do: the face is offered as it is,
+      // first, so the dropdown says what the words are set in.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        textSpec: const TextSpec(fontFamily: "Comic Sans MS"),
+      );
+      await panel(tester, element: element);
+      var font = find.byKey(const ValueKey("typeFont")).first;
+      expect(find.descendant(of: font, matching: find.text("Comic Sans MS")),
+          findsOneWidget);
+    });
 
-        controller.updateTextStyle(
-            "Heading", const TextSpec(fontSize: 30, color: Color(0xFFFF0000)));
-        expect(textIn(controller).textSpec.fontSize, 50);
-        expect(textIn(controller).style, "");
-      },
-      skip: true, // Waiting on how "Change the style to this text's type"
-      // is reached once a hand edit unlinks the text: it shows only while
-      // the text is in the style.
-    );
+    testWidgets("a layer's picture is in the weight the canvas draws",
+        (tester) async {
+      // A weight typed between the hundreds: the canvas draws the hundred
+      // below, so the layer's "Aa" must too, not the nearest.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        textSpec: const TextSpec(weight: 650),
+      );
+      await panel(tester, element: element);
+      var face = find.descendant(
+          of: find.byKey(const ValueKey("textLayersList")),
+          matching: find.text("Aa"));
+      expect(face, findsWidgets);
+      expect(tester.widget<Text>(face.first).style!.fontWeight,
+          const TextSpec(weight: 650).fontWeight);
+      expect(const TextSpec(weight: 650).fontWeight, FontWeight.w600);
+    });
+
+    testWidgets("a style changed later leaves a size typed by hand alone",
+        (tester) async {
+      // The size typed here is this text's own. The text keeps the style's
+      // name, so "Change the style to this text's type" is still there to
+      // push the edit into the style; until then the style leaves it be.
+      var text = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "A heading",
+        style: "Heading",
+        textSpec: const TextSpec(fontSize: 30),
+      );
+      var controller = CanvasController(CanvasDocument(
+          textStyles: const [NamedTextStyle("Heading", TextSpec(fontSize: 30))],
+          elements: [text]));
+      addTearDown(controller.dispose);
+      controller.selectOnly(text.id);
+      await pump(tester, designSidebar(controller));
+      await tester.pumpAndSettle();
+      var size = find.byKey(const ValueKey("typeSize")).first;
+      await tester.ensureVisible(size);
+      await tester.pumpAndSettle();
+      await enterValue(tester, size, "50");
+      await tester.pumpAndSettle();
+      expect(textIn(controller).textSpec.fontSize, 50);
+
+      controller.updateTextStyle(
+          "Heading", const TextSpec(fontSize: 30, color: Color(0xFFFF0000)));
+      expect(textIn(controller).textSpec.fontSize, 50);
+      expect(textIn(controller).textSpec.color, const Color(0xFFFFFFFF),
+          reason: "edited by hand, so the style leaves all of it alone");
+      expect(textIn(controller).style, "Heading");
+      expect(find.byKey(const ValueKey("textStyleUpdate")), findsOneWidget,
+          reason: "still linked, so its type can still be made the style's");
+    });
+
+    testWidgets(
+        "a style updated from one text restyles those still on it, not one "
+        "edited by hand", (tester) async {
+      const heading = TextSpec(fontSize: 30);
+      TextElement text(String id, TextSpec spec) =>
+          TextElement(ElementBase(id: id, width: 400, height: 200),
+              text: id, style: "Heading", textSpec: spec);
+      var controller = CanvasController(CanvasDocument(textStyles: const [
+        NamedTextStyle("Heading", heading)
+      ], elements: [
+        text("edited", heading.copyWith(fontSize: 50)),
+        text("follows", heading),
+        text("source", heading),
+      ]));
+      addTearDown(controller.dispose);
+      // The source's colour changed by hand, then pushed into the style
+      // with the panel's Update.
+      var source = controller.document.elementById("source") as TextElement;
+      controller.replaceElement(source.copyWith(
+          textSpec: heading.copyWith(color: const Color(0xFFFF0000))));
+      controller.selectOnly("source");
+      await pump(tester, designSidebar(controller));
+      await tester.pumpAndSettle();
+      var update = find.byKey(const ValueKey("textStyleUpdate"));
+      await tester.ensureVisible(update);
+      await tester.pumpAndSettle();
+      await tester.tap(update);
+      await tester.pumpAndSettle();
+
+      TextSpec specOf(String id) =>
+          (controller.document.elementById(id) as TextElement).textSpec;
+      expect(controller.textStyles.single.spec.color, const Color(0xFFFF0000));
+      expect(specOf("source").color, const Color(0xFFFF0000));
+      expect(specOf("follows").color, const Color(0xFFFF0000),
+          reason: "the same type as the style was, so it follows");
+      expect(specOf("edited").color, const Color(0xFFFFFFFF),
+          reason: "its own size makes it its own: left alone");
+      expect(specOf("edited").fontSize, 50);
+      expect((controller.document.elementById("edited") as TextElement).style,
+          "Heading");
+    });
 
     testWidgets(
         "a picture's own controls sit with the choice that asked for it",

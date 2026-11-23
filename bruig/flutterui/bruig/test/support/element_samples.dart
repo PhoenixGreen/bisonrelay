@@ -5,7 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -94,6 +99,7 @@ List<(String, CanvasElement)> filledSamples() {
       ])
     ),
     ("Text, filled", text.copyWith(text: "$long " * 60)),
+    ("Text, every part used", fullText(text)),
     (
       "Play task, filled",
       task.copyWith(text: "$long " * 4, checks: [
@@ -104,3 +110,61 @@ List<(String, CanvasElement)> filledSamples() {
     ),
   ];
 }
+
+/// fullText is [text] with every part of a text in use: pieces of words and
+/// a picture, parts with marks and an arrival, its own marks, columns, wrap,
+/// a document, an arrival of its own and a line to ride. Nonsense together
+/// (a line wins over the box), but a received file may hold all of it.
+TextElement fullText(TextElement text) => text.copyWith(
+      text: "Spend or burn the ledger's own words",
+      // No outline, shadow or glow: those are read as looks (text_looks.dart).
+      textSpec: const TextSpec(letterSpacing: 2, lineHeight: 1.4),
+      box: const BoxSpec(
+          fill: Color(0x33000000),
+          borderWidth: 2,
+          borderRadius: 8,
+          padding: 12,
+          padL: 20),
+      items: const [
+        TextItem(
+            id: "kicker",
+            text: "LEDGER",
+            name: "Kicker",
+            gap: 12,
+            side: 4,
+            box: BoxSpec(fill: Color(0xFF223344), borderRadius: 4)),
+        TextItem(
+            id: "badge",
+            slot: TextSlot.bottomRight,
+            icon: TextIcon(
+                assetId: "badge-asset",
+                size: 48,
+                underline: PartUnderline(width: 2))),
+      ],
+      parts: const [
+        TextPart(
+            from: 1,
+            to: 2,
+            weight: 800,
+            scale: 1.5,
+            family: "Oswald",
+            outlineWidth: 1,
+            highlight: PartHighlight(radius: 3),
+            underline: PartUnderline(away: 4),
+            animation: TextPartAnimation(
+                preset: TextAnimationPreset.highlight, offset: 6)),
+      ],
+      highlight: const PartHighlight(padLeft: 6),
+      underline: const PartUnderline(width: 2),
+      columns: const TextColumns(
+          count: 2, gap: 30, ruleStyle: ColumnRuleStyle.solid),
+      wrap: const TextWrap(on: true, gap: 16),
+      document: const TextDocumentRef(folder: "notes", name: "ledger.md"),
+      documentParts: const [TextPart(from: 3, to: 3, italic: true)],
+      animation: const TextAnimation(
+          preset: TextAnimationPreset.words,
+          draw: TextDrawSpec(padLeft: 4, radius: 2)),
+      style: "Heading",
+      flowTo: "next-box",
+      curve: const TextOnCurve(elementId: "a-line", spacing: 2, offset: 0.2),
+    );

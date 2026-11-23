@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
+import 'package:bruig/plugin_system/canvas/storage/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';

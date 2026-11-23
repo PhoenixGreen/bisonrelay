@@ -272,8 +272,8 @@ class MotionDeviceCard extends StatelessWidget {
                 StudioDrop<String>(
                   key: ValueKey("mdevLayer-${d.id}"),
                   label: "On",
-                  value: layers.any((l) => l.$1 == d.layer) ? d.layer : "",
-                  options: layers,
+                  value: layers.any((l) => l.layer == d.layer) ? d.layer : "",
+                  options: [for (var l in layers) (l.layer, l.name)],
                   onChanged: (v) => write(d.withLayer(v)),
                 ),
               for (var p in d.kind.params)

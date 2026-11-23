@@ -103,20 +103,10 @@ List<TextPiece> piecesFor(
 
   var ranges = <(int, int)>[];
   if (scope == TextAnimationScope.word) {
-    var at = 0;
-    while (at < text.length) {
-      while (at < text.length && _isSpace(text[at])) {
-        at++;
-      }
-      var from = at;
-      while (at < text.length && !_isSpace(text[at])) {
-        at++;
-      }
-      if (at > from) ranges.add((from, at));
-    }
+    ranges = [for (var w in wordRanges(text)) (w.start, w.end)];
   } else {
     for (var i = 0; i < text.length; i++) {
-      if (!_isSpace(text[i])) ranges.add((i, i + 1));
+      if (!isWordSpace(text[i])) ranges.add((i, i + 1));
     }
   }
   if (range != null) {
@@ -142,8 +132,6 @@ List<TextPiece> piecesFor(
       : out;
 }
 
-bool _isSpace(String c) => c.trim().isEmpty;
-
 /// _Layer is one part of the text arriving on its own, and how far through.
 class _Layer {
   final (int, int) range;
@@ -161,7 +149,7 @@ List<_Layer> _layersFor(TextPainter painter, String text, List<TextPart> parts,
     if (!part.animation.on) continue;
     var range = rangeOf(text, part);
     if (range == null) continue;
-    out.add(_Layer(range, part.animation.asAnimation,
+    out.add(_Layer((range.start, range.end), part.animation.asAnimation,
         i < timings.length ? timings[i].words : 1));
   }
   return out;
@@ -313,7 +301,7 @@ void _paintBase(
     mine.add(i);
   }
 
-  paintAnimatedPieces(
+  _paintAnimatedPieces(
       canvas, painter, offset, pieces, mine, spec, animation, reveal,
       outline: outline, soft: soft, holes: holes, phase: phase);
 }
@@ -376,12 +364,12 @@ void _paintLayer(
     for (var (i, piece) in pieces.indexed)
       if (keep == null || keep(piece)) i,
   ];
-  paintAnimatedPieces(
+  _paintAnimatedPieces(
       canvas, painter, offset, pieces, mine, spec, animation, layer.reveal,
       outline: outline, soft: soft, restricted: true, phase: phase);
 }
 
-/// wholeBlockMotion is whether applyMotion carries out [motion] alone. The
+/// wholeBlockMotion is whether applyMotionSpec carries out [motion] alone. The
 /// others draw something besides a transform and opacity (echo and trail
 /// copies, a strokeOn outline, an underline or highlight, scramble's
 /// letters, a cutting motion's tiles), so they go through _paintPiece. The
@@ -456,7 +444,7 @@ Rect motionRoom(Rect box, TextAnimation animation) {
   return room;
 }
 
-/// MotionFrame is what applyMotion did: how opaque to draw, how many saves
+/// MotionFrame is what applyMotionSpec did: how opaque to draw, how many saves
 /// it owes the canvas, and whether it has already clipped to its own shape.
 class MotionFrame {
   final double alpha;
@@ -464,24 +452,6 @@ class MotionFrame {
   final bool clipped;
   const MotionFrame(this.alpha, this.depth, this.clipped);
 }
-
-/// applyMotion sets [canvas] up to draw something [p] of the way through
-/// [preset]'s motion, and returns how opaque to draw it. It knows only "move
-/// this box", so the same motions drive a paragraph piece and a letter on a
-/// curve.
-///
-/// [box] is the piece's rectangle in the caller's frame; [seed] keeps a
-/// shake's jitter the same each frame. The caller restores
-/// [MotionFrame.depth] times when done.
-MotionFrame applyMotion(
-  ui.Canvas canvas,
-  Rect box,
-  TextAnimationPreset preset,
-  double p, {
-  double? from,
-  int seed = 0,
-}) =>
-    applyMotionSpec(canvas, box, preset.spec, p, from: from, seed: seed);
 
 /// MotionCall is one motion as the renderer applied it, for motionProbe.
 class MotionCall {
@@ -512,8 +482,14 @@ class MotionCall {
 /// frame by frame instead of working it out twice. Null elsewhere.
 void Function(MotionCall call)? motionProbe;
 
-/// applyMotionSpec is [applyMotion] for a [MotionSpec] rather than a text
-/// preset: a shape or a picture arriving, or text with its own settings.
+/// applyMotionSpec sets [canvas] up to draw something [p] of the way through
+/// [preset]'s motion, and returns how opaque to draw it. It knows only "move
+/// this box", so the same motions drive a paragraph piece, a letter on a
+/// curve, and a shape or a picture arriving.
+///
+/// [box] is the piece's rectangle in the caller's frame; [seed] keeps a
+/// shake's jitter the same each frame. The caller restores
+/// [MotionFrame.depth] times when done.
 MotionFrame applyMotionSpec(
   ui.Canvas canvas,
   Rect box,
@@ -643,10 +619,10 @@ MotionFrame applyMotionSpec(
   return frame;
 }
 
-/// paintAnimatedPieces draws [which] of [all] a paragraph's pieces. Progress
+/// _paintAnimatedPieces draws [which] of [all] a paragraph's pieces. Progress
 /// comes from each piece's place in [all], so columns stagger across the
 /// paragraph rather than restarting in each.
-void paintAnimatedPieces(
+void _paintAnimatedPieces(
   ui.Canvas canvas,
   TextPainter painter,
   Offset offset,
@@ -676,7 +652,6 @@ void paintAnimatedPieces(
         outline: outline,
         soft: soft,
         effect: animation.effect,
-        from: animation.scaleFor(animation.preset),
         draw: animation.draw,
         echo: animation.echo,
         restricted: restricted,
@@ -685,15 +660,13 @@ void paintAnimatedPieces(
   }
 }
 
-/// _paintPiece draws one piece part way through its movement. [from] is
-/// where a growing piece starts: the animation's own setting, or the
-/// preset's.
+/// _paintPiece draws one piece part way through its movement: [motion] is
+/// [preset] with the animation's own settings (TextAnimation.spec).
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
-    {MotionSpec? motion,
+    {required MotionSpec motion,
     TextPainter? outline,
     TextPainter? soft,
-    double? from,
     TextDrawSpec? draw,
     TextEchoSpec? echo,
     EffectSpec? effect,
@@ -704,10 +677,8 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   var box = piece.box.shift(offset);
   var centre = box.center;
 
-  var frame = motion != null
-      ? applyMotionSpec(canvas, box, motion, p,
-          from: motion.from, seed: piece.start)
-      : applyMotion(canvas, box, preset, p, from: from, seed: piece.start);
+  var frame = applyMotionSpec(canvas, box, motion, p,
+      from: motion.from, seed: piece.start);
   var alpha = frame.alpha;
 
   // Every piece but an unrestricted whole paragraph is the layout clipped to
@@ -734,8 +705,8 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     // A trail comes the way the words do, turned to a chosen direction; an
     // echo's fan is its preset's own, a direction meaning nothing to it
     // (TextAnimation.arrivalDirected).
-    var dx = trail ? (motion?.dx ?? preset.dx) : preset.dx;
-    var dy = trail ? (motion?.dy ?? preset.dy) : preset.dy;
+    var dx = trail ? motion.dx : preset.dx;
+    var dy = trail ? motion.dy : preset.dy;
     // A trail's copies lie back along its path, so its step is the distance
     // travelled; an echo's is a fixed fan.
     var step = trail
@@ -950,13 +921,13 @@ void _paintScramble(ui.Canvas canvas, String text, TextSpec spec, Offset offset,
   const pool = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#\$%&@";
   var letters = 0;
   for (var i = 0; i < text.length; i++) {
-    if (!_isSpace(text[i])) letters++;
+    if (!isWordSpace(text[i])) letters++;
   }
 
   if (range != null) {
     letters = 0;
     for (var i = range.$1; i < range.$2 && i < text.length; i++) {
-      if (!_isSpace(text[i])) letters++;
+      if (!isWordSpace(text[i])) letters++;
     }
   }
 
@@ -964,7 +935,7 @@ void _paintScramble(ui.Canvas canvas, String text, TextSpec spec, Offset offset,
   var buffer = StringBuffer();
   for (var i = 0; i < text.length; i++) {
     var c = text[i];
-    if (_isSpace(c) || (range != null && (i < range.$1 || i >= range.$2))) {
+    if (isWordSpace(c) || (range != null && (i < range.$1 || i >= range.$2))) {
       buffer.write(c);
       continue;
     }

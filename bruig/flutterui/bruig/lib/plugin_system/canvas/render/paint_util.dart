@@ -553,8 +553,7 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
               fontFamily: part.family ?? style.fontFamily,
               fontWeight: part.weight == null
                   ? style.fontWeight
-                  : FontWeight.values[((part.weight! ~/ 100) - 1)
-                      .clamp(0, FontWeight.values.length - 1)],
+                  : TextSpec.weightOf(part.weight!),
               fontStyle: part.italic == null
                   ? style.fontStyle
                   : (part.italic! ? FontStyle.italic : FontStyle.normal),
@@ -580,8 +579,7 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
           : (style.fontSize ?? 0) * part.scale!,
       fontWeight: part.weight == null
           ? style.fontWeight
-          : FontWeight.values[((part.weight! ~/ 100) - 1)
-              .clamp(0, FontWeight.values.length - 1)],
+          : TextSpec.weightOf(part.weight!),
       fontStyle: part.italic == null
           ? style.fontStyle
           : (part.italic! ? FontStyle.italic : FontStyle.normal),

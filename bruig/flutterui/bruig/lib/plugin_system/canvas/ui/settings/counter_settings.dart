@@ -753,7 +753,7 @@ Widget _styleRow(CanvasController controller, CounterElement e,
           key: ValueKey("counter${which}StyleUpdate"),
           icon: Icons.sync,
           tooltip: "Change the style to this type -- everything in "
-              "\"$linked\" changes with it",
+              "\"$linked\" not changed by hand changes with it",
           onPressed: () => controller.updateTextStyle(
               linked, words ? e.affixSpec : e.numberSpec),
         ),

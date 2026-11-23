@@ -407,23 +407,17 @@ extension CanvasElementEditing on CanvasController {
   }
 
   /// _nudgedPiece is the one selected text with its picked picture moved
-  /// [dx], [dy] on the page, or null where no picture is picked. Moved in the
-  /// text's own frame, so a turned text's picture goes the way the arrow
-  /// points; a piece held to the right-hand edge counts its side leftwards.
+  /// [dx], [dy] on the page, or null where no picture the canvas handles is
+  /// picked (TextElement.handlesPiece). Moved in the turn the text is drawn
+  /// at, as the stage drags it, so it goes the way the arrow points.
   TextElement? _nudgedPiece(double dx, double dy) {
     if (_selection.length != 1) return null;
     var e = selected;
-    if (e is! TextElement || e.locked || e.curve != null) return null;
+    if (e is! TextElement) return null;
     var item = textLayer(e);
-    if (item == null || !item.isIcon || item.hidden || item.locked) {
-      return null;
-    }
-    var turn = e.rotation * math.pi / 180;
-    var c = math.cos(turn), s = math.sin(turn);
-    var x = dx * c + dy * s, y = -dx * s + dy * c;
-    var across = item.slot.across == TextAlignSpec.right ? -1 : 1;
-    var moved =
-        item.copyWith(side: item.side + x * across, down: item.down + y);
+    if (item == null || !e.handlesPiece(item)) return null;
+    var moved = item.movedBy(
+        Offset(dx, dy), e.movedRotationAt(_frame, _document, live: liveMotion));
     return e.copyWith(items: [
       for (var it in e.items) it.id == item.id ? moved : it,
     ]);

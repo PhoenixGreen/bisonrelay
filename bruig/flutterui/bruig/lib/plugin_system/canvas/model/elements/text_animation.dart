@@ -110,7 +110,7 @@ enum TextMotion {
 
   /// cuts is whether the motion draws the thing more than once (tiles,
   /// slices, a filter) rather than moving it whole. These take the drawing
-  /// as a closure, since applyMotion only sets a transform. See
+  /// as a closure, since applyMotionSpec only sets a transform. See
   /// paintCutEffect.
   bool get cuts =>
       this == TextMotion.mosaic ||
@@ -118,7 +118,7 @@ enum TextMotion {
       this == TextMotion.pieces;
 }
 
-/// MotionSpec is a motion with its numbers: all applyMotion needs. Kept
+/// MotionSpec is a motion with its numbers: all applyMotionSpec needs. Kept
 /// apart from the preset so shapes and pictures share the text motions.
 class MotionSpec {
   final TextMotion motion;
@@ -542,6 +542,16 @@ class TextDrawSpec {
     return next == c ? this : copyWith(color: next);
   }
 
+  /// scaledBy sizes the mark's room and corners by [by], as a page laid out
+  /// at another size scales whatever is in design units.
+  TextDrawSpec scaledBy(double by) => copyWith(
+        padLeft: padLeft * by,
+        padTop: padTop * by,
+        padRight: padRight * by,
+        padBottom: padBottom * by,
+        radius: radius * by,
+      );
+
   TextDrawSpec withEvenPad(double pad) => TextDrawSpec(
       color: color,
       start: start,
@@ -566,11 +576,11 @@ class TextDrawSpec {
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
         start: TextDrawStart.fromName(jsonStr(json["start"])),
-        padLeft: jsonDouble(json["l"], _defaults.padLeft),
-        padTop: jsonDouble(json["t"], _defaults.padTop),
-        padRight: jsonDouble(json["r"], _defaults.padRight),
-        padBottom: jsonDouble(json["b"], _defaults.padBottom),
-        radius: jsonDouble(json["radius"], _defaults.radius),
+        padLeft: jsonLength(json["l"], _defaults.padLeft, signed: true),
+        padTop: jsonLength(json["t"], _defaults.padTop, signed: true),
+        padRight: jsonLength(json["r"], _defaults.padRight, signed: true),
+        padBottom: jsonLength(json["b"], _defaults.padBottom, signed: true),
+        radius: jsonLength(json["radius"], _defaults.radius),
       );
 }
 

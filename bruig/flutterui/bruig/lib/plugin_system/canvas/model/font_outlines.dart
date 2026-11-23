@@ -764,3 +764,11 @@ class _Charstring {
     }
   }
 }
+
+/// FontPick is the face found for a family, weight and slant: the face,
+/// and whether it has to be leant over to be italic.
+class FontPick {
+  final FontFace face;
+  final bool lean;
+  const FontPick(this.face, {this.lean = false});
+}

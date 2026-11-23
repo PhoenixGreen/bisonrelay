@@ -4,8 +4,8 @@ part of 'canvas_stage.dart';
 // counter's buttons, its loose pieces dragged (_CounterPieceDrag), and the
 // field on its Set button; a chart key's switches and the hold that takes
 // the key instead; a chart's placed labels and a table's column rules, as
-// drawn and as taken; a video's and a speaker's controls; and a text's flow
-// link dropped. Part of CanvasStageState: its fields, lifecycle and build
+// drawn and as taken; a video's and a speaker's controls; a play task's
+// steps ticked; and a text's flow link dropped. Part of CanvasStageState: its fields, lifecycle and build
 // are in canvas_stage.dart.
 
 extension StageElementControls on CanvasStageState {
@@ -261,6 +261,23 @@ extension StageElementControls on CanvasStageState {
     controller.beginInteraction();
     controller.replaceElement(from.copyWith(flowTo: onto?.id ?? ""));
     controller.endInteraction();
+  }
+
+  /// _pressPlayTask ticks a play task's step the student marks, or starts it
+  /// again, if the press is on one. Answers whether it was taken.
+  bool _pressPlayTask(PlayTaskElement e, Offset doc) {
+    // From where it is drawn now, which its motion may have moved.
+    var at = doc - _hit.posed(e).topLeft;
+    var show = controller.playTaskShowFor(e);
+    if (playTaskAgainAt(e, at, show)) {
+      controller.startPlayTaskAgain(e);
+    } else if (playTaskMarkAt(e, at, show) case var i?) {
+      controller.tickPlayStep(e, i);
+    } else {
+      return false;
+    }
+    _mode = _DragMode.none;
+    return true;
   }
 }
 

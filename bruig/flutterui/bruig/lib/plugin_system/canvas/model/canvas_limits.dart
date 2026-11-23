@@ -23,6 +23,13 @@ const int maxSceneElements = 10000, maxScenes = 1000;
 /// repaint and snapping to them on each step of a drag stays cheap.
 const int maxGuides = 1000;
 
+/// maxPathNodes, maxTeamPlayers and maxCodeSteps are the most points a
+/// path, players a team and steps a Code panel's lesson are read with: far
+/// more than anyone makes by hand, and few enough that a received canvas
+/// cannot make one element cost what a thousand should (every node of a
+/// path is sampled at each hit test and each frame something follows it).
+const int maxPathNodes = 2000, maxTeamPlayers = 200, maxCodeSteps = 2000;
+
 /// audioFrameRate is the steps a second a piece of sound's timeline counts
 /// in: fine enough that any beat lands within a few milliseconds of a step.
 const int audioFrameRate = 120;

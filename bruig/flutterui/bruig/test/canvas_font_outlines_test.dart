@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
+import 'package:bruig/plugin_system/canvas/storage/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:flutter/material.dart';

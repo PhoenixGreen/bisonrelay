@@ -4,7 +4,7 @@
 // header row starts with an empty corner cell, so lines are trimmed at the
 // start only when the separator is spaces, or every column would shift.
 
-enum TableSeparator {
+enum _TableSeparator {
   tab,
   comma,
 
@@ -12,12 +12,12 @@ enum TableSeparator {
   spaces,
 }
 
-/// separatorFor sniffs [text]: tabs (spreadsheet), then commas (CSV), then
+/// _separatorFor sniffs [text]: tabs (spreadsheet), then commas (CSV), then
 /// runs of spaces (lined up by hand).
-TableSeparator separatorFor(String text) {
-  if (text.contains("\t")) return TableSeparator.tab;
-  if (text.contains(",")) return TableSeparator.comma;
-  return TableSeparator.spaces;
+_TableSeparator _separatorFor(String text) {
+  if (text.contains("\t")) return _TableSeparator.tab;
+  if (text.contains(",")) return _TableSeparator.comma;
+  return _TableSeparator.spaces;
 }
 
 final RegExp _spaceRun = RegExp(r"\s{2,}");
@@ -25,7 +25,7 @@ final RegExp _spaceRun = RegExp(r"\s{2,}");
 /// splitTable turns pasted text into rows of trimmed cells. Blank lines are
 /// dropped, since a paste often ends with a newline.
 List<List<String>> splitTable(String text) {
-  var separator = separatorFor(text);
+  var separator = _separatorFor(text);
   var rows = <List<String>>[];
 
   for (var raw in text.split("\n")) {
@@ -34,12 +34,12 @@ List<List<String>> splitTable(String text) {
     // Trailing whitespace always goes; leading only for spaces (see the
     // file header).
     var line = raw.replaceAll("\r", "").trimRight();
-    if (separator == TableSeparator.spaces) line = line.trimLeft();
+    if (separator == _TableSeparator.spaces) line = line.trimLeft();
 
     var cells = switch (separator) {
-      TableSeparator.tab => line.split("\t"),
-      TableSeparator.comma => _splitQuoted(line),
-      TableSeparator.spaces => line.split(_spaceRun),
+      _TableSeparator.tab => line.split("\t"),
+      _TableSeparator.comma => _splitQuoted(line),
+      _TableSeparator.spaces => line.split(_spaceRun),
     };
     rows.add([for (var cell in cells) cell.trim()]);
   }

@@ -23,12 +23,21 @@ class TypeEdit {
   }
 }
 
+/// fontOptions is a face dropdown's choices: canvasFonts, after [current]
+/// where a received canvas names a face not among them, so the dropdown
+/// says what the words are set in rather than nothing.
+List<(String, String)> fontOptions(String current) => [
+      if (current.isNotEmpty && !canvasFonts.contains(current))
+        (current, current),
+      for (var f in canvasFonts) (f, f),
+    ];
+
 Widget typeFont(TypeEdit t) => CanvasDropdown<String>(
       key: const ValueKey("typeFont"),
       label: "Font",
       value: t.spec.fontFamily,
       width: 120,
-      options: [for (var f in canvasFonts) (f, f)],
+      options: fontOptions(t.spec.fontFamily),
       onChanged: (v) => t.now(t.spec.copyWith(fontFamily: v)),
     );
 
@@ -75,6 +84,45 @@ Widget typeAlign(TypeEdit t) => CanvasSegmented<TextAlignSpec>(
         TextAlignSpec.justify => Icons.format_align_justify,
       },
       onChanged: (v) => t.now(t.spec.copyWith(align: v)),
+    );
+
+/// typeJustify sets the lines justified across the box, or, off, to the
+/// left.
+Widget typeJustify(TypeEdit t) => CanvasToggle(
+      key: const ValueKey("typeJustify"),
+      label: "Justified",
+      value: t.spec.align == TextAlignSpec.justify,
+      onChanged: (v) => t.now(t.spec
+          .copyWith(align: v ? TextAlignSpec.justify : TextAlignSpec.left)),
+    );
+
+/// typeVertical is where the lines sit in a box taller than they are.
+Widget typeVertical(TypeEdit t) => CanvasDropdown<VerticalAlignSpec>(
+      key: const ValueKey("typeVertical"),
+      label: "Up and down",
+      value: t.spec.verticalAlign,
+      width: 80,
+      options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+      onChanged: (v) => t.now(t.spec.copyWith(verticalAlign: v)),
+    );
+
+/// typeCaseButtons is the case as a row of buttons, where a panel has room
+/// for one rather than typeLetters' dropdown: [key] names the row and
+/// [keyOf], if given, each button.
+Widget typeCaseButtons(TypeEdit t,
+        {required Key key, String Function(TextCase)? keyOf}) =>
+    CanvasSegmented<TextCase>(
+      key: key,
+      label: "Case",
+      value: t.spec.textCase,
+      options: const [
+        (TextCase.none, "As typed"),
+        (TextCase.upper, "UPPER"),
+        (TextCase.lower, "lower"),
+        (TextCase.title, "Title"),
+      ],
+      keyOf: keyOf,
+      onChanged: (v) => t.now(t.spec.copyWith(textCase: v)),
     );
 
 /// typeLetters is the rest of the letters' setting: weight and spacing side
@@ -133,25 +181,10 @@ List<Widget> typeLetters(TypeEdit t,
           value: t.spec.underline,
           onChanged: (v) => t.now(t.spec.copyWith(underline: v)),
         ),
-      if (justify)
-        CanvasToggle(
-          key: const ValueKey("typeJustify"),
-          label: "Justified",
-          value: t.spec.align == TextAlignSpec.justify,
-          onChanged: (v) => t.now(t.spec
-              .copyWith(align: v ? TextAlignSpec.justify : TextAlignSpec.left)),
-        ),
+      if (justify) typeJustify(t),
       if (vertical || textCase)
         panelRow([
-          if (vertical)
-            cell(CanvasDropdown<VerticalAlignSpec>(
-              key: const ValueKey("typeVertical"),
-              label: "Up and down",
-              value: t.spec.verticalAlign,
-              width: 80,
-              options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
-              onChanged: (v) => t.now(t.spec.copyWith(verticalAlign: v)),
-            )),
+          if (vertical) cell(typeVertical(t)),
           if (textCase)
             cell(CanvasDropdown<TextCase>(
               key: const ValueKey("typeCase"),

@@ -45,7 +45,7 @@ import 'package:bruig/plugin_system/canvas/ui/code/code_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/carried_synth_cable.dart';
-import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/counter_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_gizmo.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';

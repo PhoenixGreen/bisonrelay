@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
@@ -489,11 +490,7 @@ class PathElement extends CanvasElement {
     var raw = json["nodes"];
     var followJson = json["follow"];
     return PathElement(b,
-        nodes: [
-          if (raw is List)
-            for (var n in raw)
-              if (n is Map<String, dynamic>) PathNode.fromJson(n),
-        ],
+        nodes: jsonObjects(raw, PathNode.fromJson, most: maxPathNodes),
         color: colorFromJson(json["color"], _defaults.color),
         fade: json["fade"] is Map
             ? GradientSpec.fromJson(

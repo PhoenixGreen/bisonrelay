@@ -27,19 +27,12 @@ Widget _pieceQuick(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit) {
-  void put(TextItem next) {
-    begin();
-    write(e.copyWith(items: [
-      for (var (i, it) in e.items.indexed) i == at ? next : it,
-    ]));
-    commit();
-  }
-
+  var w = _TextWrites(e, write, begin, commit);
   var t = _pieceEdit(e, at, item, write, begin, commit);
   var slot = CanvasSlotPicker(
       key: const ValueKey("quickSlot"),
       value: item.slot,
-      onChanged: (s) => put(item.copyWith(slot: s)));
+      onChanged: (s) => w.piece(at, item.copyWith(slot: s)));
   return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
     if (!item.isIcon) ...[
       panelRow([
@@ -67,7 +60,7 @@ Widget _pieceQuick(
             var style =
                 controller.textStyles.where((s) => s.name == v).firstOrNull;
             if (style == null) return;
-            put(item.copyWith(spec: style.spec));
+            w.piece(at, item.copyWith(spec: style.spec));
           },
         ))
       else
@@ -89,13 +82,7 @@ List<Widget> _pieceSections(
     VoidCallback commit) {
   var t = _pieceEdit(e, at, item, write, begin, commit);
   var whole = _looksSaid(e, {""});
-  void put(TextItem next, {bool live = false}) {
-    begin();
-    write(e.copyWith(items: [
-      for (var (i, it) in e.items.indexed) i == at ? next : it,
-    ]));
-    if (!live) commit();
-  }
+  var w = _TextWrites(e, write, begin, commit);
 
   return [
     section(e, "content",
@@ -121,7 +108,8 @@ List<Widget> _pieceSections(
                   value: item.name,
                   hint: item.isIcon ? "Picture" : "the words",
                   width: 200,
-                  onChanged: (v) => put(item.copyWith(name: v), live: true),
+                  onChanged: (v) =>
+                      w.piece(at, item.copyWith(name: v), live: true),
                   onCommit: commit,
                 ),
                 if (!item.isIcon) ...[
@@ -131,21 +119,11 @@ List<Widget> _pieceSections(
                     value: item.text,
                     maxLines: 3,
                     width: 200,
-                    onChanged: (v) => put(item.copyWith(text: v), live: true),
+                    onChanged: (v) =>
+                        w.piece(at, item.copyWith(text: v), live: true),
                     onCommit: commit,
                   ),
-                  CanvasSegmented<TextCase>(
-                    key: const ValueKey("pieceCase"),
-                    label: "Case",
-                    value: item.spec.textCase,
-                    options: const [
-                      (TextCase.none, "As typed"),
-                      (TextCase.upper, "UPPER"),
-                      (TextCase.lower, "lower"),
-                      (TextCase.title, "Title"),
-                    ],
-                    onChanged: (v) => t.now(item.spec.copyWith(textCase: v)),
-                  ),
+                  typeCaseButtons(t, key: const ValueKey("pieceCase")),
                 ],
               ]),
           if (item.isIcon)
@@ -203,7 +181,8 @@ List<Widget> _pieceSections(
                       CanvasSlotPicker(
                           key: ValueKey("textItemSlot$at"),
                           value: item.slot,
-                          onChanged: (s) => put(item.copyWith(slot: s))),
+                          onChanged: (s) =>
+                              w.piece(at, item.copyWith(slot: s))),
                       width: 86),
                   cell(Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -219,7 +198,8 @@ List<Widget> _pieceSections(
                     min: -400,
                     max: 400,
                     width: 56,
-                    onChanged: (v) => put(item.copyWith(gap: v), live: true),
+                    onChanged: (v) =>
+                        w.piece(at, item.copyWith(gap: v), live: true),
                     onCommit: commit,
                   )),
                   cell(CanvasNumberField(
@@ -231,7 +211,8 @@ List<Widget> _pieceSections(
                     min: -2000,
                     max: 2000,
                     width: 56,
-                    onChanged: (v) => put(item.copyWith(side: v), live: true),
+                    onChanged: (v) =>
+                        w.piece(at, item.copyWith(side: v), live: true),
                     onCommit: commit,
                   )),
                 ]),
@@ -274,14 +255,12 @@ List<Widget> _pieceSections(
                   onPressed: item.locked
                       ? null
                       : () {
-                          begin();
-                          write(withPieceLooks(
+                          w.now(withPieceLooks(
                               e.copyWith(items: [
                                 for (var (i, it) in e.items.indexed)
                                   if (i != at) it,
                               ]),
                               item.id));
-                          commit();
                           controller.pickTextLayer(e.id, null);
                         },
                 ),
@@ -299,106 +278,50 @@ const _middleSlotHint = CanvasHint(
     "it, give it the same slot as them: blocks in one slot stack, each held "
     "its own gap below the one before.");
 
-/// _placeBits are every piece's controls behind its button, words or
-/// picture: where it sits and how much room it keeps.
-List<Widget> _placeBits(TextElement e, int at, TextItem item,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit,
-    {bool place = true, bool box = true}) {
-  void put(TextItem next, {bool live = false}) {
-    begin();
-    write(e.copyWith(items: [
-      for (var (i, it) in e.items.indexed) i == at ? next : it,
-    ]));
-    if (!live) commit();
-  }
+/// _pieceBoxBits is what is behind piece [at].
+List<Widget> _pieceBoxBits(TextElement e, int at, TextItem item,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var w = _TextWrites(e, write, begin, commit);
 
   return [
-    if (place) ...[
-      // This row's name; otherwise what the piece says, which names every
-      // picture "Picture".
-      CanvasTextField(
-        key: ValueKey("textItemName$at"),
-        label: "Called",
-        value: item.name,
-        hint: item.isIcon ? "Picture" : "the words",
-        width: 96,
-        onChanged: (v) => put(item.copyWith(name: v), live: true),
-        onCommit: commit,
-      ),
-      CanvasDropdown<TextSlot>(
-        key: ValueKey("textItemSlot$at"),
-        label: "Where",
-        value: item.slot,
-        width: 104,
-        options: [for (var s in TextSlot.values) (s, s.label)],
-        onChanged: (v) => put(item.copyWith(slot: v)),
-      ),
-      CanvasNumberField(
-        key: ValueKey("textItemGap$at"),
-        label: "Gap",
-        value: item.gap,
-        min: -400,
-        max: 400,
-        width: 56,
-        onChanged: (v) => put(item.copyWith(gap: v), live: true),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        key: ValueKey("textItemSide$at"),
-        // Both ways from one number: away from the slot's edge, or back past
-        // it. See TextItem.side.
-        label: "Left/right",
-        value: item.side,
-        min: -2000,
-        max: 2000,
-        width: 66,
-        onChanged: (v) => put(item.copyWith(side: v), live: true),
-        onCommit: commit,
-      ),
-      if (!item.isIcon && item.slot.down == VerticalAlignSpec.middle)
-        _middleSlotHint,
-    ],
-    if (place && box) const CanvasLineBreak(),
-    if (box) ...[
-      // What is behind the piece. The colour is the switch: with nothing
-      // painted there is no shape to round and no room to keep.
-      CanvasColorButton(
-        key: ValueKey("textItemFill$at"),
-        label: "Background",
-        color: item.box.fill,
-        gradient: item.box.fillFade,
-        onChanged: (c) => put(item.copyWith(box: item.box.copyWith(fill: c))),
-        onGradientChanged: (g) => put(item.copyWith(
-            box: g == null
-                ? item.box.copyWith(flatFill: true)
-                : item.box.copyWith(fillFade: g))),
-      ),
-      if (item.box.fill.a > 0) ...[
-        // The corner and room fields every box gets (see cornerFields): two
-        // numbers beside the colour, each split into four by its link.
-        ...cornerFields(
-            item.box.corners,
-            (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
-            commit,
-            label: "Round",
-            prefix: "textItem$at"),
-        ...roomFields(
-            item.box.pad,
-            (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
-            commit,
-            label: "Inside",
-            prefix: "textItem$at"),
-        const CanvasLineBreak(),
-        const CanvasLineBreak(),
-      ],
+    // What is behind the piece. The colour is the switch: with nothing
+    // painted there is no shape to round and no room to keep.
+    CanvasColorButton(
+      key: ValueKey("textItemFill$at"),
+      label: "Background",
+      color: item.box.fill,
+      gradient: item.box.fillFade,
+      onChanged: (c) =>
+          w.piece(at, item.copyWith(box: item.box.copyWith(fill: c))),
+      onGradientChanged: (g) => w.piece(
+          at,
+          item.copyWith(
+              box: g == null
+                  ? item.box.copyWith(flatFill: true)
+                  : item.box.copyWith(fillFade: g))),
+    ),
+    if (item.box.fill.a > 0) ...[
+      // The corner and room fields every box gets (see cornerFields): two
+      // numbers beside the colour, each split into four by its link.
+      ...cornerFields(
+          item.box.corners,
+          (c) => w.piece(at, item.copyWith(box: item.box.withCorners(c)),
+              live: true),
+          commit,
+          label: "Round",
+          prefix: "textItem$at"),
+      ...roomFields(
+          item.box.pad,
+          (r) =>
+              w.piece(at, item.copyWith(box: item.box.withRoom(r)), live: true),
+          commit,
+          label: "Inside",
+          prefix: "textItem$at"),
+      const CanvasLineBreak(),
+      const CanvasLineBreak(),
     ],
   ];
 }
-
-/// _pieceBoxBits is what is behind piece [at].
-List<Widget> _pieceBoxBits(TextElement e, int at, TextItem item,
-        SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
-    _placeBits(e, at, item, write, begin, commit, place: false);
 
 /// _pictureRow is a picture piece's row, shaped as a words piece's: what
 /// it is on the line, the rest behind the button.
@@ -406,27 +329,14 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var icon = item.icon ?? const TextIcon();
 
-  void put(TextItem next) {
-    begin();
-    write(e.copyWith(items: [
-      for (var (i, it) in e.items.indexed) i == at ? next : it,
-    ]));
-    commit();
-  }
-
-  void live(TextIcon next) {
-    begin();
-    write(e.copyWith(items: [
-      for (var (i, it) in e.items.indexed)
-        i == at ? item.copyWith(icon: next) : it,
-    ]));
-  }
-
-  void now(TextIcon next) => put(item.copyWith(icon: next));
+  var w = _TextWrites(e, write, begin, commit);
+  void live(TextIcon next) =>
+      w.piece(at, item.copyWith(icon: next), live: true);
+  void now(TextIcon next) => w.piece(at, item.copyWith(icon: next));
 
   return CanvasMoreGroup(
     label: item.says,
-    onRename: (v) => put(item.copyWith(name: v)),
+    onRename: (v) => w.piece(at, item.copyWith(name: v)),
     rule: false,
     remember: "textItem${item.id}",
     tooltip: "Where it sits, its colour, its box and its line",

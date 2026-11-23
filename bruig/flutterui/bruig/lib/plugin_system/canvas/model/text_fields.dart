@@ -25,8 +25,8 @@ enum TextFieldKind {
   const TextFieldKind(this.label, this.written);
 }
 
-/// masterMark is what a field that depends on the page shows on the master.
-const masterMark = "#";
+/// _masterMark is what a field that depends on the page shows on the master.
+const _masterMark = "#";
 
 /// PageFields is what the fields on one page are filled from.
 class PageFields {
@@ -44,7 +44,7 @@ class PageFields {
   final String? Function(String name) textOf;
 
   /// master is true on the master canvas being edited: per-page fields show
-  /// masterMark.
+  /// _masterMark.
   final bool master;
 
   const PageFields({
@@ -68,7 +68,7 @@ String fillFields(String text, PageFields f) {
   return text.replaceAllMapped(_field, (m) {
     var what = m.group(1)!;
     if (what == "pages") return "${f.pages}";
-    if (f.master) return masterMark;
+    if (f.master) return _masterMark;
     if (what == "page") return f.page == null ? "" : "${f.page}";
     if (what.startsWith("text:")) {
       // The page's own words as written: a field in them is not filled

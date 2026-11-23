@@ -297,7 +297,7 @@ void paintPartMarks(
     if (drawn <= 0) continue;
 
     var boxes = painter.getBoxesForSelection(
-        TextSelection(baseOffset: range.$1, extentOffset: range.$2));
+        TextSelection(baseOffset: range.start, extentOffset: range.end));
     // Drawn on along the first line, then the second, not both at once.
     var total = 0.0;
     for (var b in boxes) {

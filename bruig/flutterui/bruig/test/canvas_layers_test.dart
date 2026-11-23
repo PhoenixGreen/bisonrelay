@@ -33,6 +33,15 @@ const _widgetLibraries = [
   "package:flutter/cupertino.dart",
 ];
 
+/// _noOutside is the folders that must not read the disk or the app's
+/// bundled assets: the document is a value, read and written by storage/.
+const _noOutside = ["model"];
+
+const _outsideLibraries = [
+  "dart:io",
+  "package:flutter/services.dart",
+];
+
 /// _exceptions is the imports that break a rule today, each a debt to pay
 /// off. An import is added here only with a reason; one that no longer
 /// breaks its rule fails the last test until it is taken out.
@@ -109,7 +118,11 @@ List<String> _broken() {
         var wrongFolder = into != null && !allowed.contains(into);
         var widgets =
             _noWidgets.contains(folder) && _widgetLibraries.contains(uri);
-        if (wrongFolder || widgets) found.add("${file.path}: $uri");
+        var outside =
+            _noOutside.contains(folder) && _outsideLibraries.contains(uri);
+        if (wrongFolder || widgets || outside) {
+          found.add("${file.path}: $uri");
+        }
       }
     }
   }

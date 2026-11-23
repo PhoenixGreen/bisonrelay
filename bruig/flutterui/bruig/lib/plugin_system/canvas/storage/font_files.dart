@@ -1,20 +1,13 @@
 import 'dart:io';
 
-import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
+
+import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 
 // font_files.dart finds the font file a drawing's text is set from: the
 // app's bundled faces, and common desktop ones where this system keeps them.
 // A missing face falls back to Inter; a missing italic is the upright leant.
-
-/// FontPick is the face found for a family, weight and slant: the face,
-/// and whether it has to be leant over to be italic.
-class FontPick {
-  final FontFace face;
-  final bool lean;
-  const FontPick(this.face, {this.lean = false});
-}
 
 class FontFiles {
   FontFiles._();
@@ -52,18 +45,17 @@ class FontFiles {
   }
 
   Future<FontPick?> _find(String family, int weight, bool italic) async {
-    for (var (source, leans) in _sources(family, weight, italic)) {
-      var face = await _read(source);
+    for (var (:file, :leans) in _sources(family, weight, italic)) {
+      var face = await _read(file);
       if (face != null) return FontPick(face, lean: leans);
     }
     if (family != "Inter") return _find("Inter", weight, italic);
     return null;
   }
 
-  /// _read is the face [source] names (an asset, or a file plus the style
-  /// to pick from a collection), or null.
-  Future<FontFace?> _read((String, String?) source) async {
-    var (path, style) = source;
+  /// _read is the face [file] names, or null.
+  Future<FontFace?> _read(_FontFile file) async {
+    var (:path, :style) = file;
     Uint8List? bytes;
     try {
       if (path.startsWith("assets/")) {
@@ -92,19 +84,17 @@ class FontFiles {
 
   /// _sources is where [family] in [weight] and [italic] may be, best
   /// first, each with whether what is found there has to be leant over.
-  List<((String, String?), bool)> _sources(
-      String family, int weight, bool italic) {
+  List<_FontSource> _sources(String family, int weight, bool italic) {
     if (!_familyName.hasMatch(family)) return const [];
     var bold = weight >= 600;
     // The family's own files with each style, best first: the one asked
     // for, then the same weight upright -- to lean -- then regular.
-    List<((String, String?), bool)> styled(
-            (String, String?) Function(bool bold, bool italic) file) =>
+    List<_FontSource> styled(_FontFile Function(bool bold, bool italic) file) =>
         [
-          (file(bold, italic), false),
-          if (italic) (file(bold, false), true),
-          if (bold) (file(false, italic), false),
-          (file(false, false), italic),
+          (file: file(bold, italic), leans: false),
+          if (italic) (file: file(bold, false), leans: true),
+          if (bold) (file: file(false, italic), leans: false),
+          (file: file(false, false), leans: italic),
         ];
 
     switch (family) {
@@ -128,30 +118,29 @@ class FontFiles {
                 : "assets/fonts/Inter-${name}Italic.otf")
             : "assets/fonts/Inter-$name.otf";
         return [
-          ((file(italic), null), false),
-          if (italic) ((file(false), null), true),
+          _asset(file(italic), leans: false),
+          if (italic) _asset(file(false), leans: true),
         ];
       case "RobotoMono":
         return [
           if (italic)
-            (
-              ("assets/fonts/RobotoMono-Italic-VariableFont_wght.ttf", null),
-              false
-            ),
-          (("assets/fonts/RobotoMono-VariableFont_wght.ttf", null), italic),
+            _asset("assets/fonts/RobotoMono-Italic-VariableFont_wght.ttf",
+                leans: false),
+          _asset("assets/fonts/RobotoMono-VariableFont_wght.ttf",
+              leans: italic),
         ];
       // One weight, and no italic: leant over where one is asked for.
       case "Bebas Neue":
-        return [(("assets/fonts/BebasNeue-Regular.ttf", null), italic)];
+        return [_asset("assets/fonts/BebasNeue-Regular.ttf", leans: italic)];
       // Comic lettering: one face, already leaning, so never leant again.
       case "Bangers":
-        return [(("assets/fonts/Bangers-Regular.ttf", null), false)];
+        return [_asset("assets/fonts/Bangers-Regular.ttf", leans: false)];
       // Regular and bold, each with its own italic.
       case "PTSerif":
         return styled((b, i) => (
-              "assets/fonts/PTSerif-${b ? "Bold" : ""}"
+              path: "assets/fonts/PTSerif-${b ? "Bold" : ""}"
                   "${i ? "Italic" : (b ? "" : "Regular")}.ttf",
-              null
+              style: null
             ));
       // Four weights, the nearest taken; no italic.
       case "Oswald":
@@ -161,7 +150,7 @@ class FontFiles {
           < 650 => "SemiBold",
           _ => "Bold",
         };
-        return [(("assets/fonts/Oswald-$name.ttf", null), italic)];
+        return [_asset("assets/fonts/Oswald-$name.ttf", leans: italic)];
     }
 
     if (Platform.isMacOS) {
@@ -169,12 +158,12 @@ class FontFiles {
       if (family == "Helvetica") {
         String style(bool b, bool i) =>
             b ? (i ? "Bold Oblique" : "Bold") : (i ? "Oblique" : "Regular");
-        return styled(
-            (b, i) => ("/System/Library/Fonts/Helvetica.ttc", style(b, i)));
+        return styled((b, i) =>
+            (path: "/System/Library/Fonts/Helvetica.ttc", style: style(b, i)));
       }
       return styled((b, i) {
         var suffix = b ? (i ? " Bold Italic" : " Bold") : (i ? " Italic" : "");
-        return ("$dir/$family$suffix.ttf", null);
+        return (path: "$dir/$family$suffix.ttf", style: null);
       });
     }
     if (Platform.isWindows) {
@@ -192,7 +181,7 @@ class FontFiles {
       if (f == null) return const [];
       return styled((b, i) {
         var n = b ? (i ? f.$4 : f.$2) : (i ? f.$3 : f.$1);
-        return ("$root\\$n.ttf", null);
+        return (path: "$root\\$n.ttf", style: null);
       });
     }
     // Linux: Microsoft's core fonts where they are installed, and the
@@ -209,14 +198,26 @@ class FontFiles {
     return [
       ...styled((b, i) {
         var suffix = b ? (i ? "_Bold_Italic" : "_Bold") : (i ? "_Italic" : "");
-        return ("$core/$name$suffix.ttf", null);
+        return (path: "$core/$name$suffix.ttf", style: null);
       }),
       if (lib != null)
         ...styled((b, i) {
           var suffix =
               b ? (i ? "BoldItalic" : "Bold") : (i ? "Italic" : "Regular");
-          return ("$liberation/$lib-$suffix.ttf", null);
+          return (path: "$liberation/$lib-$suffix.ttf", style: null);
         }),
     ];
   }
 }
+
+/// _FontFile is where a face is: an asset or a file, and the style to pick
+/// from a collection, or null for its only face.
+typedef _FontFile = ({String path, String? style});
+
+/// _FontSource is a place a face may be, and whether what is found there has
+/// to be leant over to be italic.
+typedef _FontSource = ({_FontFile file, bool leans});
+
+/// _asset is a bundled face, the only one in its file.
+_FontSource _asset(String path, {required bool leans}) =>
+    (file: (path: path, style: null), leans: leans);

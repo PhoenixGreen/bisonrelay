@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
@@ -1665,11 +1666,7 @@ class TeamElement extends CanvasElement {
         mirrored: jsonBool(json["mirrored"], false),
         spread: FormationSpread.fromName(jsonStr(json["spread"])),
         frameLocked: jsonBool(json["frameLocked"], false),
-        players: [
-          if (raw is List)
-            for (var p in raw)
-              if (p is Map<String, dynamic>) PlayerSpot.fromJson(p),
-        ],
+        players: jsonObjects(raw, PlayerSpot.fromJson, most: maxTeamPlayers),
         keeperColor: colorFromJson(json["keeper"], _defaults.keeperColor),
         playerColor: colorFromJson(json["player"], _defaults.playerColor),
         outlineColor: colorFromJson(json["outline"]),

@@ -71,12 +71,9 @@ void nudgeWarpPicks(CanvasController c, Offset by) {
   var chosen = chosenOf(c);
   if (chosen.length != 1) return null;
   var e = chosen.first;
-  if (e is! TextElement || e.locked || e.curve != null) return null;
+  if (e is! TextElement) return null;
   var item = c.textLayer(e);
-  if (item == null || !item.isIcon || item.hidden || item.locked) {
-    return null;
-  }
-  if (!item.icon!.on) return null;
+  if (item == null || !e.handlesPiece(item)) return null;
   var i = e.items.indexOf(item);
   return i < 0 ? null : (e, i);
 }

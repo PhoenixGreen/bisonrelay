@@ -81,7 +81,6 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
           parts: e.drawnParts)
       : _sizeOf(e.items[i - 1], inner.width);
   double gapOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
-  double leadOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
   // Sideways, away from the edge the slot holds this piece to.
   double sideOf(int i) => i == 0 ? 0 : e.items[i - 1].side;
   double downOf(int i) => i == 0 ? 0 : e.items[i - 1].down;
@@ -100,7 +99,7 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
     // piece's room, from the edge the slot holds the stack to, is applied
     // to the stack rather than inside it, so it works at the bottom of the
     // box too. See TextItem.gap.
-    var lead = leadOf(mine.first);
+    var lead = gapOf(mine.first);
     var total = sizes.first.height;
     for (var (n, i) in mine.indexed) {
       if (n == 0) continue;
@@ -217,8 +216,7 @@ void paintTextItems(
     if (icon == null && item.text.isEmpty) continue;
     void drawn(ui.Canvas canvas) {
       if (icon != null) {
-        // Drawn by the same function the element's own icon is drawn by, so
-        // a picture in a box looks the same however it got there.
+        // Its box, tint, outline and underline: see paintTextIcon.
         paintTextIcon(canvas, inner, icon, images, item.spec);
         return;
       }

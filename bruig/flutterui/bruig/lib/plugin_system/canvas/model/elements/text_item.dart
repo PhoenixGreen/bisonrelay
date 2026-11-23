@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -184,6 +186,18 @@ class TextItem {
     return copyWith(spec: spec, icon: icon, box: box);
   }
 
+  /// movedBy is this piece pushed [by] on the page, in an element drawn
+  /// turned [turn] degrees: counted in the element's own frame, so it goes
+  /// the way it was pushed, and leftwards from a slot held to the right.
+  TextItem movedBy(Offset by, double turn) {
+    var r = turn * math.pi / 180;
+    var c = math.cos(r), s = math.sin(r);
+    var across = slot.across == TextAlignSpec.right ? -1 : 1;
+    return copyWith(
+        side: side + (by.dx * c + by.dy * s) * across,
+        down: down + (-by.dx * s + by.dy * c));
+  }
+
   /// scaledBy scales its type, picture (its box and underline too), box and
   /// spacing; slot and text stay.
   TextItem scaledBy(double by) => copyWith(
@@ -225,17 +239,18 @@ class TextItem {
       };
 
   factory TextItem.fromJson(Map<String, dynamic> json) => TextItem(
-        id: json["id"] is String && (json["id"] as String).isNotEmpty
-            ? json["id"] as String
-            : newElementId(),
+        id: switch (jsonId(json["id"], "")) {
+          "" => newElementId(),
+          var id => id,
+        },
         text: jsonString(json["t"], _defaults.text),
-        name: jsonString(json["name"], _defaults.name),
+        name: jsonLabel(json["name"], _defaults.name),
         slot: TextSlot.fromName(jsonStr(json["slot"])),
-        gap: json["gap"] is num
-            ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)
-            : 0,
-        side: _side(json["side"]) ?? 0,
-        down: _side(json["dn"]) ?? 0,
+        gap: jsonLength(json["gap"], 0, signed: true),
+        // As far as a page is wide, as a picture may be dragged right across
+        // its box.
+        side: jsonLength(json["side"], 0, signed: true),
+        down: jsonLength(json["dn"], 0, signed: true),
         box: json["box"] is Map<String, dynamic>
             ? BoxSpec.fromJson((json["box"] as Map).cast<String, dynamic>())
             : const BoxSpec(padding: 0),
@@ -249,8 +264,3 @@ class TextItem {
         locked: json["lock"] == true,
       );
 }
-
-/// _side reads a sideways or downward move: as far as a page is wide, as a
-/// picture may be dragged right across its box.
-double? _side(Object? raw) =>
-    raw is num && raw.isFinite ? raw.toDouble().clamp(-4000.0, 4000.0) : null;

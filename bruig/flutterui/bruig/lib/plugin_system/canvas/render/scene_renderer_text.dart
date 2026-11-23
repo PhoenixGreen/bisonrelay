@@ -133,7 +133,7 @@ void _paintTextBody(
               Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
         }
         // The stroke drawn onto the words, where that is the preset: the
-        // motion leaves the opacity alone (applyMotion), so it is done here.
+        // motion leaves the opacity alone (applyMotionSpec), so it is done here.
         var p = animation.progressAt(reveal, 0, 1);
         var stroke = animation.on &&
             animation.preset.motion == TextMotion.strokeOn &&

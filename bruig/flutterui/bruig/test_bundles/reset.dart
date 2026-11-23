@@ -4,12 +4,12 @@
 import 'package:bruig/components/file_openers.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/presets/drawn_styles.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/storage/font_files.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/data/data_editor_shell.dart';

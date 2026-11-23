@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -10,18 +11,19 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 // panel shows too and can animate. Read as a text is read, so an old
 // canvas, a pasted text and a saved design all come in with looks.
 
-/// textLayerChoices is what of [e] a look can be laid on, as (layer, name):
-/// all of it, its own words, and each piece.
-List<(String, String)> textLayerChoices(TextElement e) => [
-      ("", "The whole text"),
-      (MotionDevice.bodyLayer, "Its words"),
-      for (var item in e.items) (item.id, item.says),
+/// textLayerChoices is what of [e] a look can be laid on, each a layer
+/// (MotionDevice.layer) and its name: all of it, its own words, and each
+/// piece.
+List<({String layer, String name})> textLayerChoices(TextElement e) => [
+      (layer: "", name: "The whole text"),
+      (layer: MotionDevice.bodyLayer, name: "Its words"),
+      for (var item in e.items) (layer: item.id, name: item.says),
     ];
 
-/// typeLooks is [spec]'s shadow, glow and outline as looks on [layer], drawn
+/// _typeLooks is [spec]'s shadow, glow and outline as looks on [layer], drawn
 /// as the type drew them: the outline under the letters, then the glow, then
 /// the shadow behind both (softShadows).
-List<MotionDevice> typeLooks(TextSpec spec, String layer) => [
+List<MotionDevice> _typeLooks(TextSpec spec, String layer) => [
       if (spec.outlineWidth > 0)
         MotionDevice(MotionDeviceKind.outline,
             values: {"width": spec.outlineWidth},
@@ -47,8 +49,8 @@ List<MotionDevice> typeLooks(TextSpec spec, String layer) => [
             layer: layer),
     ];
 
-/// withoutTypeLooks is [spec] with no shadow, glow or outline of its own.
-TextSpec withoutTypeLooks(TextSpec spec) => spec.copyWith(
+/// _withoutTypeLooks is [spec] with no shadow, glow or outline of its own.
+TextSpec _withoutTypeLooks(TextSpec spec) => spec.copyWith(
     outlineWidth: 0, shadowBlur: 0, shadowDistance: 0, glowBlur: 0);
 
 /// hasTypeLooks is whether [spec] has a shadow, a glow or an outline.
@@ -57,6 +59,14 @@ bool hasTypeLooks(TextSpec spec) =>
     spec.glowBlur > 0 ||
     spec.shadowBlur > 0 ||
     spec.shadowDistance > 0;
+
+/// typeFollowsStyle is whether type [own] is still [style]'s: the same but
+/// for a shadow, glow or outline, which a text holds as looks once read
+/// (see textLooksLifted) while the style keeps them in its type. Its fill
+/// is compared by its saved form, as a pattern has no equality of its own.
+bool typeFollowsStyle(TextSpec own, TextSpec style) =>
+    _withoutTypeLooks(own) == _withoutTypeLooks(style) &&
+    jsonEncode(own.fill.toJson()) == jsonEncode(style.fill.toJson());
 
 /// textLooksLifted is [e] with its words' and pieces' type looks moved to
 /// looks on those layers; [e] itself where there are none. A layer that has
@@ -67,8 +77,8 @@ TextElement textLooksLifted(TextElement e) {
     return e;
   }
   var looks = [
-    ...typeLooks(e.textSpec, MotionDevice.bodyLayer),
-    for (var item in e.items) ...typeLooks(item.spec, item.id),
+    ..._typeLooks(e.textSpec, MotionDevice.bodyLayer),
+    for (var item in e.items) ..._typeLooks(item.spec, item.id),
   ];
   var motion = e.base.motion;
   var devices = [...motion.devices];
@@ -90,11 +100,11 @@ TextElement textLooksLifted(TextElement e) {
     }
   }
   return e.copyWith(
-    textSpec: withoutTypeLooks(e.textSpec),
+    textSpec: _withoutTypeLooks(e.textSpec),
     items: [
       for (var item in e.items)
         hasTypeLooks(item.spec)
-            ? item.copyWith(spec: withoutTypeLooks(item.spec))
+            ? item.copyWith(spec: _withoutTypeLooks(item.spec))
             : item
     ],
   ).withBase(motion: motion.copyWith(devices: withMotionDeviceIds(devices)))

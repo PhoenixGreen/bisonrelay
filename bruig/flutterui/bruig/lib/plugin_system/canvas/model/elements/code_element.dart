@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // code_element.dart is a Code panel: a little project of files shown as an
@@ -741,10 +742,7 @@ class CodeElement extends CanvasElement {
         windowBar: jsonBool(json["windowBar"], true),
         playbar: jsonBool(json["playbar"], true),
         typing: CodeTyping.fromJson(json["typing"]),
-        steps: [
-          for (var s in (json["steps"] is List ? json["steps"] as List : []))
-            if (CodeStep.fromJson(s) case var step?) step
-        ],
+        steps: jsonList(json["steps"], CodeStep.fromJson, most: maxCodeSteps),
         dim: jsonBool(json["dim"], true),
         start: json["start"] is List
             ? [

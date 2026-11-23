@@ -87,11 +87,7 @@ extension StageTextPieces on CanvasStageState {
               ? Offset(delta.dx, 0)
               : Offset(0, delta.dy);
         }
-        var local = BoxFrame(_pieceElementTurn(e), 0, 0).invert(delta);
-        // A piece held to the right-hand edge counts its side leftwards.
-        var across = start.slot.across == TextAlignSpec.right ? -1 : 1;
-        moved = start.copyWith(
-            side: start.side + local.dx * across, down: start.down + local.dy);
+        moved = start.movedBy(delta, _pieceElementTurn(e));
       case _DragMode.pieceTurn:
         var from = _dragStart - _pieceMiddle, to = doc - _pieceMiddle;
         var swept = (math.atan2(to.dy, to.dx) - math.atan2(from.dy, from.dx)) *
@@ -134,23 +130,5 @@ extension StageTextPieces on CanvasStageState {
     var across = start.slot.across == TextAlignSpec.right ? -1 : 1;
     return sized.copyWith(
         side: sized.side + d.dx * across, down: sized.down + d.dy);
-  }
-
-  /// _pressPlayTask ticks a play task's step the student marks, or starts it
-  /// again, if the press is on one. Not a text piece, but as small a thing
-  /// pressed inside an element. Answers whether it was taken.
-  bool _pressPlayTask(PlayTaskElement e, Offset doc) {
-    // From where it is drawn now, which its motion may have moved.
-    var at = doc - _hit.posed(e).topLeft;
-    var show = controller.playTaskShowFor(e);
-    if (playTaskAgainAt(e, at, show)) {
-      controller.startPlayTaskAgain(e);
-    } else if (playTaskMarkAt(e, at, show) case var i?) {
-      controller.tickPlayStep(e, i);
-    } else {
-      return false;
-    }
-    _mode = _DragMode.none;
-    return true;
   }
 }

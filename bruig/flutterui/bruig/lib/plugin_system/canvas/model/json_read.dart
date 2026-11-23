@@ -24,6 +24,19 @@ const maxIdLength = 200, maxLabelLength = 1000;
 /// sets no smaller limit of its own.
 const maxListLength = 100000;
 
+/// maxDesignLength is the most a length in design units is read with where
+/// its field sets no limit of its own (a letter spacing, a border, a
+/// padding, a blur): ten times what a panel offers, so a page enlarged
+/// several times over reads as it was made, while a received canvas's
+/// billion-unit blur is never attempted.
+const maxDesignLength = 4000.0;
+
+/// jsonLength is [v] as a length in design units, from nought (or, [signed],
+/// as far below it) to [maxDesignLength]; or [fallback].
+double jsonLength(Object? v, double fallback, {bool signed = false}) =>
+    jsonDouble(v, fallback)
+        .clamp(signed ? -maxDesignLength : 0.0, maxDesignLength);
+
 /// jsonDouble and jsonInt are [v] as a finite number, or [fallback]. JSON
 /// reads 1e999 as infinity, which would throw at the first round().
 double jsonDouble(Object? v, double fallback) =>

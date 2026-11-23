@@ -1,7 +1,8 @@
 part of '../canvas_controller.dart';
 
-// Part of CanvasController: replacing a colour everywhere, and the document's
-// named text styles, counters' among them.
+// Part of CanvasController: replacing a colour everywhere, the document's
+// named text styles (counters' among them), and the piece picked in a text's
+// Layers. Its state is _TextState, at the end of this file.
 
 extension CanvasTextStyles on CanvasController {
   /// replaceColour makes every use of [from] in the document [to], as one
@@ -13,20 +14,75 @@ extension CanvasTextStyles on CanvasController {
   void replaceColour(Color from, Color to) =>
       apply(_document.mapColours(replacing(from, to)));
 
+  /// textLayer is the piece of [e] picked in its Layers, or null for its
+  /// own words (also returned for a piece since removed).
+  TextItem? textLayer(TextElement e) {
+    var id = _texts.pieces[e.id];
+    if (id == null) return null;
+    for (var item in e.items) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  /// pickTextLayer picks piece [itemId] of text element [elementId] in its
+  /// Layers, or its own words with null.
+  void pickTextLayer(String elementId, String? itemId) {
+    if (_texts.pieces[elementId] == itemId) return;
+    if (itemId == null) {
+      _texts.pieces.remove(elementId);
+    } else {
+      _texts.pieces[elementId] = itemId;
+    }
+    notifyListeners();
+  }
+
   List<NamedTextStyle> get textStyles => _document.textStyles;
+
+  /// _nextStyleName is [wanted], or the first "Style N" not yet taken when
+  /// it is empty or taken.
+  String _nextStyleName([String wanted = ""]) {
+    var taken = {for (var t in textStyles) t.name};
+    if (wanted.isNotEmpty && !taken.contains(wanted)) return wanted;
+    for (var n = textStyles.length + 1;; n++) {
+      if (!taken.contains("Style $n")) return "Style $n";
+    }
+  }
+
+  /// _restyled is [e] with each named style it is set in passed through
+  /// [change], which is given the style's name and the type set in it, and
+  /// gives back the name and type to have instead, or null to leave that
+  /// one as it is. A text is set in one style and a counter in two (its
+  /// figures' and its words'); no other kind in any. This is the one place
+  /// that says so.
+  CanvasElement _restyled(CanvasElement e, _Restyle change) {
+    switch (e) {
+      case TextElement(:var style) when style.isNotEmpty:
+        var to = change(style, e.textSpec);
+        if (to == null) return e;
+        var next = e.copyWith(style: to.name, textSpec: to.spec);
+        // A style's shadow, glow and outline are looks on the words, as the
+        // text's own are: see text_looks.dart.
+        return identical(to.spec, e.textSpec) ? next : textLooksLifted(next);
+      case CounterElement(:var numberStyle, :var wordStyle):
+        var number =
+            numberStyle.isEmpty ? null : change(numberStyle, e.numberSpec);
+        var words = wordStyle.isEmpty ? null : change(wordStyle, e.affixSpec);
+        if (number == null && words == null) return e;
+        return e.copyWith(
+            numberStyle: number?.name,
+            numberSpec: number?.spec,
+            wordStyle: words?.name,
+            affixSpec: words?.spec);
+      default:
+        return e;
+    }
+  }
 
   /// saveTextStyle makes [e]'s type a named style -- the next "Style N" if
   /// no name is given -- and sets [e] in it.
   String saveTextStyle(TextElement e, {String name = ""}) {
-    var taken = {for (var t in textStyles) t.name};
-    if (name.isEmpty || taken.contains(name)) {
-      for (var n = textStyles.length + 1;; n++) {
-        if (!taken.contains("Style $n")) {
-          name = "Style $n";
-          break;
-        }
-      }
-    }
+    name = _nextStyleName(name);
     var next = _document.copyWith(
         textStyles: [...textStyles, NamedTextStyle(name, e.textSpec)]);
     apply(_replacedAnywhere(next, e.copyWith(style: name)) ?? next);
@@ -46,21 +102,24 @@ extension CanvasTextStyles on CanvasController {
     }));
   }
 
-  /// updateTextStyle makes style [name] [spec], and restyles every text set
-  /// in it, in every scene and on the master, as one change.
+  /// updateTextStyle makes style [name] [spec], and restyles every text and
+  /// counter set in it, in every scene and on the master, as one change.
+  /// One whose type is no longer the style's was changed by hand, and is
+  /// left as it is, still carrying the name: so the panel can still push
+  /// that edit into the style (the source of a change already has [spec]).
   void updateTextStyle(String name, TextSpec spec) {
+    var was = textStyles.where((t) => t.name == name).firstOrNull?.spec;
+    if (was == null) return;
     var next = _document.copyWith(textStyles: [
       for (var t in textStyles) t.name == name ? NamedTextStyle(name, spec) : t,
     ]);
-    apply(_everyElement(next, (e, _) {
-      if (e is CounterElement) {
-        return e.copyWith(
-            numberSpec: e.numberStyle == name ? spec : null,
-            affixSpec: e.wordStyle == name ? spec : null);
-      }
-      if (e is! TextElement || e.style != name) return e;
-      return textLooksLifted(e.copyWith(textSpec: spec));
-    }));
+    apply(_everyElement(
+        next,
+        (e, _) => _restyled(
+            e,
+            (style, own) => style == name && typeFollowsStyle(own, was)
+                ? (name: name, spec: spec)
+                : null)));
   }
 
   /// useCounterStyle is useTextStyle for counter [id]'s number, or [words].
@@ -77,14 +136,7 @@ extension CanvasTextStyles on CanvasController {
 
   /// saveCounterStyle is saveTextStyle for counter [e]'s number, or [words].
   String saveCounterStyle(CounterElement e, {bool words = false}) {
-    var taken = {for (var t in textStyles) t.name};
-    var name = "";
-    for (var n = textStyles.length + 1;; n++) {
-      if (!taken.contains("Style $n")) {
-        name = "Style $n";
-        break;
-      }
-    }
+    var name = _nextStyleName();
     var spec = words ? e.affixSpec : e.numberSpec;
     var next = _document
         .copyWith(textStyles: [...textStyles, NamedTextStyle(name, spec)]);
@@ -101,15 +153,10 @@ extension CanvasTextStyles on CanvasController {
       for (var t in textStyles) t.name == from ? NamedTextStyle(to, t.spec) : t,
     ]);
     apply(
-        _everyElement(next, (e, _) {
-          if (e is CounterElement) {
-            return e.copyWith(
-                numberStyle: e.numberStyle == from ? to : null,
-                wordStyle: e.wordStyle == from ? to : null);
-          }
-          if (e is! TextElement || e.style != from) return e;
-          return e.copyWith(style: to);
-        }),
+        _everyElement(
+            next,
+            (e, _) => _restyled(e,
+                (style, own) => style == from ? (name: to, spec: own) : null)),
         transient: transient);
   }
 
@@ -119,62 +166,23 @@ extension CanvasTextStyles on CanvasController {
       for (var t in textStyles)
         if (t.name != name) t,
     ]);
-    apply(_everyElement(next, (e, _) {
-      if (e is CounterElement) {
-        return e.copyWith(
-            numberStyle: e.numberStyle == name ? "" : null,
-            wordStyle: e.wordStyle == name ? "" : null);
-      }
-      if (e is! TextElement || e.style != name) return e;
-      return e.copyWith(style: "");
-    }));
+    apply(_everyElement(
+        next,
+        (e, _) => _restyled(
+            e, (style, own) => style == name ? (name: "", spec: own) : null)));
   }
+}
 
-  /// staggerArrivals has elements [ids] arrive [gap] frames apart, left to
-  /// right or, [downwards], top to bottom. The first keeps its timing; the
-  /// rest have their keyframes shifted to start [gap] after the one before.
-  void staggerArrivals(List<String> ids, int gap, {bool downwards = false}) {
-    var rate = math.max(1, _document.frameRate);
-    // Its arrival's start; or, with none, its first keyframe or clip.
-    int? arrivalOf(CanvasElement e) {
-      if (ownSpan(e, MotionKind.arrive, rate) case (var at, _)) return at;
-      var keys = e.base.track?.keys ?? const <Keyframe>[];
-      if (keys.isNotEmpty) return keys.first.frame;
-      var placed = e.base.motion.placed;
-      if (placed.isEmpty) return null;
-      return (placed.map((p) => p.start).reduce(math.min) * rate).round();
-    }
+/// _Restyle is a change to one named style an element is set in: given the
+/// style's name and the type set in it, the name and type to have instead,
+/// or null to leave it.
+typedef _Restyle = ({String name, TextSpec spec})? Function(
+    String style, TextSpec own);
 
-    var picked = [
-      for (var id in ids)
-        if (_document.elementById(id) case var e? when arrivalOf(e) != null) e,
-    ];
-    if (picked.length < 2) return;
-    picked.sort((a, b) => downwards
-        ? a.base.y.compareTo(b.base.y)
-        : a.base.x.compareTo(b.base.x));
-
-    var first = arrivalOf(picked.first)!;
-    var next = _document;
-    for (var (i, e) in picked.indexed) {
-      var by = first + i * gap - arrivalOf(e)!;
-      if (by == 0) continue;
-      // Keyframes and clips alike: whatever it does moves with it.
-      var track = e.base.track;
-      next = next.withElement(e.withBase(
-          track: track == null || track.isEmpty ? track : _shifted(track, by),
-          motion: e.base.motion.shiftedBy(by / rate)));
-    }
-    apply(next);
-  }
-
-  /// _runStartOf is where [id]'s frames count from: its scene's start, or 0.
-  int _runStartOf(String id) {
-    for (var (i, scene) in _document.allScenes.indexed) {
-      if (scene.elements.any((e) => e.id == id)) {
-        return _document.hasScenes ? _document.startOfScene(i) : 0;
-      }
-    }
-    return 0;
-  }
+/// _TextState is what CanvasTextStyles keeps between calls, for the open
+/// canvas only: the controller makes a new one when another opens.
+class _TextState {
+  /// pieces is the piece picked in each text element's Layers, by element
+  /// id; one not here has its own words picked.
+  final Map<String, String> pieces = {};
 }

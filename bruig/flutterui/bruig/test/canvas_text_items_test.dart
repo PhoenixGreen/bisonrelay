@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -361,6 +362,28 @@ void main() {
       expect(icon.box.pad.left, 8);
       expect(icon.underline!.width, 4);
       expect(icon.underline!.away, 6);
+    });
+
+    test("and a drawn mark's room and corners, the text's and a part's", () {
+      // A highlight drawn on as the words arrive is a band in design units,
+      // like the marks above.
+      const drawn = TextDrawSpec(padLeft: 10, padTop: 3, radius: 4);
+      var card = _card(items: const []).copyWith(
+        animation: const TextAnimation(
+            preset: TextAnimationPreset.highlight, draw: drawn),
+        parts: const [
+          TextPart(
+              animation: TextPartAnimation(
+                  preset: TextAnimationPreset.highlight, draw: drawn)),
+        ],
+      );
+      var twice = card.scaledBy(2) as TextElement;
+      expect(twice.animation.draw.padLeft, 20);
+      expect(twice.animation.draw.padTop, 6);
+      expect(twice.animation.draw.radius, 8);
+      var part = twice.parts.single.animation.draw;
+      expect(part.padLeft, 20);
+      expect(part.radius, 8);
     });
 
     test("but an element that is fractions of its box is left alone", () {

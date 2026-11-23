@@ -62,7 +62,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_cut.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
-import 'package:bruig/plugin_system/canvas/model/font_files.dart';
+import 'package:bruig/plugin_system/canvas/storage/font_files.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -103,6 +103,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart'
     show MotionEditing;
 import 'package:bruig/plugin_system/canvas/ui/game/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_text_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/canvas_cell_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/counter_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';

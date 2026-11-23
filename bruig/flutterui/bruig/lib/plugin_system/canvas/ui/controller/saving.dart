@@ -160,7 +160,7 @@ extension CanvasSaving on CanvasController {
     _pendingPicture = null;
     _pendingKeeps = _pendingTeaches = _pendingFills = false;
     _sessionState.motionPreview = null;
-    _pictures.textLayers.clear();
+    _texts = _TextState();
     _keyframes.anchorsShown.clear();
     _playTasks = _PlayTaskState();
     _layouts = _LayoutState();

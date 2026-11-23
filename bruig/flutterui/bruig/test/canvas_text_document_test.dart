@@ -23,7 +23,7 @@ void main() {
     test("plain text is the default, and every mark is stripped", () {
       // "Initially only plain text": a headline reading "## Title" is not
       // markdown being ignored, it is markdown showing.
-      var (text, parts) = readDocument("""
+      var (:text, :parts) = readDocument("""
 # A title
 
 Some **bold** and *italic* and a [link](https://example.com).
@@ -43,7 +43,7 @@ Some **bold** and *italic* and a [link](https://example.com).
     });
 
     test("with markdown on, the pieces become parts", () {
-      var (text, parts) = readDocument("A **strong** word.", markdown: true);
+      var (:text, :parts) = readDocument("A **strong** word.", markdown: true);
       expect(text, "A strong word.");
       expect(parts.length, 1);
       expect(parts.single.weight, 700);
@@ -55,7 +55,8 @@ Some **bold** and *italic* and a [link](https://example.com).
       const source = "# Heading\n**bold** *slanted* __lined__ [link](x)";
 
       var all =
-          readDocument(source, markdown: true, allow: const MarkdownAllow()).$2;
+          readDocument(source, markdown: true, allow: const MarkdownAllow())
+              .parts;
       expect(all.length, 5, reason: "a heading and four inline marks");
 
       var some = readDocument(source,
@@ -63,7 +64,7 @@ Some **bold** and *italic* and a [link](https://example.com).
           allow: const MarkdownAllow(looks: {
             MarkdownKind.bold: MarkdownLook(on: false),
             MarkdownKind.link: MarkdownLook(on: false),
-          })).$2;
+          })).parts;
       expect(some.length, 3);
       expect([for (var p in some) p.scale != null], contains(true),
           reason: "the heading is still there");
@@ -75,24 +76,24 @@ Some **bold** and *italic* and a [link](https://example.com).
       var text = readDocument(source,
           markdown: true,
           allow: const MarkdownAllow(
-              looks: {MarkdownKind.bold: MarkdownLook(on: false)})).$1;
+              looks: {MarkdownKind.bold: MarkdownLook(on: false)})).text;
       expect(text, isNot(contains("*")));
       expect(text, contains("bold"));
     });
 
     test("a heading is bigger than what is around it", () {
-      var parts = readDocument("# Big\nordinary", markdown: true).$2;
+      var parts = readDocument("# Big\nordinary", markdown: true).parts;
       expect(parts.single.scale, greaterThan(1));
       expect(parts.single.from, 1);
       expect(parts.single.to, 1, reason: "the words of that line only");
 
-      var second = readDocument("## Less big", markdown: true).$2;
+      var second = readDocument("## Less big", markdown: true).parts;
       expect(second.single.scale, lessThan(parts.single.scale!));
       expect(second.single.scale, greaterThan(1));
     });
 
     test("a link is coloured and underlined", () {
-      var parts = readDocument("see [the page](x) now", markdown: true).$2;
+      var parts = readDocument("see [the page](x) now", markdown: true).parts;
       expect(parts.single.underline, isNotNull);
       expect(parts.single.color, isNotNull);
       expect(parts.single.from, 2);
@@ -101,10 +102,30 @@ Some **bold** and *italic* and a [link](https://example.com).
 
     test("an unclosed mark is left as words", () {
       // Half a mark is somebody's asterisk, not a formatting instruction.
-      var (text, parts) = readDocument("2 * 3 is not italic", markdown: true);
+      var (:text, :parts) = readDocument("2 * 3 is not italic", markdown: true);
       expect(text, "2 * 3 is not italic");
       expect(parts, isEmpty);
     });
+  });
+
+  test("a long line reads as its pieces do, one after another", () {
+    // One line of a thousand marked pieces: each piece read alone, then
+    // put end to end with the words renumbered, is what the line reads as.
+    const piece = "plain **bold** _slanted_ [linked](x) __lined__ ";
+    var one = readDocument(piece, markdown: true);
+    var all = readDocument(piece * 1000, markdown: true);
+    expect(all.text, one.text * 1000);
+    var words = wordsIn(one.text);
+    expect([
+      for (var p in all.parts) p.toJson().toString()
+    ], [
+      for (var n = 0; n < 1000; n++)
+        for (var p in one.parts)
+          p
+              .copyWith(from: p.from + n * words, to: p.to + n * words)
+              .toJson()
+              .toString(),
+    ]);
   });
 
   group("the element that reads it", () {
@@ -144,7 +165,7 @@ Some **bold** and *italic* and a [link](https://example.com).
               color: Color(0xFFFF0000),
               weight: 900,
               family: "Inter"));
-      var (_, parts) =
+      var (:parts, text: _) =
           readDocument("# Title\n\nWords", markdown: true, allow: allow);
       var heading = parts.first;
       expect(heading.scale, 3);
@@ -154,13 +175,14 @@ Some **bold** and *italic* and a [link](https://example.com).
 
       // And the default look is the kind's own, so the switch alone is
       // already useful.
-      var (_, plain) =
-          readDocument("# Title", markdown: true, allow: const MarkdownAllow());
+      var plain =
+          readDocument("# Title", markdown: true, allow: const MarkdownAllow())
+              .parts;
       expect(plain.single.scale, MarkdownKind.heading1.scale);
       expect(plain.single.weight, 700);
 
       // Switched off, the mark is stripped and there is no part at all.
-      var (text, none) = readDocument("# Title",
+      var (:text, parts: none) = readDocument("# Title",
           markdown: true,
           allow: const MarkdownAllow()
               .withLook(MarkdownKind.heading1, const MarkdownLook(on: false)));

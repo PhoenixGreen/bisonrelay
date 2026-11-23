@@ -58,7 +58,7 @@ class TextFlow {
 }
 
 /// flowFor is what [e] actually draws. [inner] is the room the words have
-/// (the box less its padding and any icon) and [spec] the type; both are the
+/// (the box less its padding) and [spec] the type; both are the
 /// *drawn* values, so the chain and the painter agree where words break.
 TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     {int frame = 0, CanvasImageSource? images}) {
