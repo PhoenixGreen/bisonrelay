@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart'
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
@@ -217,6 +218,12 @@ class CanvasScripting {
 
   /// documentJson is the whole canvas as saved.
   Map<String, dynamic> documentJson() => _doc.toJson();
+
+  /// colourUses is how often each colour the canvas shows is used, its
+  /// elements' apart from its backdrops', each keyed by its 0xAARRGGBB
+  /// number: the document's own say which of its numbers are colours (see
+  /// colourUsesOf), so a reader of the saved form need not guess.
+  ColourUses colourUses() => colourUsesOf(_doc);
 
   /// replaceDocumentJson makes the canvas what [json] describes, as one
   /// step to undo.

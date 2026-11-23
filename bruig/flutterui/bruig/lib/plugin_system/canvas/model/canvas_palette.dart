@@ -8,9 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
 // canvas_palette.dart is one colour changed everywhere a document uses it
 // (the saved colours' Replace everywhere; see CanvasController.replaceColour),
-// and reading the colours a canvas already uses. Both go through the colour
+// and reading the colours a canvas already uses (to match a new table to it,
+// and counted for whoever reads a canvas's style). All go through the colour
 // visitor (colour_map.dart): each thing that holds colours says which they
-// are, so neither guesses from saved numbers.
+// are, so none guesses from saved numbers.
 
 /// replacing is the change Replace everywhere makes: every colour with
 /// [from]'s red, green and blue becomes [to]'s, each keeping its own
@@ -88,6 +89,50 @@ CanvasColours canvasColours(Color ground, Iterable<CanvasElement> elements) {
   ink ??= groundLight > 0.4 ? const Color(0xFF1A1D23) : const Color(0xFFF2F4F7);
   accent ??= Color.lerp(ground, ink, 0.18)!.withValues(alpha: 1);
   return CanvasColours(ground, ink, accent);
+}
+
+/// ColourUses is how often each colour a document shows is used, keyed by
+/// its 0xAARRGGBB number in the order first met: [elements] for the
+/// elements of every scene and of the master, [backgrounds] for the
+/// backdrops behind them.
+typedef ColourUses = ({Map<int, int> elements, Map<int, int> backgrounds});
+
+/// colourUsesOf is how often each colour [d] shows is used. Only colours
+/// that show are counted (see ColourMap), at every opacity, fully clear
+/// included: what to make of them is the reader's. A colour is counted each
+/// time it is held, so one used by many elements weighs more. Neither an
+/// element's nor a backdrop's, and so not counted: a scene's transition,
+/// the cast and the text styles (never drawn themselves; what is drawn from
+/// them holds its own colours, counted where it stands), and the sheets'
+/// colour rules.
+ColourUses colourUsesOf(CanvasDocument d) {
+  ColourMap counting(Map<int, int> counts) => (Color c, {required bool shown}) {
+        if (shown) {
+          var v = c.toARGB32();
+          counts[v] = (counts[v] ?? 0) + 1;
+        }
+        return c;
+      };
+  var elements = <int, int>{}, backgrounds = <int, int>{};
+  var inFront = counting(elements), behind = counting(backgrounds);
+  var master = d.master;
+  for (var s in d.allScenes) {
+    for (var e in s.elements) {
+      e.mapColours(inFront);
+    }
+  }
+  for (var e in master?.elements ?? const <CanvasElement>[]) {
+    e.mapColours(inFront.shownOnlyIf(d.masterOn));
+  }
+  d.background.mapColours(behind);
+  for (var s in d.allScenes) {
+    s.background?.mapColours(behind.shownOnlyIf(!s.backgroundOff));
+  }
+  if (master != null) {
+    master.background
+        ?.mapColours(behind.shownOnlyIf(d.masterOn && !master.backgroundOff));
+  }
+  return (elements: elements, backgrounds: backgrounds);
 }
 
 double _saturation(Color c) {

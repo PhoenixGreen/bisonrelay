@@ -123,7 +123,7 @@ is put through one function (`ColourMap`, `model/colour_map.dart`), told
 whether it shows as things stand (an outline's colour while the outline has
 no width does not). Where nothing comes back changed the very same object is
 answered, all the way up to the document, so the controller's identity
-checks see no edit. Two features use it (`model/canvas_palette.dart`):
+checks see no edit. Three features use it (`model/canvas_palette.dart`):
 
 - **Replace everywhere** (`CanvasController.replaceColour`) is
   `apply(document.mapColours(replacing(from, to)))`: every colour with
@@ -134,6 +134,11 @@ checks see no edit. Two features use it (`model/canvas_palette.dart`):
 - **The colours in use** (`canvasColoursOf`, for a table matched to the
   canvas) counts only colours that show, against the backdrop drawn behind
   the current scene (its own, where it has one).
+- **The colours counted** (`colourUsesOf`, offered outside as
+  `CanvasScripting.colourUses`) are how often each colour that shows is
+  used, the elements' apart from the backdrops', for Creative AI's style
+  profile. The Canvas says which numbers are colours; the profile decides
+  what to make of them, so it keeps no list of colour keys of its own.
 
 Left alone on purpose, each with its reason at the field: a video's chroma
 key and a picture's removal key (they must match the footage), a drawing's

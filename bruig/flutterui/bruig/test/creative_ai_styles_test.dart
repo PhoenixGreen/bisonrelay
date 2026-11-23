@@ -8,6 +8,20 @@ import 'package:bruig/plugin_system/creative_ai/creative_ai.dart'
     show registerCreativeAi;
 
 import 'package:bruig/plugin_system/canvas/canvas.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_model.dart';
 import 'package:bruig/plugin_system/creative_ai/creative_ai_preferences.dart';
 import 'package:bruig/plugin_system/creative_ai/engine/style_facts.dart';
@@ -59,10 +73,17 @@ CanvasController _styled() {
   return c;
 }
 
-Map<String, Object?> _facts(CanvasController c) =>
-    styleFactsOf(CanvasScripting(c).documentJson(),
-        width: c.document.size.width.toDouble(),
-        height: c.document.size.height.toDouble());
+/// _canvasOf is [d] holding [elements] and nothing else.
+CanvasController _canvasOf(CanvasDocument d, List<CanvasElement> elements) =>
+    CanvasController(d.copyWith(elements: elements));
+
+Map<String, Object?> _facts(CanvasController c) {
+  var a = CanvasScripting(c);
+  return styleFactsOf(a.documentJson(),
+      width: c.document.size.width.toDouble(),
+      height: c.document.size.height.toDouble(),
+      colours: a.colourUses());
+}
 
 class _Rig {
   final Directory dir;
@@ -125,6 +146,120 @@ void main() {
       var samples = facts["samples"] as List;
       expect(samples.map((s) => s["kind"]), containsAll(["text", "shape"]));
       expect(samples.first["text"], "Big news");
+    });
+
+    test("the palette holds a colour wherever an element keeps it", () {
+      // Each alone on a canvas, so none is crowded out of the twelve kept.
+      var d = emptyCanvas();
+      CanvasElement fresh(ElementKind k) => newElement(k, d);
+      var cases = [
+        (
+          "a chart's slice colours",
+          (fresh(ElementKind.chart) as ChartElement).copyWith(
+              sliceColors: const [Color(0xFF5A0001), Color(0xFF5A0001)]),
+          0xFF5A0001
+        ),
+        (
+          "a table's header fill",
+          (fresh(ElementKind.table) as TableElement)
+              .copyWith(headerRow: true, headerFill: const Color(0xFF5A0002)),
+          0xFF5A0002
+        ),
+        (
+          "a picture's tint",
+          (fresh(ElementKind.image) as ImageElement)
+              .copyWith(tint: const Color(0x805A0003)),
+          0x805A0003
+        ),
+        (
+          "a vector shape's fill",
+          (fresh(ElementKind.vector) as VectorElement).copyWith(shapes: [
+            const VectorShape(paths: [
+              VectorPath([
+                VectorNode(0, 0),
+                VectorNode(10, 0),
+                VectorNode(0, 10),
+              ], closed: true)
+            ], fill: Color(0xFF5A0004))
+          ]),
+          0xFF5A0004
+        ),
+        (
+          "a 3D character's clothes",
+          (fresh(ElementKind.character3d) as Character3dElement).copyWith(
+              design: CharacterDesign(
+                  id: "c",
+                  name: "C",
+                  body: "AvatarSample_A",
+                  outfit: CharacterOutfit.asDesigned.wear(
+                      WearSlot.top,
+                      const Garment(
+                          source: WearSource.made,
+                          kind: "tee",
+                          colour: 0x5A0005)),
+                  updated: DateTime.utc(2026))),
+          0xFF5A0005
+        ),
+        (
+          "a colour keyed in a Design device",
+          fresh(ElementKind.shape).withBase(
+              motion: ElementMotion(devices: [
+            MotionDevice(MotionDeviceKind.design, id: "m0", keys: {
+              "fill": [DeviceKey(0, 0xFF5A0006.toDouble())],
+            }),
+          ])),
+          0xFF5A0006
+        ),
+      ];
+      var missing = <String>[];
+      for (var (name, element, argb) in cases) {
+        var palette = _facts(_canvasOf(d, [element]))["palette"] as List;
+        expect(palette.length, lessThan(12), reason: "$name: none cut off");
+        if (!palette.any((c) => c["argb"] == argb)) missing.add(name);
+      }
+      expect(missing, isEmpty);
+    });
+
+    test("the palette leaves out colours that are not the design's", () {
+      var d = emptyCanvas();
+      CanvasElement fresh(ElementKind k) => newElement(k, d);
+      const chroma = Color(0xFF00B141), swatch = Color(0xFF5B0002);
+      const row = 0xFF5B0003, elsewhere = Color(0xFF5B0004);
+      var shape = fresh(ElementKind.shape) as ShapeElement;
+      var elements = [
+        (fresh(ElementKind.video) as VideoElement)
+            .copyWith(key: const ChromaKey(on: true, color: chroma)),
+        (fresh(ElementKind.tileMap) as TileMapElement).copyWith(sources: [
+          const TileSource(
+              sheet: "sheet",
+              sheetW: 32,
+              sheetH: 32,
+              tileW: 16,
+              tileH: 16,
+              terrains: [
+                TerrainSet("ground", terrains: [Terrain("grass", swatch)])
+              ]),
+        ]),
+        shape.withBase(
+            rowColour: row,
+            shared: shape.copyWith(fill: elsewhere).toJson()
+              ..remove("layouts")
+              ..remove("shared")),
+      ];
+      var palette = _facts(_canvasOf(d, elements))["palette"] as List;
+      expect(palette.length, lessThan(12), reason: "none cut off");
+      var argbs = palette.map((c) => c["argb"]).toSet();
+      var counted = [
+        if (argbs.contains(chroma.toARGB32()))
+          "a chroma key, which matches the footage",
+        if (argbs.contains(swatch.toARGB32()))
+          "a terrain's swatch, which is the editor's",
+        if (argbs.contains(row))
+          "a timeline row's colour, which is the editor's",
+        if (argbs.contains(elsewhere.toARGB32()))
+          "a copy for another page shape, not on this one",
+      ];
+      expect(counted, isEmpty);
     });
 
     test("the factual guide says what was measured", () {

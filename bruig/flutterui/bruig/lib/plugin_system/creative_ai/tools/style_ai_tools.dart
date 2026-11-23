@@ -134,7 +134,9 @@ Future<StyleProfile> saveCanvasStyle(CreativeAi ai,
   var a = ai.scripting;
   var doc = a.controller.document;
   var facts = styleFactsOf(a.documentJson(),
-      width: doc.size.width.toDouble(), height: doc.size.height.toDouble());
+      width: doc.size.width.toDouble(),
+      height: doc.size.height.toDouble(),
+      colours: a.colourUses());
   var at = (scene ?? doc.at).clamp(0, doc.allScenes.length - 1).toInt();
   // Part way in, when what arrives has arrived.
   var frames = doc.allScenes[at].frames;

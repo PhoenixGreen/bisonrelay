@@ -6,22 +6,19 @@
 // These are the facts a style profile keeps beside its written guide. They
 // are measured, not judged: the guide (written by Claude, or by the person)
 // says what they mean -- which colour is the accent, what the headline is
-// for. Pure Dart over the JSON, so it reads any canvas, one from somebody
-// else included, the same way.
-
-/// _colourKeys are keys whose integer values are colours (0xAARRGGBB), in
-/// the saved format's own spelling.
-const _colourKeys = {
-  "color", "colour", "fill", "bc", "accent", "iconColor", "bg", "fg",
-  "stroke", "ruleColor", "c", "to", "from", "shadow", "glow", "outline",
-  // A text spec's outline, shadow and glow colours.
-  "oc", "sc", "gc",
-};
+// for. Pure Dart over the JSON, but for the colours: which numbers in the
+// saved form are colours, and which of those show, only the Canvas's own
+// types know, so it counts them (CanvasScripting.colourUses) and they are
+// handed in here.
 
 /// styleFactsOf is [doc]'s style, measured, on a canvas [width] by
-/// [height] design pixels.
+/// [height] design pixels. [colours] is how often each colour it shows is
+/// used, its elements' apart from its backdrops' (as
+/// CanvasScripting.colourUses counts them).
 Map<String, Object?> styleFactsOf(Map<String, dynamic> doc,
-    {required double width, required double height}) {
+    {required double width,
+    required double height,
+    required ({Map<int, int> elements, Map<int, int> backgrounds}) colours}) {
   var elements = _allElements(doc);
   var size = doc["size"] is Map ? doc["size"] as Map : const {};
   var ratio = size["ratio"];
@@ -35,12 +32,11 @@ Map<String, Object?> styleFactsOf(Map<String, dynamic> doc,
       "frameRate": frameRate,
       if (doc["kind"] != null) "kind": doc["kind"],
     },
-    // The elements' colours, apart from the backgrounds': a background's
-    // pattern carries settings for colours it may not show, which would
-    // crowd out the ones that are seen in front.
-    "palette": _palette(elements),
-    "backgroundColours":
-        _palette([doc["background"], ..._sceneBackgrounds(doc)]),
+    // The elements' colours, apart from the backgrounds': a backdrop's are
+    // the ground the rest stands on, and a pattern's many would crowd out
+    // the ones seen in front.
+    "palette": _palette(colours.elements),
+    "backgroundColours": _palette(colours.backgrounds),
     "type": _type(elements, height),
     if (doc["textStyles"] is List && (doc["textStyles"] as List).isNotEmpty)
       "textStyles": doc["textStyles"],
@@ -72,45 +68,27 @@ List<Map<String, dynamic>> _allElements(Map<String, dynamic> doc) {
   return out;
 }
 
-List<Object?> _sceneBackgrounds(Map<String, dynamic> doc) => [
-      if (doc["scenes"] case List scenes)
-        for (var s in scenes)
-          if (s is Map && s["background"] != null) s["background"]
-    ];
-
-/// hexOf is a colour as #RRGGBB (and its opacity, where not opaque).
+/// hexOf is a colour as #RRGGBB, its opacity left out.
 String hexOf(int argb) {
   var rgb = (argb & 0xFFFFFF).toRadixString(16).padLeft(6, "0").toUpperCase();
   return "#$rgb";
 }
 
-/// _palette counts every colour used, most used first.
-List<Map<String, Object?>> _palette(List<Object?> roots) {
-  var counts = <int, int>{};
-  void walk(Object? v, String? key) {
-    if (v is Map) {
-      for (var e in v.entries) {
-        walk(e.value, "${e.key}");
-      }
-    } else if (v is List) {
-      for (var x in v) {
-        walk(x, key);
-      }
-    } else if (v is int && key != null && _colourKeys.contains(key)) {
-      // A colour has some opacity; a plain count or size has none.
-      if (v > 0x00FFFFFF && v <= 0xFFFFFFFF) {
-        counts[v] = (counts[v] ?? 0) + 1;
-      }
-    }
-  }
-
-  for (var r in roots) {
-    walk(r, null);
-  }
-  var ranked = counts.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
+/// _palette is the twelve colours of [uses] used most, most first, each
+/// with its opacity where not opaque. A fully clear colour is left out: it
+/// is not seen.
+List<Map<String, Object?>> _palette(Map<int, int> uses) {
+  var seen = [
+    for (var e in uses.entries)
+      if ((e.key >> 24) != 0) e
+  ];
+  // Of two used alike, the one met first.
+  var ranked = [...seen.indexed]..sort((a, b) {
+      var more = b.$2.value - a.$2.value;
+      return more != 0 ? more : a.$1 - b.$1;
+    });
   return [
-    for (var e in ranked.take(12))
+    for (var (_, e) in ranked.take(12))
       {
         "argb": e.key,
         "hex": hexOf(e.key),
