@@ -1,7 +1,7 @@
 part of 'paint_util.dart';
 
-// Boxes and their fills and borders, shape outlines, dashes, arrow heads and
-// speech bubbles. Part of paint_util.dart.
+// Boxes and their fills and borders, shape outlines, dashes and speech
+// bubbles. Part of paint_util.dart.
 
 /// paintBox draws a [BoxSpec]: the fill, then the border, both rounded.
 void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
@@ -244,33 +244,6 @@ Path dashPath(Path source, double on, double off) {
     }
   }
   return out;
-}
-
-/// arrowSpread is the half-angle between an arrowhead's axis and each barb
-/// (radians), shared with scene_renderer.dart's line ends: LineEnd.cover
-/// trims the stroke back to where the barbs meet, assuming this value.
-const double arrowSpread = 0.42;
-
-/// arrowHead is a triangle at [tip] along [angle], stroked if not [filled].
-void arrowHead(
-    ui.Canvas canvas, Offset tip, double angle, double size, Paint paint,
-    {bool filled = true}) {
-  var back = angle + math.pi;
-  var spread = arrowSpread;
-  var path = Path()
-    ..moveTo(tip.dx, tip.dy)
-    ..lineTo(tip.dx + math.cos(back - spread) * size,
-        tip.dy + math.sin(back - spread) * size)
-    ..lineTo(tip.dx + math.cos(back + spread) * size,
-        tip.dy + math.sin(back + spread) * size)
-    ..close();
-  canvas.drawPath(
-      path,
-      Paint()
-        ..color = paint.color
-        ..style = filled ? PaintingStyle.fill : PaintingStyle.stroke
-        ..strokeWidth = paint.strokeWidth
-        ..strokeJoin = StrokeJoin.miter);
 }
 
 /// bubbleBodyRect is the part of a speech bubble the words go in. The box

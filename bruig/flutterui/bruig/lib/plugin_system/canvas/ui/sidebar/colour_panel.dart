@@ -9,8 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -300,7 +299,7 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
                     strokeFade: g,
                     strokeWidth: s.strokeWidth > 0 ? null : strokeToSee(s))),
       ];
-    case LineElement l:
+    case StrokedElement l:
       return [
         slot(
             id: "line",
@@ -308,22 +307,11 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
             ring: true,
             color: l.color,
             gradient: l.fade,
-            withColour: (c) => l.copyWith(color: c ?? l.color),
-            withGradient: (g) =>
-                g == null ? l.copyWith(flat: true) : l.copyWith(fade: g),
-            canBeNone: false),
-      ];
-    case PathElement p:
-      return [
-        slot(
-            id: "line",
-            label: "Line",
-            ring: true,
-            color: p.color,
-            gradient: p.fade,
-            withColour: (c) => p.copyWith(color: c ?? p.color),
-            withGradient: (g) =>
-                g == null ? p.copyWith(flat: true) : p.copyWith(fade: g),
+            withColour: (c) =>
+                l.withStroke(l.stroke.copyWith(color: c ?? l.color)),
+            withGradient: (g) => l.withStroke(g == null
+                ? l.stroke.copyWith(flat: true)
+                : l.stroke.copyWith(fade: g)),
             canBeNone: false),
       ];
     case TextElement t:

@@ -656,18 +656,6 @@ void main() {
       expect(LineEnd.none.reach, 0);
     });
 
-    test("only the pointed ends need the stroke cut back", () {
-      // The trim exists so a thick stroke does not run on underneath a barb
-      // and poke out of its sides. A dot or a bar sits on the end and needs
-      // no room made for it.
-      expect(LineEnd.arrow.isPointed, isTrue);
-      expect(LineEnd.openArrow.isPointed, isTrue);
-      expect(LineEnd.hollowArrow.isPointed, isTrue);
-      expect(LineEnd.circle.isPointed, isFalse);
-      expect(LineEnd.bar.isPointed, isFalse);
-      expect(LineEnd.none.isPointed, isFalse);
-    });
-
     test("each end is its own setting and survives a round trip", () {
       var element = line(start: LineEnd.circle, end: LineEnd.hollowDiamond)
           .copyWith(cap: LineStrokeCap.round);

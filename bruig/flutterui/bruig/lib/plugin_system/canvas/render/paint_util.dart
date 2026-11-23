@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -21,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/export/vector_canvas.dart';
 
 part 'paint_util_text_marks.dart';
 part 'paint_util_shapes.dart';
+part 'paint_util_stroke.dart';
 part 'paint_util_columns.dart';
 part 'paint_util_text_on_path.dart';
 part 'paint_util_words.dart';

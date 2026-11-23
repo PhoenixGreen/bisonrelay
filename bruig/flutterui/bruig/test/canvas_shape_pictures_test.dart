@@ -419,6 +419,19 @@ List<_State> _lineStates() {
       "line-upright",
       _linePage(
           ended.withEnds(const Offset(160, 40), const Offset(160, 200)))));
+  // A fade across a level or upright line, whose box is a sliver, at an
+  // angle along the line and one across it.
+  for (var angle in [0.0, 90.0]) {
+    var faded = ended.copyWith(fade: GradientSpec(to: _blue, angle: angle));
+    out.add(_state(
+        "line-level-faded-angle-${_short(angle)}",
+        _linePage(
+            faded.withEnds(const Offset(60, 120), const Offset(260, 120)))));
+    out.add(_state(
+        "line-upright-faded-angle-${_short(angle)}",
+        _linePage(
+            faded.withEnds(const Offset(160, 40), const Offset(160, 200)))));
+  }
   out.add(_state(
       "line-level-backwards",
       _linePage(
@@ -511,6 +524,19 @@ List<_State> _pathStates() {
           width: 8,
           fade: const GradientSpec(to: _blue, angle: 0),
           end: LineEnd.arrow))));
+  // A level path: its curve has no height at all.
+  for (var angle in [0.0, 90.0]) {
+    out.add(_state(
+        "path-level-faded-angle-${_short(angle)}",
+        _pathPage(_path(
+            nodes: const [
+              PathNode(x: 0.05, y: 0.5, frame: 0),
+              PathNode(x: 0.95, y: 0.5, frame: 24),
+            ],
+            width: 8,
+            fade: GradientSpec(to: _blue, angle: angle),
+            end: LineEnd.arrow))));
+  }
   var ended = _path(start: LineEnd.circle, end: LineEnd.arrow);
   out.add(_state(
       "path-turned", _pathPage(ended.withBase(rotation: 25) as PathElement)));

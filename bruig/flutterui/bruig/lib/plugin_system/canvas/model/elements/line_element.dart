@@ -5,33 +5,18 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 
-/// LineStrokeCap is how the stroke itself finishes; what is drawn at the
-/// end is [LineEnd], apart, since a line can want a round end and an arrow.
-enum LineStrokeCap {
-  flat("Flat", StrokeCap.butt),
-  round("Round", StrokeCap.round),
-  square("Square", StrokeCap.square);
-
-  final String label;
-  final StrokeCap flutter;
-  const LineStrokeCap(this.label, this.flutter);
-
-  static LineStrokeCap fromName(String? name) => values.firstWhere(
-        (c) => c.name == name,
-        orElse: () => LineStrokeCap.flat,
-      );
-}
+export 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 
 /// lineSliver is the depth of a level line's box, or the width of an
 /// upright one's: see LineElement.withEnds.
 const double lineSliver = 0.01;
 
-/// maxEndSize and maxCurvature are the largest end size (a line's or a
-/// path's) and bow a line is read with: ten times what the panels offer, so
-/// nothing made here is changed, while a received canvas cannot draw an
-/// arrowhead or a bow a billion times the page.
-const double maxEndSize = 80, maxCurvature = 10;
+/// maxCurvature is the largest bow a line is read with: ten times what the
+/// panel offers, so nothing made here is changed, while a received canvas
+/// cannot draw a bow a billion times the page.
+const double maxCurvature = 10;
 
 /// snapLineAngle is [moving] swung about [fixed] onto the nearest multiple of
 /// 45 degrees, when it is within [within] degrees of it or [always] is set.
@@ -49,76 +34,10 @@ Offset snapLineAngle(Offset fixed, Offset moving,
   return fixed + Offset(c, sn) * d.distance;
 }
 
-/// LineEnd is what is drawn at one end of a line, set for each end.
-enum LineEnd {
-  none("None"),
-  arrow("Arrow"),
-  openArrow("Open arrow"),
-  hollowArrow("Hollow arrow"),
-  diamond("Diamond"),
-  hollowDiamond("Hollow diamond"),
-  circle("Circle"),
-  hollowCircle("Hollow circle"),
-  square("Square"),
-  bar("Bar");
-
-  final String label;
-  const LineEnd(this.label);
-
-  static LineEnd fromName(String? name) =>
-      values.firstWhere((e) => e.name == name, orElse: () => LineEnd.none);
-
-  /// isPointed marks the ends that come to a point on the line's end.
-  bool get isPointed =>
-      this == arrow || this == openArrow || this == hollowArrow;
-
-  /// reach is how far this decoration extends from the line's end, as a
-  /// multiple of the stroke width, for the selection box to allow for.
-  double get reach => switch (this) {
-        LineEnd.none => 0,
-        LineEnd.bar => 1.6,
-        LineEnd.circle || LineEnd.hollowCircle => 1.4,
-        LineEnd.square => 1.6,
-        LineEnd.diamond || LineEnd.hollowDiamond => 2.4,
-        _ => 3.5,
-      };
-
-  /// cover is how much of the line this decoration sits on, as a multiple of
-  /// the stroke width, so the stroke is cut back to where it begins rather
-  /// than showing through a hollow end or poking out beside a solid one. A
-  /// bar crosses the line, which reaches it.
-  double get cover => switch (this) {
-        LineEnd.none || LineEnd.bar => 0,
-        LineEnd.circle || LineEnd.hollowCircle => 1.2,
-        LineEnd.square => 1.1,
-        LineEnd.diamond || LineEnd.hollowDiamond => 1.2,
-        // Back to where the barbs meet, less a hair so there is no seam.
-        _ => 3.2 * 0.92,
-      };
-}
-
 /// LineElement is a stroke corner to corner of its box, so the usual
-/// handles resize, turn and animate it; [flipped] picks the corners.
-class LineElement extends CanvasElement {
-  final Color color;
-
-  /// fade is the second colour the stroke runs to, or null for a flat one,
-  /// chosen in the picker beside [color] (see GradientSpec).
-  final GradientSpec? fade;
-  final double strokeWidth;
-
-  /// cap is how the stroke finishes; startEnd and endEnd its ends.
-  final LineStrokeCap cap;
-  final LineEnd startEnd;
-  final LineEnd endEnd;
-
-  /// endSize scales what is drawn at both ends, as a multiple of the stroke
-  /// width, so an arrow stays in proportion when the line thickens.
-  final double endSize;
-
-  /// dash is the on/off length in design units. Zero draws a solid line.
-  final double dash;
-
+/// handles resize, turn and animate it; [flipped] picks the corners. Its
+/// stroke is a StrokedElement's: white, 4 wide, flat, with no ends.
+class LineElement extends StrokedElement {
   /// curvature bows the line out from the straight path between its ends, as
   /// a fraction of its length. Negative bows the other way.
   final double curvature;
@@ -130,18 +49,26 @@ class LineElement extends CanvasElement {
 
   const LineElement(
     super.base, {
-    this.color = const Color(0xFFFFFFFF),
-    this.fade,
-    this.strokeWidth = 4,
-    this.cap = LineStrokeCap.flat,
-    this.startEnd = LineEnd.none,
-    this.endEnd = LineEnd.none,
-    this.endSize = 1,
-    this.dash = 0,
+    super.color = const Color(0xFFFFFFFF),
+    super.fade,
+    super.strokeWidth = 4,
+    super.cap = LineStrokeCap.flat,
+    super.startEnd = LineEnd.none,
+    super.endEnd = LineEnd.none,
+    super.endSize = 1,
+    super.dash = 0,
     this.curvature = 0,
     this.flipped = false,
     this.animation = const ElementAnimation(),
   });
+
+  LineElement._of(
+    super.base,
+    super.stroke, {
+    required this.curvature,
+    required this.flipped,
+    required this.animation,
+  }) : super.of();
 
   /// _defaults is one as made: what a saved one means by leaving a
   /// field out.
@@ -194,18 +121,12 @@ class LineElement extends CanvasElement {
   }
 
   @override
-  CanvasElement rebase(ElementBase base) => LineElement(base,
-      color: color,
-      fade: fade,
-      strokeWidth: strokeWidth,
-      cap: cap,
-      startEnd: startEnd,
-      endEnd: endEnd,
-      endSize: endSize,
-      dash: dash,
-      curvature: curvature,
-      flipped: flipped,
-      animation: animation);
+  CanvasElement rebase(ElementBase base) => LineElement._of(base, stroke,
+      curvature: curvature, flipped: flipped, animation: animation);
+
+  @override
+  LineElement withStroke(StrokeSpec stroke) => LineElement._of(base, stroke,
+      curvature: curvature, flipped: flipped, animation: animation);
 
   LineElement copyWith({
     Color? color,
@@ -221,15 +142,18 @@ class LineElement extends CanvasElement {
     bool? flipped,
     ElementAnimation? animation,
   }) =>
-      LineElement(base,
-          color: color ?? this.color,
-          fade: flat ? null : (fade ?? this.fade),
-          strokeWidth: strokeWidth ?? this.strokeWidth,
-          cap: cap ?? this.cap,
-          startEnd: startEnd ?? this.startEnd,
-          endEnd: endEnd ?? this.endEnd,
-          endSize: endSize ?? this.endSize,
-          dash: dash ?? this.dash,
+      LineElement._of(
+          base,
+          stroke.copyWith(
+              color: color,
+              fade: fade,
+              flat: flat,
+              strokeWidth: strokeWidth,
+              cap: cap,
+              startEnd: startEnd,
+              endEnd: endEnd,
+              endSize: endSize,
+              dash: dash),
           curvature: curvature ?? this.curvature,
           flipped: flipped ?? this.flipped,
           animation: animation ?? this.animation);
@@ -237,42 +161,23 @@ class LineElement extends CanvasElement {
   @override
   LineElement mapOwnColours(ColourMap f) {
     var p = ColourPass(f);
-    var color = p(this.color);
-    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    var stroke = p.part(this.stroke, (s) => s.mapColours(f));
     var animation = p.part(this.animation, (a) => a.mapColours(f));
     if (!p.changed) return this;
-    return copyWith(color: color, fade: fade, animation: animation);
+    return LineElement._of(base, stroke,
+        curvature: curvature, flipped: flipped, animation: animation);
   }
 
   @override
   Map<String, dynamic> props() => {
-        "color": colorToJson(color),
-        if (fade != null) "fade": fade!.toJson(),
-        "sw": strokeWidth,
-        "strokeCap": cap.name,
-        if (startEnd != _defaults.startEnd) "startEnd": startEnd.name,
-        if (endEnd != _defaults.endEnd) "endEnd": endEnd.name,
-        if (endSize != _defaults.endSize) "endSize": endSize,
-        if (dash > 0) "dash": dash,
+        ...stroke.toJson(_defaults.stroke),
         if (curvature != _defaults.curvature) "curve": curvature,
         if (flipped) "flipped": true,
         if (animation.any) "anim": animation.toJson(),
       };
 
   factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      LineElement(b,
-          color: colorFromJson(json["color"]),
-          fade: json["fade"] is Map
-              ? GradientSpec.fromJson(
-                  (json["fade"] as Map).cast<String, dynamic>())
-              : null,
-          strokeWidth: jsonLength(json["sw"], _defaults.strokeWidth),
-          cap: LineStrokeCap.fromName(jsonStr(json["strokeCap"])),
-          startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
-          endEnd: LineEnd.fromName(jsonStr(json["endEnd"])),
-          endSize: jsonDouble(json["endSize"], _defaults.endSize)
-              .clamp(0.0, maxEndSize),
-          dash: jsonDouble(json["dash"], _defaults.dash).clamp(0.0, 400.0),
+      LineElement._of(b, StrokeSpec.fromJson(json, _defaults.stroke),
           curvature: jsonDouble(json["curve"], _defaults.curvature)
               .clamp(-maxCurvature, maxCurvature),
           flipped: jsonBool(json["flipped"], false),

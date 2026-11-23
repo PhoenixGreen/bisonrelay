@@ -1,8 +1,8 @@
 part of 'scene_renderer.dart';
 
-// Shapes, lines, paths and their arrow heads, and the geometry of a drawn line
-// or curve (its bow, text riding it, where it is really drawn) that the stage
-// hit-tests against. Part of scene_renderer.dart.
+// Shapes, lines and paths, and the geometry of a drawn line or curve (its
+// bow, text riding it, where it is really drawn) that the stage hit-tests
+// against. Part of scene_renderer.dart.
 
 /// lineWithPose is [e] with its track's bow on [frame], for the hit test.
 LineElement lineWithPose(LineElement e, int frame) =>
@@ -44,23 +44,16 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
     return moved();
   }
 
-  if (element is LineElement || element is PathElement) {
+  if (element is StrokedElement) {
     var host = element is LineElement ? lineWithPose(element, frame) : element;
     var curve = curveOfElement(host);
     var box = _boundsOfPoints(curve);
     if (box == null) return moved();
-    // Room for the stroke, centred on the path, and for the ends: an
-    // arrowhead reaches 3.5 stroke widths past the end point.
-    var width = element is LineElement
-        ? element.strokeWidth
-        : (element as PathElement).strokeWidth;
-    var ends = element is LineElement
-        ? math.max(element.startEnd.reach, element.endEnd.reach) *
-            element.endSize
-        : math.max(
-                (element as PathElement).startEnd.reach, element.endEnd.reach) *
-            element.endSize;
-    return box.inflate(math.max(width, 1) * math.max(ends, 1.5));
+    // Room for the stroke, centred on the curve, and for the ends it draws
+    // (LineEnd.reach).
+    var stroke = element.drawnStroke;
+    return box.inflate(
+        math.max(stroke.strokeWidth, 1) * math.max(stroke.endReach, 1.5));
   }
 
   return moved();
@@ -234,6 +227,8 @@ Offset lineControlPoint(LineElement e) {
   return mid + Offset(-d.dy / length, d.dx / length) * (length * e.curvature);
 }
 
+/// _paintLine draws a line as a stroke from its start to its end, bowed
+/// through its control point.
 void _paintLine(ui.Canvas canvas, LineElement e) {
   var control = lineControlPoint(e);
   var path = Path()..moveTo(e.start.dx, e.start.dy);
@@ -242,128 +237,7 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
   } else {
     path.quadraticBezierTo(control.dx, control.dy, e.end.dx, e.end.dy);
   }
-
-  // Across the whole line, so a fade runs end to end whichever way it points.
-  var paint = PaintSpec(e.color, gradient: e.fade).into(
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = e.strokeWidth
-        ..strokeCap = e.cap.flutter,
-      path.getBounds());
-
-  // A path metric gives the exact position and direction at each end, so the
-  // decorations sit square on a bowed line.
-  var metrics = path.computeMetrics().toList();
-  if (metrics.isEmpty) return;
-  var metric = metrics.first;
-  var length = metric.length;
-
-  var startTangent = metric.getTangentForOffset(0);
-  var endTangent = metric.getTangentForOffset(length);
-  if (startTangent == null || endTangent == null) return;
-
-  // A decoration is drawn on the line's end, so the stroke is cut back to its
-  // base, or a thick stroke pokes out of the sides of the barb.
-  var trimStart = _trimFor(e.startEnd, e.strokeWidth, e.endSize);
-  var trimEnd = _trimFor(e.endEnd, e.strokeWidth, e.endSize);
-  var from = math.min(trimStart, length * 0.45);
-  var to = math.max(length - trimEnd, from + 0.01);
-  var stroke = metric.extractPath(from, to);
-
-  canvas.drawPath(
-      e.dash > 0 ? dashPath(stroke, e.dash, e.dash * 0.8) : stroke, paint);
-
-  // From the vector, never Tangent.angle: that is *minus* atan2(dy, dx), y
-  // up, and flips every decoration on a diagonal line in canvas space.
-  double heading(ui.Tangent t) => math.atan2(t.vector.dy, t.vector.dx);
-
-  // The start decoration points back out of the line: the curve reversed.
-  _paintLineEnd(canvas, e.startEnd, startTangent.position,
-      heading(startTangent) + math.pi, e);
-  _paintLineEnd(canvas, e.endEnd, endTangent.position, heading(endTangent), e);
-}
-
-/// _trimFor is how far back from a line's end its decoration begins: every
-/// one, so the stroke does not show through a hollow one (LineEnd.cover).
-double _trimFor(LineEnd end, double strokeWidth, double endSize) =>
-    end.cover * strokeWidth * endSize;
-
-/// _paintLineEnd draws one decoration along [angle], the line's direction at
-/// that end from the path metric, so it sits square however bent the curve.
-void _paintLineEnd(
-    ui.Canvas canvas, LineEnd end, Offset at, double angle, LineElement e) {
-  if (end == LineEnd.none) return;
-  var w = e.strokeWidth * e.endSize;
-  var fill = Paint()
-    ..style = PaintingStyle.fill
-    ..color = e.color;
-  var stroke = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = e.strokeWidth
-    ..strokeJoin = StrokeJoin.miter
-    ..color = e.color;
-
-  var along = Offset(math.cos(angle), math.sin(angle));
-  var across = Offset(-along.dy, along.dx);
-
-  switch (end) {
-    case LineEnd.none:
-      return;
-    case LineEnd.arrow:
-      arrowHead(canvas, at, angle, w * 3.5, fill);
-    case LineEnd.hollowArrow:
-      arrowHead(canvas, at, angle, w * 3.5, stroke, filled: false);
-    case LineEnd.openArrow:
-      // A filled chevron rather than two strokes: thickest at the tip and
-      // pointed at each outer end, as an open arrow is drawn by hand.
-      var size = w * 4.2;
-      var back = angle + math.pi;
-      var b1 = at.translate(math.cos(back - arrowSpread) * size,
-          math.sin(back - arrowSpread) * size);
-      var b2 = at.translate(math.cos(back + arrowSpread) * size,
-          math.sin(back + arrowSpread) * size);
-      // The notch behind the tip gives it its thickness, as a fraction of
-      // the barb so the proportions hold at any end size.
-      var notch = at - along * (size * 0.58);
-      canvas.drawPath(
-        Path()
-          ..moveTo(at.dx, at.dy)
-          ..lineTo(b1.dx, b1.dy)
-          ..lineTo(notch.dx, notch.dy)
-          ..lineTo(b2.dx, b2.dy)
-          ..close(),
-        fill,
-      );
-    case LineEnd.diamond:
-    case LineEnd.hollowDiamond:
-      // Centred on the line's end, like the circle and the square.
-      var long = w * 1.7;
-      var wide = w * 1.0;
-      canvas.drawPath(
-        Path()
-          ..moveTo(at.dx + along.dx * long, at.dy + along.dy * long)
-          ..lineTo(at.dx + across.dx * wide, at.dy + across.dy * wide)
-          ..lineTo(at.dx - along.dx * long, at.dy - along.dy * long)
-          ..lineTo(at.dx - across.dx * wide, at.dy - across.dy * wide)
-          ..close(),
-        end == LineEnd.diamond ? fill : stroke,
-      );
-    case LineEnd.circle:
-      canvas.drawCircle(at, w * 1.2, fill);
-    case LineEnd.hollowCircle:
-      canvas.drawCircle(at, w * 1.2, stroke);
-    case LineEnd.square:
-      canvas.save();
-      canvas.translate(at.dx, at.dy);
-      canvas.rotate(angle);
-      canvas.drawRect(
-          Rect.fromCenter(center: Offset.zero, width: w * 2.2, height: w * 2.2),
-          fill);
-      canvas.restore();
-    case LineEnd.bar:
-      // A tick across the line, which is what a measurement wants at each end.
-      canvas.drawLine(at - across * (w * 1.6), at + across * (w * 1.6), stroke);
-  }
+  paintStroke(canvas, path, e.drawnStroke);
 }
 
 void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
@@ -382,8 +256,9 @@ void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
   paintTextInBox(canvas, e.label, spec, inner, clip: true);
 }
 
-/// _paintPath draws a bezier curve. A guide path (PathElement.guide) is
-/// scaffolding: drawn only while [editing], never in anything published.
+/// _paintPath draws a path's stroke along the bezier curve through its
+/// nodes. A guide path (PathElement.guide) is scaffolding: drawn only while
+/// [editing], never in anything published.
 void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   if (e.nodes.length < 2) return;
   if (e.guide && !editing) return;
@@ -406,46 +281,5 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   }
   if (e.closed) path.close();
 
-  // Across the whole path, so a fade runs along its length.
-  var paint = PaintSpec(e.color, gradient: e.fade).into(
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = e.strokeWidth
-        ..strokeCap = e.cap.flutter,
-      path.getBounds());
-
-  canvas.drawPath(e.dash > 0 ? dashPath(path, e.dash, e.dash) : path, paint);
-
-  // The arrowhead points along the last segment's own direction, not the
-  // chord between the last two nodes, which can point backwards.
-  if (e.endEnd != LineEnd.none && !e.closed) {
-    var last = e.segments - 1;
-    var tip = e.pointOnSegment(last, 1);
-    var just = e.pointOnSegment(last, 0.94);
-    var shift = Offset(bounds.left - e.x, bounds.top - e.y);
-    _paintArrowHead(canvas, just + shift, tip + shift, e.strokeWidth, e.color);
-  }
-  if (e.startEnd != LineEnd.none && !e.closed) {
-    var tip = e.pointOnSegment(0, 0);
-    var just = e.pointOnSegment(0, 0.06);
-    var shift = Offset(bounds.left - e.x, bounds.top - e.y);
-    _paintArrowHead(canvas, just + shift, tip + shift, e.strokeWidth, e.color);
-  }
-}
-
-/// _paintArrowHead draws a solid head at [tip], pointing away from [from].
-void _paintArrowHead(
-    ui.Canvas canvas, Offset from, Offset tip, double width, Color color) {
-  var direction = tip - from;
-  if (direction.distance < 0.001) return;
-  var angle = math.atan2(direction.dy, direction.dx);
-  var size = math.max(6.0, width * 3);
-  var head = ui.Path()
-    ..moveTo(tip.dx, tip.dy)
-    ..lineTo(tip.dx - size * math.cos(angle - 0.4),
-        tip.dy - size * math.sin(angle - 0.4))
-    ..lineTo(tip.dx - size * math.cos(angle + 0.4),
-        tip.dy - size * math.sin(angle + 0.4))
-    ..close();
-  canvas.drawPath(head, Paint()..color = color);
+  paintStroke(canvas, path, e.drawnStroke);
 }

@@ -5,7 +5,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -141,12 +140,10 @@ class StageHitTest {
     }
     // A curve is hit by its stroke, not its box: a bowed line or path bulges
     // out of its box, and text on a line is wherever the line is.
-    if (e is LineElement || e is PathElement) {
+    if (e is StrokedElement) {
       var curve = curveOfElement(e is LineElement ? lineWithPose(e, frame) : e);
       if (curve != null && curve.length >= 2) {
-        var width =
-            e is LineElement ? e.strokeWidth : (e as PathElement).strokeWidth;
-        return _nearPolyline(curve, at, _strokeReach(width));
+        return _nearPolyline(curve, at, _strokeReach(e.strokeWidth));
       }
     }
     if (e is TextElement) {
@@ -162,7 +159,11 @@ class StageHitTest {
     var shape = e.movedFrameAt(frame, document, live: live);
     var local = at;
     if (!shape.upright) local = box.center + shape.invert(at - box.center);
-    if (!box.contains(local)) return false;
+    // A shape's outline is drawn centred on its edge, so half of a thick one
+    // lies outside its box, and is pressed there too.
+    var outside =
+        e is ShapeElement && e.strokeWidth > 0 ? e.strokeWidth / 2 : 0.0;
+    if (!box.inflate(outside).contains(local)) return false;
 
     // A shape is pressed inside its outline, filled or not, or near enough
     // its edge to pick a thin one; its box's empty corners are left to

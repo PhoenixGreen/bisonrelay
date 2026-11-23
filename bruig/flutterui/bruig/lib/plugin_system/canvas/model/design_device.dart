@@ -222,6 +222,25 @@ List<DesignSetting> _box(
           (e, v) => put(e, of(e).copyWith(padding: v))),
     ];
 
+/// _stroke is a line's or a path's stroke, with [bow] (a line's) among its
+/// Stroke group.
+List<DesignSetting> _stroke({List<DesignSetting> bow = const []}) {
+  StrokeSpec of(CanvasElement e) => (e as StrokedElement).stroke;
+  CanvasElement put(CanvasElement e, StrokeSpec s) =>
+      (e as StrokedElement).withStroke(s);
+  return [
+    DesignSetting("strokeColour", "Stroke", (e) => _argb(of(e).color),
+        (e, v) => put(e, of(e).copyWith(color: _colour(v)))),
+    DesignSetting("stroke", "Stroke", (e) => of(e).strokeWidth,
+        (e, v) => put(e, of(e).copyWith(strokeWidth: v))),
+    ...bow,
+    DesignSetting("dash", "Ends and dashes", (e) => of(e).dash,
+        (e, v) => put(e, of(e).copyWith(dash: v))),
+    DesignSetting("endSize", "Ends and dashes", (e) => of(e).endSize,
+        (e, v) => put(e, of(e).copyWith(endSize: v))),
+  ];
+}
+
 /// _orNone reads a colour that may be off (a drawing's tint) as clear where
 /// there is none, so keying it starts from nothing.
 double _orNone(Color? c) => c == null ? 0 : _argb(c);
@@ -299,52 +318,11 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               (e, t) => (e as ShapeElement).copyWith(textSpec: t),
               letters: false),
         ],
-      LineElement _ => [
-          DesignSetting(
-              "strokeColour",
-              "Stroke",
-              (e) => _argb((e as LineElement).color),
-              (e, v) => (e as LineElement).copyWith(color: _colour(v))),
-          DesignSetting(
-              "stroke",
-              "Stroke",
-              (e) => (e as LineElement).strokeWidth,
-              (e, v) => (e as LineElement).copyWith(strokeWidth: v)),
+      LineElement _ => _stroke(bow: [
           DesignSetting("curve", "Stroke", (e) => (e as LineElement).curvature,
               (e, v) => (e as LineElement).copyWith(curvature: v)),
-          DesignSetting(
-              "dash",
-              "Ends and dashes",
-              (e) => (e as LineElement).dash,
-              (e, v) => (e as LineElement).copyWith(dash: v)),
-          DesignSetting(
-              "endSize",
-              "Ends and dashes",
-              (e) => (e as LineElement).endSize,
-              (e, v) => (e as LineElement).copyWith(endSize: v)),
-        ],
-      PathElement _ => [
-          DesignSetting(
-              "strokeColour",
-              "Stroke",
-              (e) => _argb((e as PathElement).color),
-              (e, v) => (e as PathElement).copyWith(color: _colour(v))),
-          DesignSetting(
-              "stroke",
-              "Stroke",
-              (e) => (e as PathElement).strokeWidth,
-              (e, v) => (e as PathElement).copyWith(strokeWidth: v)),
-          DesignSetting(
-              "dash",
-              "Ends and dashes",
-              (e) => (e as PathElement).dash,
-              (e, v) => (e as PathElement).copyWith(dash: v)),
-          DesignSetting(
-              "endSize",
-              "Ends and dashes",
-              (e) => (e as PathElement).endSize,
-              (e, v) => (e as PathElement).copyWith(endSize: v)),
-        ],
+        ]),
+      PathElement _ => _stroke(),
       ButtonElement _ => [
           ..._type("Label", (e) => (e as ButtonElement).textSpec,
               (e, t) => (e as ButtonElement).copyWith(textSpec: t)),

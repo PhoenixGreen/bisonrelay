@@ -292,9 +292,10 @@ painter fills and strokes it, a loop runs round it, wrapped words go round
 it (`text_wrap.dart`) and the stage presses it (`StageHitTest.contains`).
 The last two lay it on the page as `paintElement` draws it, through the
 element's turn and slant (`BoxFrame.placePath`). A press counts inside the
-outline, filled or not, or within a line's slack of its edge; the selection
-box and its handles stay the box, and a selected shape is moved from
-anywhere in that box, as a bowed line is.
+outline, filled or not, or within a line's slack of its edge, and on the
+half of a thick outline that lies outside the box; the selection box and
+its handles stay the box, and a selected shape is moved from anywhere in
+that box, as a bowed line is.
 
 What a kind of shape is (drawn square, has points, has corners given a
 bubble's body, how far in its label is set, which way its front end points)
@@ -302,6 +303,36 @@ is asked of `ShapeKind`, each a switch with no default, so a new kind has to
 answer them all. A speech bubble is drawn inside its box whatever its tail
 does: the body gives up room on the tail's side for the tail or a thought's
 whole trail, and a cloud's lumps reach the body's edge and no further.
+
+### A stroke
+
+A line and a path are one stroke along their curve, and say so by
+extending `StrokedElement` (`model/elements/stroke.dart`): its colour or
+fade, width, cap, what is drawn on each end (`LineEnd`), the ends' size and
+the dash. The parts are held one by one, so a line or a path can still be
+written `const` with them named; `stroke` gathers them as a `StrokeSpec`
+and `withStroke` lays one down. Each element keeps its own defaults (a line
+white, 4 wide, flat, with no ends; a path yellow, 3 wide, round, with an
+arrow at its end), and saves its stroke under the same keys
+(`StrokeSpec.toJson`, read back by `StrokeSpec.fromJson` with those
+defaults; `test/canvas_stroke_saved_form_test.dart` holds both to the
+saved form key by key). What reads a stroke (the Design table, the Colour
+panel, the selection box, the press) asks a `StrokedElement`, never which
+of the two it is.
+
+One painter draws it, `paintStroke` (`render/paint_util_stroke.dart`): the
+body with its cap, dash and fade, cut back under each end, and the ends at
+their size in the body's own paint, so a faded stroke's ends are the colour
+it has there. `drawnStroke` is the stroke as drawn: a closed path has no
+ends, so its selection box makes no room for them. The size of every end
+is in `EndShape`, which the drawing and the cut-back both read: an end's
+`LineEnd.cover` is how far back its own ink reaches along the stroke's
+middle (a hollow end's back edge, a solid end's a hair inside it), and
+`StrokeSpec.cutBack` stops the stroke there, less what a round or square
+cap reaches past the cut. `test/canvas_stroke_ends_test.dart` draws every
+end at several widths, sizes and caps and holds the stroke to meeting it
+with no gap and showing through no hollow one, and a path's ends to a
+line's.
 
 ## The editor
 

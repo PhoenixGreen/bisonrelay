@@ -5,7 +5,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // path_element.dart is a bezier curve, and optionally the route a named
@@ -122,25 +122,11 @@ class PathFollow {
       );
 }
 
-class PathElement extends CanvasElement {
+/// PathElement is a stroke along a bezier curve through its nodes. Its
+/// stroke is a StrokedElement's: yellow, 3 wide, round, with an arrow at its
+/// end.
+class PathElement extends StrokedElement {
   final List<PathNode> nodes;
-
-  final Color color;
-
-  /// fade is the stroke's second colour, or null (see GradientSpec).
-  final GradientSpec? fade;
-  final double strokeWidth;
-
-  /// cap, startEnd and endEnd finish the stroke, as on a line.
-  final LineStrokeCap cap;
-  final LineEnd startEnd;
-  final LineEnd endEnd;
-
-  /// endSize scales whatever is drawn at the ends. See LineElement.endSize.
-  final double endSize;
-
-  /// dash is the on/off length in design units. Zero draws a solid line.
-  final double dash;
 
   final bool closed;
 
@@ -155,19 +141,29 @@ class PathElement extends CanvasElement {
   const PathElement(
     super.base, {
     this.nodes = const [],
-    this.color = const Color(0xFFFFD166),
-    this.fade,
-    this.strokeWidth = 3,
-    this.cap = LineStrokeCap.round,
-    this.startEnd = LineEnd.none,
-    this.endEnd = LineEnd.arrow,
-    this.endSize = 1,
-    this.dash = 0,
+    super.color = const Color(0xFFFFD166),
+    super.fade,
+    super.strokeWidth = 3,
+    super.cap = LineStrokeCap.round,
+    super.startEnd = LineEnd.none,
+    super.endEnd = LineEnd.arrow,
+    super.endSize = 1,
+    super.dash = 0,
     this.closed = false,
     this.guide = false,
     this.follow,
     this.animation = const ElementAnimation(),
   });
+
+  PathElement._of(
+    super.base,
+    super.stroke, {
+    required this.nodes,
+    required this.closed,
+    required this.guide,
+    required this.follow,
+    required this.animation,
+  }) : super.of();
 
   /// _defaults is one as made: what a saved one means by leaving a
   /// field out.
@@ -412,20 +408,25 @@ class PathElement extends CanvasElement {
   }
 
   @override
-  CanvasElement rebase(ElementBase base) => PathElement(base,
-      nodes: nodes,
-      color: color,
-      fade: fade,
-      strokeWidth: strokeWidth,
-      cap: cap,
-      startEnd: startEnd,
-      endEnd: endEnd,
-      endSize: endSize,
-      dash: dash,
-      closed: closed,
-      guide: guide,
-      follow: follow,
-      animation: animation);
+  CanvasElement rebase(ElementBase base) => _with(base, stroke);
+
+  @override
+  PathElement withStroke(StrokeSpec stroke) => _with(base, stroke);
+
+  /// drawnStroke has no ends on a closed path, which has none to put them
+  /// on.
+  @override
+  StrokeSpec get drawnStroke => closed
+      ? stroke.copyWith(startEnd: LineEnd.none, endEnd: LineEnd.none)
+      : stroke;
+
+  PathElement _with(ElementBase base, StrokeSpec stroke) =>
+      PathElement._of(base, stroke,
+          nodes: nodes,
+          closed: closed,
+          guide: guide,
+          follow: follow,
+          animation: animation);
 
   PathElement copyWith({
     List<PathNode>? nodes,
@@ -444,16 +445,19 @@ class PathElement extends CanvasElement {
     bool clearFollow = false,
     ElementAnimation? animation,
   }) =>
-      PathElement(base,
+      PathElement._of(
+          base,
+          stroke.copyWith(
+              color: color,
+              fade: fade,
+              flat: flat,
+              strokeWidth: strokeWidth,
+              cap: cap,
+              startEnd: startEnd,
+              endEnd: endEnd,
+              endSize: endSize,
+              dash: dash),
           nodes: nodes ?? this.nodes,
-          color: color ?? this.color,
-          fade: flat ? null : (fade ?? this.fade),
-          strokeWidth: strokeWidth ?? this.strokeWidth,
-          cap: cap ?? this.cap,
-          startEnd: startEnd ?? this.startEnd,
-          endEnd: endEnd ?? this.endEnd,
-          endSize: endSize ?? this.endSize,
-          dash: dash ?? this.dash,
           closed: closed ?? this.closed,
           guide: guide ?? this.guide,
           follow: clearFollow ? null : (follow ?? this.follow),
@@ -462,24 +466,21 @@ class PathElement extends CanvasElement {
   @override
   PathElement mapOwnColours(ColourMap f) {
     var p = ColourPass(f);
-    var color = p(this.color);
-    var fade = p.partOrNone(this.fade, (g) => g.mapColours(f));
+    var stroke = p.part(this.stroke, (s) => s.mapColours(f));
     var animation = p.part(this.animation, (a) => a.mapColours(f));
     if (!p.changed) return this;
-    return copyWith(color: color, fade: fade, animation: animation);
+    return PathElement._of(base, stroke,
+        nodes: nodes,
+        closed: closed,
+        guide: guide,
+        follow: follow,
+        animation: animation);
   }
 
   @override
   Map<String, dynamic> props() => {
         "nodes": [for (var n in nodes) n.toJson()],
-        "color": colorToJson(color),
-        if (fade != null) "fade": fade!.toJson(),
-        "sw": strokeWidth,
-        "strokeCap": cap.name,
-        if (startEnd != _defaults.startEnd) "startEnd": startEnd.name,
-        if (endEnd != _defaults.endEnd) "endEnd": endEnd.name,
-        if (endSize != _defaults.endSize) "endSize": endSize,
-        if (dash > 0) "dash": dash,
+        ...stroke.toJson(_defaults.stroke),
         if (closed) "closed": true,
         if (guide) "guide": true,
         if (follow != null) "follow": follow!.toJson(),
@@ -487,28 +488,10 @@ class PathElement extends CanvasElement {
       };
 
   factory PathElement.fromJson(Map<String, dynamic> json, ElementBase b) {
-    var raw = json["nodes"];
     var followJson = json["follow"];
-    return PathElement(b,
-        nodes: jsonObjects(raw, PathNode.fromJson, most: maxPathNodes),
-        color: colorFromJson(json["color"], _defaults.color),
-        fade: json["fade"] is Map
-            ? GradientSpec.fromJson(
-                (json["fade"] as Map).cast<String, dynamic>())
-            : null,
-        strokeWidth: jsonLength(json["sw"], _defaults.strokeWidth),
-        cap: json["strokeCap"] is String
-            ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
-            : LineStrokeCap.round,
-        startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
-        endSize: jsonDouble(json["endSize"], _defaults.endSize)
-            .clamp(0.0, maxEndSize),
-        // The writer leaves the end out when it is the arrow a path starts
-        // with, so no "endEnd" is an arrow.
-        endEnd: json.containsKey("endEnd")
-            ? LineEnd.fromName(jsonStr(json["endEnd"]))
-            : LineEnd.arrow,
-        dash: jsonDouble(json["dash"], _defaults.dash).clamp(0.0, 200.0),
+    return PathElement._of(b, StrokeSpec.fromJson(json, _defaults.stroke),
+        nodes:
+            jsonObjects(json["nodes"], PathNode.fromJson, most: maxPathNodes),
         closed: jsonBool(json["closed"], false),
         guide: jsonBool(json["guide"], false),
         follow: followJson is Map<String, dynamic>
