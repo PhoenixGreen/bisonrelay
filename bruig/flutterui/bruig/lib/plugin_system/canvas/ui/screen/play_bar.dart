@@ -825,7 +825,9 @@ const _playBarHelp = [
 /// _BackToTimeline is Ableton's Back to Arrangement: shown, amber with a
 /// count, only while something has left the timeline; pressed, all goes
 /// back. Its arrow lists them -- rows playing from slots, channels with
-/// settings held off their lanes -- each to send back alone.
+/// settings held off their lanes -- each to send back alone. Short of room
+/// for its words it is its arrow-back icon and the count; shorter still,
+/// that drawn smaller, so it can always be pressed.
 class _BackToTimeline extends StatelessWidget {
   final CanvasController controller;
   const _BackToTimeline({required this.controller});
@@ -834,37 +836,71 @@ class _BackToTimeline extends StatelessWidget {
   static const _edge = Color(0xFF7A5A1E);
   static const _fill = Color(0xFF3A2A10);
 
+  static const _words = "Back to timeline";
+  static const _wordsStyle =
+      TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: _ink);
+  static const _countStyle = TextStyle(
+      fontFeatures: [FontFeature.tabularFigures()],
+      fontSize: 10.5,
+      color: Color(0xFF2A1A04));
+
+  /// _wideNeeds is how wide it is with its words and [count], at the text
+  /// size the app is laid out at: its edges, padding, icon, words, count,
+  /// divider and arrow.
+  static double _wideNeeds(BuildContext context, int count) {
+    var scaler = MediaQuery.textScalerOf(context);
+    double width(String text, TextStyle style) {
+      var painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+          maxLines: 1)
+        ..layout();
+      var w = painter.width;
+      painter.dispose();
+      return w;
+    }
+
+    var countWide = count == 0 ? 0 : 6 + 10 + width("$count", _countStyle);
+    return 2 + 18 + 15 + 6 + width(_words, _wordsStyle) + countWide + 1 + 24;
+  }
+
   @override
   Widget build(BuildContext context) {
     var items = controller.offTimelineItems;
-    return Container(
-      height: 28,
-      decoration: BoxDecoration(
-        color: _fill,
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: _edge),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Flexible(
-          child: InkWell(
+    return LayoutBuilder(builder: (context, box) {
+      var words = box.maxWidth >= _wideNeeds(context, items.length);
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: _button(items.length, words: words),
+      );
+    });
+  }
+
+  /// _button is the control at its own size: with its [words], or its icon
+  /// and the count alone.
+  Widget _button(int count, {required bool words}) => Container(
+        height: 28,
+        decoration: BoxDecoration(
+          color: _fill,
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: _edge),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          InkWell(
             key: const ValueKey("backToTimeline"),
             onTap: controller.allBackToTimeline,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 9),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.keyboard_return, size: 15, color: _ink),
-                const SizedBox(width: 6),
-                const Flexible(
-                  child: Text("Back to timeline",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: _ink)),
-                ),
-                if (items.isNotEmpty) ...[
+                if (words) ...[
+                  const SizedBox(width: 6),
+                  const Text(_words, maxLines: 1, style: _wordsStyle),
+                ],
+                if (count > 0) ...[
                   const SizedBox(width: 6),
                   Container(
                     key: const ValueKey("backToTimelineCount"),
@@ -872,36 +908,30 @@ class _BackToTimeline extends StatelessWidget {
                     decoration: BoxDecoration(
                         color: const Color(0xFFF2A33D),
                         borderRadius: BorderRadius.circular(8)),
-                    child: Text("${items.length}",
-                        style: const TextStyle(
-                            fontFeatures: [FontFeature.tabularFigures()],
-                            fontSize: 10.5,
-                            color: Color(0xFF2A1A04))),
+                    child: Text("$count", style: _countStyle),
                   ),
                 ],
               ]),
             ),
           ),
-        ),
-        Container(width: 1, color: _edge),
-        MenuAnchor(
-          alignmentOffset: const Offset(0, 6),
-          menuChildren: [
-            _OffList(
-                controller: controller, onAll: controller.allBackToTimeline)
-          ],
-          builder: (context, menu, _) => InkWell(
-            key: const ValueKey("backToTimelineList"),
-            onTap: () => menu.isOpen ? menu.close() : menu.open(),
-            child: const SizedBox(
-                width: 24,
-                height: 28,
-                child: Icon(Icons.expand_more, size: 15, color: _ink)),
+          Container(width: 1, color: _edge),
+          MenuAnchor(
+            alignmentOffset: const Offset(0, 6),
+            menuChildren: [
+              _OffList(
+                  controller: controller, onAll: controller.allBackToTimeline)
+            ],
+            builder: (context, menu, _) => InkWell(
+              key: const ValueKey("backToTimelineList"),
+              onTap: () => menu.isOpen ? menu.close() : menu.open(),
+              child: const SizedBox(
+                  width: 24,
+                  height: 28,
+                  child: Icon(Icons.expand_more, size: 15, color: _ink)),
+            ),
           ),
-        ),
-      ]),
-    );
-  }
+        ]),
+      );
 }
 
 /// _OffList is what is off the timeline, in its two groups, each to send

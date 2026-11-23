@@ -223,8 +223,11 @@ extension CanvasScenes on CanvasController {
   Future<int> findCues(AudioElement clip) async {
     var source = clip.clip.playlist.firstOrNull;
     if (source == null) return 0;
+    var loads = _loads;
     var peaks = await _waveformOf(source.assetId);
-    if (peaks == null) return 0;
+    // Found for the canvas the clip is on: not written into one opened
+    // while its sound was being read.
+    if (peaks == null || !_stillOn(loads)) return 0;
     var rate = math.max(1, _document.frameRate);
     var length = source.length > 0 ? source.length : 0.0;
     if (length <= 0) return 0;
@@ -267,6 +270,9 @@ extension CanvasScenes on CanvasController {
   Future<String?> hearWords(AudioElement clip, {String? model}) async {
     var source = clip.clip.playlist.firstOrNull;
     if (source == null) return "That sound has nothing in it to hear.";
+    // Heard for the canvas the clip is on: what comes back after another
+    // has opened is dropped, and nothing is said of it.
+    var loads = _loads;
     var whisper = await whisperPath();
     if (whisper == null) return speechHelp;
     var ffmpeg = await ffmpegPath();
@@ -275,6 +281,7 @@ extension CanvasScenes on CanvasController {
     if (!await File(model).exists()) return speechModelMissing;
     var file = await CanvasMedia.existingPath(MediaKind.audio, source.assetId);
     if (file == null) return "The recording is missing from the library.";
+    if (!_stillOn(loads)) return null;
 
     var rate = math.max(1, _document.frameRate);
     var length = source.length > 0 ? source.length : 0.0;
@@ -286,6 +293,7 @@ extension CanvasScenes on CanvasController {
         audio: file,
         from: from,
         to: to > from ? to : null);
+    if (!_stillOn(loads)) return null;
     if (heard == null) return "whisper could not hear that recording.";
     if (heard.isEmpty) return "No words were heard in that recording.";
 
@@ -300,6 +308,7 @@ extension CanvasScenes on CanvasController {
             from: tag),
     ];
     if (!cues.any((c) => c.id.startsWith("$tag:"))) await findCues(clip);
+    if (!_stillOn(loads)) return null;
     var all = [
       for (var w in words)
         if (w.from != tag) w,

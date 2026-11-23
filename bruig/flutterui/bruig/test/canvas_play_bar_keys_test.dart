@@ -16,9 +16,9 @@ import 'support/canvas_audio_fake.dart';
 // canvas_play_bar_keys_test.dart is what the play bar shows at three widths,
 // as the keys of everything in it, in order, and of its timing menu open:
 // with every button lit that can be (Play every scene, the knife, part of
-// the timeline shown) and, where there is room for it, Back to the
-// timeline. The bar drops its tempo and its names as it narrows; a change
-// to how it is built that shows anything else, or in another order, shows
+// the timeline shown) and Back to the timeline. The bar drops its tempo and
+// its names as it narrows, and Back to the timeline its words; a change to
+// how it is built that shows anything else, or in another order, shows
 // here.
 
 CanvasController _make({required bool held}) {
@@ -61,7 +61,7 @@ void main() {
   for (var (width, name, held) in const [
     (2400.0, "wide", true),
     (1300.0, "middling", true),
-    (700.0, "narrow", false),
+    (700.0, "narrow", true),
   ]) {
     testWidgets("the play bar $name", (tester) async {
       var c = _make(held: held);
@@ -86,6 +86,38 @@ void main() {
       expect(timing, _shown[name]!["timing"]);
     });
   }
+
+  testWidgets(
+      "Back to the timeline fits beside the rest at every width and text "
+      "size", (tester) async {
+    var c = _make(held: true);
+    addTearDown(c.dispose);
+    setTestScreen(tester, const Size(1300, 1000));
+    var failures = <String>[];
+    for (var scale in [0.65, 1.0, 1.3, 1.5]) {
+      setTestTextScale(tester, scale);
+      for (var width in [700.0, 1000.0, 1300.0]) {
+        tester.view.physicalSize = Size(width, 1000);
+        // Built afresh: a row tells of its overflow only the first time.
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpWidget(canvasApp(Align(
+            alignment: Alignment.bottomCenter,
+            child: CanvasDock(controller: c, room: 700))));
+        // Measured after a frame, and settled the frame after.
+        await tester.pump();
+        await tester.pump();
+        if (tester.takeException() case var e?) {
+          failures.add("${scale}x, $width wide: "
+              "${e.toString().split("\n").first}");
+        }
+        // Still there to press, whatever it has had to give up.
+        expect(find.byKey(const ValueKey("backToTimeline")).hitTestable(),
+            findsOneWidget,
+            reason: "${scale}x, $width wide");
+      }
+    }
+    expect(failures, isEmpty);
+  });
 }
 
 /// _shown is what the bar shows at each width, and its timing menu.
@@ -306,6 +338,10 @@ const Map<String, Map<String, List<String>>> _shown = {
       "LabeledGlobalKey<_RawMenuAnchorState>",
       "[<'markerMenu'>]",
       "LabeledGlobalKey<State<StatefulWidget>>",
+      "[<'backToTimeline'>]",
+      "[<'backToTimelineCount'>]",
+      "LabeledGlobalKey<_RawMenuAnchorState>",
+      "[<'backToTimelineList'>]",
       "LabeledGlobalKey<State<StatefulWidget>>",
       "LabeledGlobalKey<RawGestureDetectorState>",
       "LabeledGlobalKey<State<StatefulWidget>>",

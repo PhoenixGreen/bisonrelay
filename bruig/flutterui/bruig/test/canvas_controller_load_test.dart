@@ -13,21 +13,30 @@ import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/synth_module_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/model/synth_patch.dart'
+    show SynthModuleKind;
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
+import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -667,6 +676,238 @@ void main() {
       c.load(doc);
       expect(order(), first);
     });
+  });
+
+  group("opening another canvas, or leaving the page, ends what is live", () {
+    // Each sounds, or is held, until something ends it; and each names an
+    // element or a channel that the next canvas may have by the same id.
+    late FakeEngine engine;
+    CanvasController editor(CanvasDocument doc) {
+      engine = FakeEngine({"t": 2, "take1.wav": 2});
+      var c = CanvasController(doc, audioEngine: engine);
+      addTearDown(() {
+        c.gaming = false;
+        c.dispose();
+      });
+      return c;
+    }
+
+    const music = AudioElement(ElementBase(id: "m", name: "Music"),
+        clip: MediaClip(
+            playlist: [MediaSource(assetId: "t", length: 2)], timed: true));
+
+    test("a channel listened to alone, in the engine too", () async {
+      var doc = const CanvasDocument(frames: 100, elements: [music]);
+      var c = editor(doc);
+      await c.audio.ready();
+      c.listenAt("m", 0);
+      expect(engine.listened, {"m": 0});
+      c.load(doc);
+      expect(c.listening, isNull);
+      expect(engine.listened, isEmpty, reason: "heard whole again");
+    });
+
+    Iterable<FakeVoice> clicks() =>
+        engine.voices.where((v) => v.track.path == "metronome" && v.alive);
+
+    for (var leave in [true, false]) {
+      test(leave ? "a metronome, as the page is left" : "a metronome",
+          () async {
+        var m = const MetronomeElement(ElementBase(id: "m"), bpm: 100);
+        var doc = CanvasDocument(elements: [m]);
+        var c = editor(doc);
+        c.toggleMetronome(m);
+        await pumpEventQueue();
+        expect(clicks(), isNotEmpty);
+        leave ? c.leavePage() : c.load(doc);
+        await pumpEventQueue();
+        expect(c.metronomeGoing("m"), isFalse);
+        expect(clicks(), isEmpty, reason: "its click stopped");
+      });
+    }
+
+    test("a take heard on its own", () async {
+      var pathWas = CanvasController.takePath;
+      CanvasController.takePath = (id) async => "/takes/$id";
+      addTearDown(() => CanvasController.takePath = pathWas);
+      var doc = const CanvasDocument(frames: 100, elements: [music]);
+      var c = editor(doc);
+      expect(await c.hearTake("take1.wav"), isNull);
+      var voice = engine.last;
+      c.load(doc);
+      expect(c.speechHeard, isNull);
+      expect(voice.alive, isFalse);
+    });
+
+    test("a key held on an instrument", () async {
+      var piano = newInstrument(const CanvasDocument());
+      var doc = CanvasDocument(frames: 100, elements: [piano]);
+      var c = editor(doc);
+      await c.audio.ready();
+      c.noteOn(piano, 60);
+      await pumpEventQueue();
+      expect(c.audioState(piano).keys, {60});
+      expect(engine.notes.last, (piano.id, 60, 100));
+      c.load(doc);
+      expect(engine.notes.last, (piano.id, 60, 0), reason: "let go of");
+      expect(c.audioState(piano).keys, isEmpty,
+          reason: "nothing is held on the canvas opened");
+    });
+
+    test("keys held on a synth's keyboard module", () async {
+      var c = editor(const CanvasDocument(frames: 100));
+      c.addSynthRack();
+      SynthModuleElement of(SynthModuleKind k) => c.document.elements
+          .whereType<SynthModuleElement>()
+          .firstWhere((e) => e.module == k);
+      c.synthKeyDown(of(SynthModuleKind.keys), 60);
+      await pumpEventQueue();
+      expect(c.synthHeld(of(SynthModuleKind.keys).id), {60});
+      expect(c.synthShowFor(of(SynthModuleKind.out), 0).held, {60});
+      // The same rack opened again: its keyboard shows nothing held, and
+      // its screens no note sounding.
+      c.load(c.document);
+      expect(c.synthHeld(of(SynthModuleKind.keys).id), isEmpty);
+      expect(c.synthShowFor(of(SynthModuleKind.out), 0).held, isEmpty);
+    });
+
+    test("where a game last set a channel's sound off", () {
+      const placed = AudioElement(ElementBase(id: "s", name: "Chime"),
+          clip: MediaClip(
+              playlist: [MediaSource(assetId: "t", length: 2)],
+              place: SoundPlacement(by: PlaceBy.canvas)));
+      var doc =
+          const CanvasDocument(frames: 100, game: true, elements: [placed]);
+      var c = editor(doc);
+      var own = c.placementsNow["s"];
+      expect(own, isNotNull);
+      c.gaming = true;
+      c.gameSound("s", from: doc.size.rect.right);
+      expect(c.placementsNow["s"], isNot(own),
+          reason: "from where it was set off");
+      c.load(doc);
+      expect(c.placementsNow["s"], own, reason: "from where it is again");
+    });
+
+    test("elements a trigger took off their timelines", () {
+      // The last canvas's "x" left its timeline as its scene started.
+      var clip = presetNamed("Spin once")!
+          .clip("spin")
+          .copyWith(triggers: const [ClipTrigger(ClipTriggerKind.sceneStarts)]);
+      var c = editor(CanvasDocument(frames: 48, elements: [
+        ShapeElement(ElementBase(
+            id: "x",
+            width: 40,
+            height: 40,
+            motion: ElementMotion.none.withClip(clip).inSlot(0, clip.id))),
+      ]));
+      c.play();
+      c.tickForTest();
+      expect(c.motionPlayer.isOff("x"), isTrue);
+      // This canvas's "x" is launched from its slot, which keeps it off
+      // its timeline through a Stop, until Back to the timeline.
+      c.load(CanvasDocument(frames: 48, elements: [slotted("x")]));
+      c.play();
+      c.pressMotionSlot("x", 0);
+      expect(c.motionPlayer.isOff("x"), isTrue);
+      c.stopPlaying();
+      expect(c.motionPlayer.isOff("x"), isTrue,
+          reason: "a trigger of the last canvas's does not put it back");
+    });
+
+    test("the cue row last launched", () {
+      var c = editor(CanvasDocument(frames: 48, elements: [slotted("x")]));
+      c.launchScene(1);
+      c.load(CanvasDocument(frames: 48, elements: [slotted("x")]));
+      c.pressMotionSlot("x", 0);
+      expect(c.sceneLaunched, isNull,
+          reason: "no cue of this canvas has been launched");
+    });
+
+    test("a practice take's marks", () {
+      var piano = newInstrument(const CanvasDocument());
+      piano = piano.copyWith(
+          instrument: piano.instrument!.copyWith(notes: const [
+        MidiNote(60, 0.5, 0.48),
+        MidiNote(62, 1, 0.48),
+      ]));
+      var sheet = SheetElement(const ElementBase(id: "sheet"),
+          follows: piano.id, mode: PracticeMode.along);
+      var doc =
+          CanvasDocument(frames: 240, frameRate: 24, elements: [piano, sheet]);
+      var c = editor(doc);
+      c.startPractice(sheet);
+      for (var i = 0; i < 40; i++) {
+        c.tickForTest();
+      }
+      expect(sheetMarksOf!(sheet).marks, isNotEmpty);
+      c.load(doc);
+      expect(sheetMarksOf!(sheet).marks, isEmpty,
+          reason: "nobody has played this canvas's sheet");
+      expect(c.practiceScore, (0, 0));
+    });
+
+    test("the eyedropper, out for a setting of the last canvas's", () {
+      var c = editor(const CanvasDocument());
+      var given = <Color>[];
+      c.startSampling(given.add);
+      c.load(const CanvasDocument());
+      expect(c.sampling, isFalse);
+      c.sampledColour(const Color(0xFF112233));
+      expect(given, isEmpty);
+    });
+  });
+
+  test("leaving the page ends a live preview: none runs on the way back",
+      () async {
+    var host = _FakeHost();
+    CanvasController.codeRunHost = host;
+    addTearDown(() => CanvasController.codeRunHost = null);
+    var c = CanvasController(const CanvasDocument());
+    addTearDown(c.dispose);
+    c.addCodeLesson(starter: codeStarters.firstWhere((s) => s.key == "web"));
+    var run = c.document.elements.whereType<CodeRunElement>().single;
+    await c.runCode(run);
+    run = c.document.elements.whereType<CodeRunElement>().single;
+    c.selectOnly(run.id);
+    c.liveCode(run);
+    expect(c.codeLive, run.id);
+    c.leavePage();
+    await pumpEventQueue();
+    expect(c.codeLive, isNull, reason: "opened again only by a press");
+  });
+
+  group("a picture's warp grid goes with the picture it was on", () {
+    ImageElement picture(String id, double x) =>
+        ImageElement(ElementBase(id: id, x: x, width: 100, height: 100),
+            assetId: "photo", layers: const [ImageLayer.base]);
+
+    for (var how in ["another picked", "taken away", "another canvas"]) {
+      test(how, () {
+        var doc =
+            CanvasDocument(elements: [picture("a", 0), picture("b", 200)]);
+        var c = CanvasController(doc);
+        addTearDown(c.dispose);
+        c.selectOnly("a");
+        c.editWarp("a", ImageLayer.base.id);
+        c.warpPicks = {0};
+        c.cloneFrom = const Offset(0.2, 0.2);
+        expect(c.warpLayer, ImageLayer.base.id);
+        switch (how) {
+          case "another picked":
+            c.selectOnly("b");
+          case "taken away":
+            c.apply(c.document.removeElement("a"));
+          default:
+            c.load(doc);
+            expect(c.cloneFrom, isNull, reason: "a point on that picture");
+        }
+        // Picture b's layers are opened, which share ids with a's.
+        c.editImage("b");
+        expect(c.warpLayer, isNull, reason: "b's grid was not asked for");
+        expect(c.warpPicks, isEmpty);
+      });
+    }
   });
 
   test("coming back to the page finds the zoom as it was left", () {

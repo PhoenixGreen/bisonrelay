@@ -312,15 +312,32 @@ extension CanvasSynths on CanvasController {
     var part =
         ch.instrument!.copyWith(sound: InstrumentSound.patch, patch: target);
     const keys = [57, 60, 64];
-    _synthTarget?.cancel();
+    _synthTargetOff();
     for (var k in keys) {
       unawaited(audio.noteOn(ch.id, part, k, 90));
     }
-    _synthTarget = Timer(const Duration(milliseconds: 2600), () {
+    void off() {
       for (var k in keys) {
         audio.noteOff(ch.id, k);
       }
-    });
+    }
+
+    _synthTarget = (
+      timer: Timer(const Duration(milliseconds: 2600), () {
+        _synthTarget = null;
+        off();
+      }),
+      off: off,
+    );
+  }
+
+  /// _synthTargetOff lets go of a target chord still sounding, now.
+  void _synthTargetOff() {
+    if (_synthTarget case (:var timer, :var off)?) {
+      timer.cancel();
+      _synthTarget = null;
+      off();
+    }
   }
 
   /// checkSynthTask is how many of [card]'s checks the patch meets, of all.

@@ -456,6 +456,7 @@ class CanvasController extends ChangeNotifier {
       _imageEditing = null;
       _imageLayer = baseLayerId;
       _imageSolo = false;
+      _putWarpAway();
     }
     if (_imageEditing != null && editingImage?.layerById(_imageLayer) == null) {
       _imageLayer = baseLayerId;
@@ -689,22 +690,47 @@ class CanvasController extends ChangeNotifier {
   int get loads => _loads;
   int _loads = 0;
 
+  /// _stillOn is whether the canvas open now is the one that was open when
+  /// [loads] was taken from [_loads], and the session is still alive. A job
+  /// that waits on something slow (a voice, a render, a file) takes [_loads]
+  /// as it starts and asks this before it writes what it brought back:
+  /// another canvas opened meanwhile is not the one it was started on, even
+  /// where its elements and channels have the same ids.
+  bool _stillOn(int loads) => !_disposed && _loads == loads;
+
   /// markOpened is called by the page as it builds.
   void markOpened() => _opened = true;
 
   /// leavePage is the Canvas page left. The session outlives the page, but
   /// nothing in it may go on with no page to see or stop it: the playhead
   /// (each frame would cue sounds again), a game and its keys or a stop
-  /// waiting for one, the slots, a voice, the counters' clock, an arpeggio
-  /// or a held note, nor the pictures the renderer kept.
+  /// waiting for one, the slots, a live preview, the counters' clock, what
+  /// is held live (see _letGoOfLive), nor the pictures the renderer kept.
   void leavePage() {
     if (gaming) gaming = false;
     _endWait();
     if (playing) pause();
     motionPlayer.clear();
     _triggeredOff.clear();
-    stopHearing();
+    // A live preview's widget goes with the page and is built again on the
+    // way back, which would run its code again with nobody pressing Run.
+    if (_codeLive != null) unawaited(endLiveCode());
     _counters.stopTimer();
+    _letGoOfLive();
+    stopAudio();
+    clearRenderCaches();
+    images.release();
+  }
+
+  /// _letGoOfLive lets go of everything held live: a take or a voice heard
+  /// alone, the instruments' keys and arpeggios with the pedal let up, the
+  /// synth modules' keys and a task card's target chord, and the metronomes.
+  /// Leaving the page and opening another canvas both end them: each would
+  /// go on sounding, and each names elements or channels that the next
+  /// canvas may have by the same ids. Called while the document they were
+  /// held on is still open, since a key is let go through its instrument.
+  void _letGoOfLive() {
+    stopHearing();
     for (var MapEntry(key: id, value: live) in _arps.entries) {
       live.timer?.cancel();
       if ((live.sounding, _instrumentHeld(id)) case (var k?, var e?)) {
@@ -720,13 +746,9 @@ class CanvasController extends ChangeNotifier {
         }
       }
     }
-    _instruments.sounded.clear();
     _soundCount.clear();
-    // Nothing is held on a page left: a later key-up releases nothing, and
-    // the pedal is up when it comes back.
-    _instruments.held.clear();
-    _instruments.pressedOn.clear();
-    _instruments.take.clear();
+    // Nothing is held afterwards: a later key-up releases nothing.
+    _instruments = _InstrumentState();
     // The pedal let up on every instrument, or a page left with it down
     // would come back holding every released key.
     for (var e in _document.elements) {
@@ -734,9 +756,19 @@ class CanvasController extends ChangeNotifier {
         _audio?.control(CanvasController._channelOf(e), MidiControl.sustain, 0);
       }
     }
-    stopAudio();
-    clearRenderCaches();
-    images.release();
+    _synthPressed.clear();
+    _synthWatches.clear();
+    _synthTick?.cancel();
+    _synthTick = null;
+    _synthSeconds = 0;
+    _synthTargetOff();
+    for (var id in _metroStarted.keys) {
+      audio.metronome(on: false, key: id);
+    }
+    _metroStarted.clear();
+    _metroTaps.clear();
+    _metroTick?.cancel();
+    _metroTick = null;
   }
 
   /// folder and name are where this document is saved, or null when it has
@@ -1175,7 +1207,8 @@ class CanvasController extends ChangeNotifier {
   // ------------------------------------------------------------------------
 
   /// _instruments is the state instruments.dart keeps: see _InstrumentState.
-  final _InstrumentState _instruments = _InstrumentState();
+  /// All of it is held live, so it is made anew when that is let go of.
+  _InstrumentState _instruments = _InstrumentState();
 
   /// _metroStarted is when each running metronome started on _metroClock,
   /// by id; _metroTick redraws them; _metroTaps are each one's last taps.
@@ -1218,11 +1251,13 @@ class CanvasController extends ChangeNotifier {
   /// cards checking now.
   final Map<String, (int, bool?)> _codeTaskChecks = {};
 
-  /// _playTasks is how far each play task card has got (play_tasks.dart).
-  final _playTasks = _PlayTaskState();
+  /// _playTasks is how far each play task card has got (play_tasks.dart):
+  /// all of it the open canvas's, so made anew for another.
+  _PlayTaskState _playTasks = _PlayTaskState();
 
-  /// _layouts is the cell picked in each Layout (layouts.dart).
-  final _layouts = _LayoutState();
+  /// _layouts is the cell picked in each Layout (layouts.dart): made anew
+  /// for another canvas, as _playTasks is.
+  _LayoutState _layouts = _LayoutState();
   final Set<String> _codeTaskBusy = {};
 
   /// codeRunHost runs code for Run panels: set by the app (the browser and
@@ -1242,8 +1277,9 @@ class CanvasController extends ChangeNotifier {
   /// _synthPressed is each keyboard module's keys held, by element id.
   final Map<String, Set<int>> _synthPressed = {};
 
-  /// _synthTarget lets go of a task card's target once it has been heard.
-  Timer? _synthTarget;
+  /// _synthTarget lets go of a task card's target once it has been heard:
+  /// the timer, and the letting go it waits to do (see _synthTargetOff).
+  ({Timer timer, void Function() off})? _synthTarget;
 
   /// _synthWatches are the notes being watched on each speaker, by its
   /// id, for the screens (see PatchWatch); _synthTick plays them on and
@@ -1861,7 +1897,7 @@ class CanvasController extends ChangeNotifier {
     _disposed = true;
     _chrome.dispose();
     _partTimer?.cancel();
-    _synthTarget?.cancel();
+    _synthTarget?.timer.cancel();
     _synthTick?.cancel();
     _metroTick?.cancel();
     _warpTimer?.cancel();

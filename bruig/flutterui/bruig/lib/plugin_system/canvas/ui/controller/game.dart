@@ -141,6 +141,9 @@ extension CanvasGame on CanvasController {
         audio.stop(id);
       }
       _gameState.sounded.clear();
+      // Where it last set each channel's sound off: heard from there only
+      // while it plays, not in the editor after, nor on another canvas.
+      _soundFrom.clear();
       _gameClockWatch.stop();
       // Held by a pause, let go: the engine is shared.
       if (_gamePaused) {
@@ -513,14 +516,15 @@ extension CanvasGame on CanvasController {
     // by length alone drift from it.
     _gameState.mouthsOfSlots[key] =
         words == null ? null : mouthsFromWords(words, frameRate: rate);
+    var loads = _loads;
     unawaited(() async {
       var length = sound.length;
       if (length <= 0) return;
       var file = await CanvasMedia.existingPath(MediaKind.audio, sound.assetId);
-      if (file == null || _disposed) return;
+      if (file == null || !_stillOn(loads)) return;
       var count = math.max(1, (length * 100).ceil());
       var peaks = await audio.engine.peaks(file, count);
-      if (peaks == null || _disposed) return;
+      if (peaks == null || !_stillOn(loads)) return;
       _gameState.mouthsOfSlots[key] = words == null
           ? mouthsFromLoudness(peaks, length,
               startFrame: 0, frameRate: rate, feel: const LipSyncFeel())

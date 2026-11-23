@@ -19,6 +19,8 @@ extension CanvasStaging on CanvasController {
     var rate = math.max(1, _document.frameRate);
     var length = source.length > 0 ? source.length : 0.0;
     var from = source.start, to = source.end > 0 ? source.end : length;
+    // Laid on the canvas it was asked on, or on none.
+    var loads = _loads;
     // Where the voice starts and stops in the run, and the character's frames.
     var voiceAt = _clipOffset(voice) + voice.clip.at;
     var voiceEnd = voiceAt + ((to - from) * rate).ceil();
@@ -35,6 +37,7 @@ extension CanvasStaging on CanvasController {
           ];
       if (said.isEmpty) {
         var problem = await hearWords(voice);
+        if (!_stillOn(loads)) return (problem: null, mouths: 0);
         if (problem != null) return (problem: problem, mouths: 0);
         said = [
           for (var w in this.words)
@@ -61,6 +64,7 @@ extension CanvasStaging on CanvasController {
       // for a mouth on a long recording.
       var count = math.max(1, (length * 100).ceil());
       var peaks = await audio.engine.peaks(file, count);
+      if (!_stillOn(loads)) return (problem: null, mouths: 0);
       if (peaks == null) {
         return (problem: "That recording could not be read.", mouths: 0);
       }

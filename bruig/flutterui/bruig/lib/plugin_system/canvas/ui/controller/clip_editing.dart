@@ -268,13 +268,19 @@ extension CanvasClipEditing on CanvasController {
               _spanOf(original)));
       return null;
     }
+    // Each of these tools changes the clip on the canvas it was used on, or
+    // nothing: another canvas opened while its sound was read is left as
+    // it was, though a clip of its own may have the same id.
+    var loads = _loads;
     var audio = await CanvasController.clipAudio(sound.assetId);
+    if (!_stillOn(loads)) return null;
     if (audio == null) return "Its sound could not be read.";
     var (l, r) = audio;
     var n = l.length;
     // Reversed and written out off the UI isolate, as it was read.
     var id = await _keepSound(await _reversedWavAway(l, r));
-    if (id == null || _disposed) return "The reversed sound could not be kept.";
+    if (!_stillOn(loads)) return null;
+    if (id == null) return "The reversed sound could not be kept.";
     var length = n / mixRate;
     var end = sound.end > 0 ? sound.end : length;
     var reversed = MediaSource(
@@ -365,7 +371,9 @@ extension CanvasClipEditing on CanvasController {
     var clip = editedClip;
     var sound = clip?.sound;
     if (clip == null || clip.midi || sound == null) return null;
+    var loads = _loads;
     var audio = await CanvasController.clipAudio(sound.assetId);
+    if (!_stillOn(loads)) return null;
     if (audio == null) return "Its sound could not be read.";
     var (l, r) = audio;
     var a = (sound.start * mixRate).round().clamp(0, l.length);
@@ -391,7 +399,9 @@ extension CanvasClipEditing on CanvasController {
     var clip = editedClip;
     var sound = clip?.sound;
     if (t == null || clip == null || clip.midi || sound == null) return null;
+    var loads = _loads;
     var (cuts, why) = await _cutsOf(clip, SliceBy.hits);
+    if (!_stillOn(loads)) return null;
     if (why != null) return why;
     if (cuts.length < 3) return "There is only one slice there.";
     // A pad a slice, the bottom row first, as a drum kit is played.
@@ -465,7 +475,9 @@ extension CanvasClipEditing on CanvasController {
     var bpb = _document.audio.beatsPerBar;
     var spb = math.max(0.001, _document.audio.secondsPerBeat);
     var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
+    var loads = _loads;
     var (cuts, why) = await _cutsOf(clip, by);
+    if (!_stillOn(loads)) return null;
     if (why != null) return why;
     if (cuts.length < 3) return "There is only one slice there.";
     var slices = <SessionClip>[];
@@ -529,7 +541,9 @@ extension CanvasClipEditing on CanvasController {
     }
     var sound = clip.sound;
     if (sound == null) return null;
+    var loads = _loads;
     var audio = await CanvasController.clipAudio(sound.assetId);
+    if (!_stillOn(loads)) return null;
     if (audio == null) return "Its sound could not be read.";
     var (l, r) = audio;
     // Where its beats are in its sound: by its warp map, warped; at the
@@ -543,7 +557,8 @@ extension CanvasClipEditing on CanvasController {
     if (b - a < 1) return "There is no sound there to keep.";
     var id = await _keepSound(await _wavAway(
         Float32List.sublistView(l, a, b), Float32List.sublistView(r, a, b)));
-    if (id == null || _disposed) return "The cropped sound could not be kept.";
+    if (!_stillOn(loads)) return null;
+    if (id == null) return "The cropped sound could not be kept.";
     var cropped = MediaSource(
         assetId: id,
         name: "${sound.name.isEmpty ? "Clip" : sound.name} (cropped)",
@@ -672,7 +687,9 @@ extension CanvasClipEditing on CanvasController {
     if (clip == null || clip.midi || sound == null) return null;
     var bpm = clip.bpm;
     if (on && bpm == 0) {
+      var loads = _loads;
       var audio = await CanvasController.clipAudio(sound.assetId);
+      if (!_stillOn(loads)) return null;
       if (audio == null) return "Its sound could not be read.";
       var (l, r) = audio;
       var from = (sound.start * mixRate).round().clamp(0, l.length);
@@ -684,7 +701,7 @@ extension CanvasClipEditing on CanvasController {
       var sl = Float32List.sublistView(l, from, to);
       var sr = Float32List.sublistView(r, from, to);
       bpm = await _tempoAway(sl, sr, near, bpb);
-      if (_disposed) return null;
+      if (!_stillOn(loads)) return null;
     }
     _editClipById(clip.id, (c) => c.copyWith(warp: on, bpm: bpm));
     return null;

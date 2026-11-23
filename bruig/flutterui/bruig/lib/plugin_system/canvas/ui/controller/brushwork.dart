@@ -93,8 +93,10 @@ extension CanvasBrushwork on CanvasController {
     var source = images.original(picture.assetId);
     if (source == null) return false;
 
+    var loads = _loads;
     var found = await snapForStroke(source, stroke);
-    if (found == null) return false;
+    // The stroke was the last canvas's: its edge sets nothing here.
+    if (found == null || !_stillOn(loads)) return false;
     brushSnap = found;
     return true;
   }

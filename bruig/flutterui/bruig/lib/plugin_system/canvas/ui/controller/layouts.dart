@@ -307,12 +307,4 @@ class _LayoutState {
   final Map<String, String> picked = {};
   String? ordering;
   final List<String> clicked = [];
-
-  /// forgetDocument lets go of all of it as another canvas is opened: each
-  /// names a layout of the one that was open.
-  void forgetDocument() {
-    picked.clear();
-    ordering = null;
-    clicked.clear();
-  }
 }

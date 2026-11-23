@@ -12,6 +12,11 @@ extension CanvasSaving on CanvasController {
     _endWait();
     pause();
     stopAudio();
+    // What is held live is let go of through the instruments holding it,
+    // so before the document they are in is replaced.
+    _letGoOfLive();
+    // A channel listened to alone: the engine hears it so too.
+    if (_mixerState.listening case (var channel, _)) listenAt(channel, null);
     // Empty sounds left as elements are dropped. An empty channel made on
     // purpose (named, with effects, Speech or slot clips) stays, since its
     // slots and mix would go with it.
@@ -45,6 +50,7 @@ extension CanvasSaving on CanvasController {
     // replaced. The fit stays, since it is about the reader's screen.
     _zoom = 1;
     _pan = Offset.zero;
+    slotsScroll.value = 0;
     // A piece of sound opens on what it is made with.
     if (document.kind.isAudio) _openSoundDesk();
     // Opened on the frame everything has arrived by, so a canvas whose
@@ -59,7 +65,10 @@ extension CanvasSaving on CanvasController {
   /// open: what was picked in it, what was open on it, what was fetched for
   /// it. All of it names that canvas's elements, scenes or sheets, and the
   /// session outlives the canvas, so anything left would be met by the next
-  /// one. State that names part of a document belongs in this list.
+  /// one. State that names part of a document belongs in this list:
+  /// test/canvas_forget_document_test.dart fails for a field of the
+  /// controller that is neither let go of here nor named there as meant to
+  /// outlive a canvas.
   void _forgetDocument() {
     _offTimeline.clear();
     motionPlayer.clear();
@@ -138,6 +147,7 @@ extension CanvasSaving on CanvasController {
     _selectedChannels = {};
     _speechState.channelOrder = const [];
     _speechState.phrasing = null;
+    phrasingPicked = const {0};
     _clipEditing = _pianoRoll = null;
     _clipEditorShown = _pianoRollShown = false;
     rollSelected.clear();
@@ -148,13 +158,77 @@ extension CanvasSaving on CanvasController {
     _placingCopies = null;
     _pendingStroke = null;
     _pendingPicture = null;
+    _pendingKeeps = _pendingTeaches = _pendingFills = false;
     _sessionState.motionPreview = null;
     _pictures.textLayers.clear();
     _keyframes.anchorsShown.clear();
-    _playTasks.states.clear();
-    _layouts.forgetDocument();
+    _playTasks = _PlayTaskState();
+    _layouts = _LayoutState();
     if (_spritePaint != null) paintSprite(null);
     if (_tilePaint != null) paintTiles(null);
+    // A picture's layers or a drawing being edited, with what was picked in
+    // them: a layer, a warp grid's points, a clone's source, the copies of
+    // an element reused, a corner being made, typing (whose gesture goes
+    // with the history), and the eyedropper, whose answer was for a setting
+    // of the last canvas's.
+    _imageEditing = null;
+    _pictures.layerId = baseLayerId;
+    _alsoPicked.clear();
+    _imageSolo = false;
+    _putWarpAway();
+    cloneOffset = null;
+    _pictures.cloneFrom = null;
+    _copiesOf = null;
+    _pickedCopies = {};
+    _allCopiesChosen = false;
+    _vectorEditing = null;
+    _vectors.typing = -1;
+    _resetVectorEditing();
+    _vectors.corner = null;
+    _vectors.onSampled = null;
+    // The Curves opened on one of its keyframes; a chord being stepped into
+    // the piano roll and the clip editor's cursor.
+    _trackCurvesFrame = null;
+    _stepAt = null;
+    _stepHeld.clear();
+    _clipCursor = 0;
+    // What the slots and a Play left: the cue row last launched, the slot
+    // being pressed, elements a trigger took off their timelines, a take
+    // gathered while recording (pause has written it), the stop markers'
+    // counts and where the last Play began.
+    _sessionState.sceneLaunched = null;
+    _sessionState.cueLaunchedMaster = false;
+    _sessionState.slotPressed = null;
+    _triggeredOff.clear();
+    _taken.clear();
+    _clipLog.clear();
+    _sessionClock = 0;
+    _playbackState.loopCounts.clear();
+    _playbackState.playedFrom = null;
+    _playbackState.motionPainted = -1;
+    // A practice take's marks, by its notes' places: drawn on any sheet.
+    _gameState.marks.clear();
+    _gameState.wrongKeys.clear();
+    _gameState.found.clear();
+    _gameState.mouthsOfSlots.clear();
+    // Its jobs still going: each drops what it brings back (see _stillOn),
+    // so none may keep a channel, a picture or a voice busy here. A voice
+    // still speaking is stopped.
+    for (var stop in _speechState.stops.values) {
+      stop.stop();
+    }
+    _speechState.stops.clear();
+    _speechState.speakingNow.clear();
+    _speechState.into.clear();
+    _speechState.shaping.clear();
+    speechQueue.clear();
+    speechPreviewing = null;
+    joining.clear();
+    singing.clear();
+    _mixerState.freezing.clear();
+    _pictures.maskBusy = null;
+    _pictures.maskNote = null;
+    _laneState.flippedRowsAt = null;
   }
 
   /// _openSoundDesk opens the mixer and the effects: what an audio document
@@ -196,13 +270,15 @@ extension CanvasSaving on CanvasController {
     var f = folder, n = name;
     if (n == null) return false;
     var at = _edits;
+    var loads = _loads;
     var ok = await CanvasStorage.save(f ?? "", n, _toSave);
     // Tidying the stores is bookkeeping a save need not wait for, and need
     // not do every time: see CanvasLibrary.tidySoon.
     if (ok) {
       CanvasLibrary.tidySoon(open: _document.storedIds);
     }
-    if (ok) {
+    // Written, but another canvas has opened since: its edits are its own.
+    if (ok && _stillOn(loads)) {
       _savedEdits = at;
       notifyListeners();
     }
@@ -226,9 +302,13 @@ extension CanvasSaving on CanvasController {
   /// saveAs writes to a new place and makes it this document's home.
   Future<bool> saveAs(String folder, String name) async {
     var at = _edits;
+    var loads = _loads;
     var ok =
         await CanvasStorage.save(folder, name, _toSave.copyWith(title: name));
     if (!ok) return false;
+    // Written; but another canvas opened meanwhile is not the one saved,
+    // and does not take its place or its name.
+    if (!_stillOn(loads)) return true;
     this.folder = folder;
     this.name = name;
     _document = _document.copyWith(title: name);

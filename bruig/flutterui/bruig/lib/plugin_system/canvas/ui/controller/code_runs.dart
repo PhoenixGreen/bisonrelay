@@ -74,11 +74,11 @@ extension CanvasCodeRuns on CanvasController {
     var loads = _loads;
     var png = await codeLiveSnap?.call();
     // Another canvas opened meanwhile: the preview was the last one's.
-    if (_loads != loads) return;
+    if (!_stillOn(loads)) return;
     _codeLive = null;
     var picture =
         png == null ? null : await CanvasController.saveCodePicture(png);
-    if (_disposed || _loads != loads) return;
+    if (!_stillOn(loads)) return;
     var e = _document.elementById(live.$1);
     if (e is CodeRunElement &&
         e.result != null &&
@@ -120,7 +120,7 @@ extension CanvasCodeRuns on CanvasController {
           : await host.run(runner, code, entry, size, (l) {
               // Only the first [maxCodeLogs] lines are kept, so a program
               // that prints for ever fills neither screen nor file.
-              if (_loads != loads || logs.length >= maxCodeLogs) return;
+              if (!_stillOn(loads) || logs.length >= maxCodeLogs) return;
               logs.add(l.capped);
               _codeViewChanged();
             });
@@ -130,13 +130,12 @@ extension CanvasCodeRuns on CanvasController {
         CodeLog("The run stopped: $err", kind: CodeLogKind.error)
       ]);
     }
-    if (_loads != loads) return;
+    if (!_stillOn(loads)) return;
     _codeRuns.remove(e.id);
-    if (_disposed) return;
     var picture = outcome.picture == null
         ? ""
         : (await CanvasController.saveCodePicture(outcome.picture!)) ?? "";
-    if (_disposed || _loads != loads) return;
+    if (!_stillOn(loads)) return;
     // The element as it is now: it may have been moved while it ran.
     var now = _document.elementById(e.id);
     if (now is! CodeRunElement) {

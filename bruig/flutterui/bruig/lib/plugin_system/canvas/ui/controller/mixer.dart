@@ -849,6 +849,9 @@ extension CanvasMixing on CanvasController {
     if (canFreeze(channel) case var why?) return why;
     if (!_mixerState.freezing.add(channel)) return "It is being frozen.";
     notifyListeners();
+    // Frozen on the canvas it was asked on: another opened meanwhile gets
+    // none of it, even a channel of the same name.
+    var loads = _loads;
     try {
       var lane = timelineChannels.firstWhere((l) => l.key == channel);
       var mix = lane.mix;
@@ -883,6 +886,7 @@ extension CanvasMixing on CanvasController {
           if (pcm == null) return "\"${s.name}\" could not be read.";
           var wav = await _frozenWav(part, pcm.$1, pcm.$2);
           var id = await _keepSound(wav);
+          if (!_stillOn(loads)) return null;
           if (id == null) return "The frozen sound could not be kept.";
           next.add(s.copyWith(
               assetId: id,
@@ -936,10 +940,12 @@ extension CanvasMixing on CanvasController {
       return null;
     } catch (exception) {
       debugPrint("Unable to freeze $channel: $exception");
-      return "It could not be frozen.";
+      return _stillOn(loads) ? "It could not be frozen." : null;
     } finally {
-      _mixerState.freezing.remove(channel);
-      notifyListeners();
+      if (_stillOn(loads)) {
+        _mixerState.freezing.remove(channel);
+        notifyListeners();
+      }
     }
   }
 

@@ -107,12 +107,7 @@ extension CanvasPictures on CanvasController {
   /// layers on [layerId] if not open, or with [on] false puts it away.
   void editWarp(String elementId, String layerId, {bool on = true}) {
     if (!on) {
-      _pictures.warpLayer = null;
-      _pictures.warpPicks = const {};
-      // The Warp tool has nothing to show without its grid.
-      if (_pictures.positionTool == PositionTool.warp) {
-        _pictures.positionTool = PositionTool.place;
-      }
+      _putWarpAway();
       notifyListeners();
       return;
     }
@@ -124,6 +119,18 @@ extension CanvasPictures on CanvasController {
     _pictures.positionTool = PositionTool.warp;
     imageTool = ImageTool.move;
     notifyListeners();
+  }
+
+  /// _putWarpAway puts the warp grid away with its picked points: asked
+  /// for, or its picture no longer the one being edited (deselected, taken
+  /// away, another picked), whose layer ids another picture may share.
+  void _putWarpAway() {
+    _pictures.warpLayer = null;
+    _pictures.warpPicks = const {};
+    // The Warp tool has nothing to show without its grid.
+    if (_pictures.positionTool == PositionTool.warp) {
+      _pictures.positionTool = PositionTool.place;
+    }
   }
 
   /// changeWarp changes the warp of the layer being warped.
@@ -192,8 +199,12 @@ extension CanvasPictures on CanvasController {
   /// them. The edited picture is selected, as a drawing is.
   void editImage(String? id, {String? layer}) {
     if (_imageEditing == id && layer == null) return;
-    // Solo is for working on one picture; another, or none, starts without.
-    if (_imageEditing != id) _imageSolo = false;
+    // Solo is for working on one picture; another, or none, starts without,
+    // and with no warp grid.
+    if (_imageEditing != id) {
+      _imageSolo = false;
+      _putWarpAway();
+    }
     _imageEditing = id;
     _imageLayer = layer ?? baseLayerId;
     if (id != null) {
@@ -354,6 +365,8 @@ extension CanvasPictures on CanvasController {
     _pictures.maskBusy = "Finding the subject…";
     _pictures.maskNote = null;
     notifyListeners();
+    // Found for the picture of the canvas open now, or for none.
+    var loads = _loads;
     try {
       // Without the operating system's own finder, a rougher guess from
       // colour and edge, which says so.
@@ -363,10 +376,12 @@ extension CanvasPictures on CanvasController {
       } else {
         var picture = images.original(look.assetId);
         if (picture != null) png = await guessSubjectMask(picture, at: at);
+        if (!_stillOn(loads)) return;
         _pictures.maskNote =
             "Found by colour and edge — finish it with Quick select "
             "or the brush";
       }
+      if (!_stillOn(loads)) return;
       if (png == null) {
         _pictures.maskNote = at == null
             ? "No subject could be found in this picture"
@@ -389,6 +404,7 @@ extension CanvasPictures on CanvasController {
             png;
       }
       var id = await CanvasAssets.saveMask(bytes);
+      if (!_stillOn(loads)) return;
       if (id == null) {
         _pictures.maskNote = "The subject could not be kept";
         return;
@@ -406,10 +422,12 @@ extension CanvasPictures on CanvasController {
           on: true);
       replaceElement(withLook(now, layerId, nowLook.copyWith(mask: mask)));
     } catch (message) {
-      _pictures.maskNote = "$message";
+      if (_stillOn(loads)) _pictures.maskNote = "$message";
     } finally {
-      _pictures.maskBusy = null;
-      notifyListeners();
+      if (_stillOn(loads)) {
+        _pictures.maskBusy = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -431,6 +449,7 @@ extension CanvasPictures on CanvasController {
     _pictures.maskBusy = "Selecting…";
     _pictures.maskNote = null;
     notifyListeners();
+    var loads = _loads;
     try {
       var subject = look.mask.subject.isEmpty
           ? null
@@ -439,6 +458,7 @@ extension CanvasPictures on CanvasController {
           picture, look.mask, subject, stroke, _pictures.maskBrushSize,
           subtract: subtract);
       var id = png == null ? null : await CanvasAssets.saveMask(png);
+      if (!_stillOn(loads)) return;
       if (id == null) {
         _pictures.maskNote = "Nothing could be selected there";
         return;
@@ -453,10 +473,12 @@ extension CanvasPictures on CanvasController {
               mask: nowLook.mask.copyWith(
                   subject: id, marks: const [], invert: false, on: true))));
     } catch (message) {
-      _pictures.maskNote = "$message";
+      if (_stillOn(loads)) _pictures.maskNote = "$message";
     } finally {
-      _pictures.maskBusy = null;
-      notifyListeners();
+      if (_stillOn(loads)) {
+        _pictures.maskBusy = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -482,6 +504,7 @@ extension CanvasPictures on CanvasController {
     _pictures.maskBusy = "Refining the edge…";
     _pictures.maskNote = null;
     notifyListeners();
+    var loads = _loads;
     try {
       var subject = look.mask.subject.isEmpty
           ? null
@@ -489,7 +512,7 @@ extension CanvasPictures on CanvasController {
       var png = await refineEdgeMask(
           picture, look.mask, subject, stroke, _pictures.maskBrushSize);
       var id = png == null ? null : await CanvasAssets.saveMask(png);
-      if (id == null) return;
+      if (id == null || !_stillOn(loads)) return;
       var now = _document.elementById(e.id);
       var nowLook = now is ImageElement ? lookOf(now, layerId) : null;
       if (now is! ImageElement || nowLook == null) return;
@@ -500,10 +523,12 @@ extension CanvasPictures on CanvasController {
               mask: nowLook.mask.copyWith(
                   subject: id, marks: const [], invert: false, on: true))));
     } catch (message) {
-      _pictures.maskNote = "$message";
+      if (_stillOn(loads)) _pictures.maskNote = "$message";
     } finally {
-      _pictures.maskBusy = null;
-      notifyListeners();
+      if (_stillOn(loads)) {
+        _pictures.maskBusy = null;
+        notifyListeners();
+      }
     }
   }
 

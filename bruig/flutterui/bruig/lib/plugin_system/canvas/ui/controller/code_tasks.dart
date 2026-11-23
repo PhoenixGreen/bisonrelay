@@ -38,10 +38,10 @@ extension CanvasCodeTasks on CanvasController {
       try {
         built = await _builds(code, run);
       } finally {
-        if (_loads == loads) _codeTaskBusy.remove(e.id);
+        if (_stillOn(loads)) _codeTaskBusy.remove(e.id);
       }
     }
-    if (_disposed || _loads != loads) return;
+    if (!_stillOn(loads)) return;
     _codeTaskChecks[e.id] = (_codeNow(code), built);
     _codeViewChanged();
   }

@@ -584,8 +584,11 @@ extension CanvasVectors on CanvasController {
   void retypeVectorText(int shape, VectorText t) {
     var pick = FontFiles.instance.cached(t.family, t.weight, t.italic);
     if (pick == null) {
+      // Laid out once the font is read, if the drawing it was for is still
+      // on the canvas open: shape [shape] of another is not this one.
+      var loads = _loads;
       FontFiles.instance.load(t.family, t.weight, t.italic).then((p) {
-        if (p != null) retypeVectorText(shape, t);
+        if (p != null && _stillOn(loads)) retypeVectorText(shape, t);
       });
       return;
     }
@@ -614,9 +617,10 @@ extension CanvasVectors on CanvasController {
         leading: style.leading,
         align: style.align,
         origin: at);
+    var loads = _loads;
     await FontFiles.instance.load(t.family, t.weight, t.italic);
     e = editingVector;
-    if (e == null) return;
+    if (e == null || !_stillOn(loads)) return;
     var shapes = e.shapes ?? const <VectorShape>[];
     beginInteraction();
     replaceElement(

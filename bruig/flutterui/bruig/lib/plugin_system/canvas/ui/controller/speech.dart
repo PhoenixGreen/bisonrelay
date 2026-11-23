@@ -81,9 +81,12 @@ extension CanvasSpeech on CanvasController {
     }
     notifyListeners();
     if (running) return null;
+    // Spoken for the canvas open now: one opened meanwhile gets none of it,
+    // and its own queue is left alone.
+    var loads = _loads;
     String? problem;
     try {
-      while (queue.isNotEmpty && !_disposed) {
+      while (queue.isNotEmpty && _stillOn(loads)) {
         var now = speechOf(channel);
         if (now == null) break;
         SpeechLine? lineOf(String k) => now.lines
@@ -111,10 +114,12 @@ extension CanvasSpeech on CanvasController {
                 await engine.speakLine(now, lines.single,
                     seed: 1 + _speechState.seeds.nextInt(1 << 30))
               ];
-        if (_disposed) return null;
+        if (!_stillOn(loads)) return null;
         if (stop.stopped) break;
         for (var (i, key) in keys.indexed) {
-          if (!await _keepLineTake(channel, key, audios[i])) {
+          var kept = await _keepLineTake(channel, key, audios[i], loads);
+          if (!_stillOn(loads)) return null;
+          if (!kept) {
             problem = "The take could not be kept.";
             break;
           }
@@ -131,22 +136,26 @@ extension CanvasSpeech on CanvasController {
       debugPrint("Unable to speak a line: $e");
       problem = "The voice could not speak: $e";
     } finally {
-      _speechState.stops.remove(channel);
-      speechQueue.remove(channel);
-      _speechState.into.remove(channel);
-      _speechState.speakingNow.remove(channel);
-      if (!_disposed) notifyListeners();
+      if (_stillOn(loads)) {
+        _speechState.stops.remove(channel);
+        speechQueue.remove(channel);
+        _speechState.into.remove(channel);
+        _speechState.speakingNow.remove(channel);
+        notifyListeners();
+      }
     }
-    return problem;
+    return _stillOn(loads) ? problem : null;
   }
 
   /// _keepLineTake keeps [audio] as a take of [channel]'s line [key], picked,
   /// in the slot it was to replace or its first free one, apart from the
-  /// library (see speechTakeStore). False where the line was edited away.
+  /// library (see speechTakeStore). False where it could not be kept;
+  /// nothing is written where another canvas has opened since [loads].
   Future<bool> _keepLineTake(
-      String channel, String key, SpokenAudio audio) async {
+      String channel, String key, SpokenAudio audio, int loads) async {
     var id = await CanvasController.speechTakeStore(wav16(audio.l, audio.r));
     if (id == null) return false;
+    if (!_stillOn(loads)) return true;
     // Where the line is now: it may have moved while it was spoken.
     var after = speechOf(channel);
     if (after == null) return true;
@@ -414,19 +423,20 @@ extension CanvasSpeech on CanvasController {
   Future<SpeechTake?> _shapeTake(
       String channel, int index, int slot, SpeechTake take) async {
     var spoken = take.asSpoken;
+    var loads = _loads;
     SpeechTake? made;
     if (!take.shaped) {
       made = spoken;
     } else {
       var pcm = await _readSpoken(spoken);
       var reading = _speechState.readings[spoken.assetId];
-      if (pcm == null || reading == null || _disposed) return take;
+      if (pcm == null || reading == null || !_stillOn(loads)) return take;
       var words = spoken.words, shapes = take.shapes;
       var shaped =
           await Isolate.run(() => shapeTake(pcm, words, shapes, reading));
       var id = await CanvasController.speechTakeStore(
           wav16(shaped.sound, shaped.sound));
-      if (id == null || _disposed) return take;
+      if (id == null || !_stillOn(loads)) return take;
       made = take.madeAs(id, shaped.sound.length / mixRate, shaped.words);
     }
     // Shaped again meanwhile: that is made next.
@@ -442,10 +452,11 @@ extension CanvasSpeech on CanvasController {
   /// section [index], shaped or [spoken], from [at] seconds into it.
   Future<String?> hearSlot(String channel, int index, int slot,
       {bool spoken = false, double at = 0}) async {
+    var loads = _loads;
     var take = spoken
         ? _slotTake(channel, index, slot)?.$3.asSpoken
         : await shapedTake(channel, index, slot);
-    if (take == null) return null;
+    if (take == null || !_stillOn(loads)) return null;
     return hearTake(take.assetId, at: at);
   }
 
@@ -453,21 +464,26 @@ extension CanvasSpeech on CanvasController {
   /// answering it saved, or why not.
   Future<(SpeechTake?, String?)> saveTake(
       String channel, int index, int slot) async {
+    var loads = _loads;
     await shapedTake(channel, index, slot);
+    if (!_stillOn(loads)) return (null, null);
     var found = _slotTake(channel, index, slot);
     if (found == null) return (null, null);
     var (spec, line, take) = found;
     if (take.saved) return (take, null);
     var file = await CanvasController.takePath(take.assetId);
+    if (!_stillOn(loads)) return (null, null);
     if (file == null) return (null, "The take's file could not be found.");
     var id = await CanvasController.speechStore(file);
-    if (id == null || _disposed) return (null, "The take could not be saved.");
+    if (!_stillOn(loads)) return (null, null);
+    if (id == null) return (null, "The take could not be saved.");
     await CanvasController.speechLibrary(
         id,
         "${spec.voiceName.isEmpty ? "Speech" : spec.voiceName} · line "
         "${index + 1} · take ${String.fromCharCode(65 + slot)} · "
         "${CanvasController._firstWords(line.text)}",
         take.length);
+    if (!_stillOn(loads)) return (null, null);
     var saved = take.copyWith(assetId: id, saved: true);
     _setSlot(channel, index, slot, saved);
     return (saved, null);
@@ -477,11 +493,13 @@ extension CanvasSpeech on CanvasController {
   /// the playhead, saved to the Audio library first and kept with the device
   /// so a character's lips follow it. One change to undo.
   Future<String?> addTake(String channel, int index, int slot) async {
+    var loads = _loads;
     var (take, problem) = await saveTake(channel, index, slot);
+    if (!_stillOn(loads)) return null;
     if (take == null) return problem;
     var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
     var spec = lane?.mix.speech;
-    if (lane == null || spec == null || _disposed) return null;
+    if (lane == null || spec == null) return null;
     beginInteraction();
     var mix = lane.mix.copyWith(
         speech: spec.copyWith(takes: [
@@ -561,10 +579,12 @@ extension CanvasSpeech on CanvasController {
     var spec = speechOf(channel);
     if (spec == null || !joining.add(channel)) return null;
     notifyListeners();
+    var loads = _loads;
     try {
       // Each take as it is shaped.
       for (var (i, l) in spec.lines.indexed) {
         if (l.take != null) await shapedTake(channel, i, l.chosen);
+        if (!_stillOn(loads)) return null;
       }
       spec = speechOf(channel);
       if (spec == null) return null;
@@ -576,6 +596,7 @@ extension CanvasSpeech on CanvasController {
       var sounds = <Float32List>[];
       for (var t in takes) {
         var sound = await CanvasController.takeAudio(t.assetId);
+        if (!_stillOn(loads)) return null;
         if (sound == null) return "A take's file could not be read.";
         sounds.add(sound);
       }
@@ -583,9 +604,10 @@ extension CanvasSpeech on CanvasController {
       // finish holds everything up for seconds on a long script.
       var joined = await CanvasController._joinAway(sounds, takes, spec.speed,
           room: spec.room, boost: spec.boost);
-      if (_disposed) return null;
+      if (!_stillOn(loads)) return null;
       var id = await _keepWav(joined.wav, "speech");
-      if (id == null || _disposed) return "The clip could not be kept.";
+      if (!_stillOn(loads)) return null;
+      if (id == null) return "The clip could not be kept.";
       var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
       var now = lane?.mix.speech;
       if (lane == null || now == null) return null;
@@ -639,10 +661,12 @@ extension CanvasSpeech on CanvasController {
       return null;
     } catch (e) {
       debugPrint("Unable to join the lines: $e");
-      return "The lines could not be joined: $e";
+      return _stillOn(loads) ? "The lines could not be joined: $e" : null;
     } finally {
-      joining.remove(channel);
-      if (!_disposed) notifyListeners();
+      if (_stillOn(loads)) {
+        joining.remove(channel);
+        notifyListeners();
+      }
     }
   }
 
@@ -658,7 +682,9 @@ extension CanvasSpeech on CanvasController {
       stopHearing();
       return null;
     }
+    var loads = _loads;
     var file = await CanvasController.takePath(assetId);
+    if (!_stillOn(loads)) return null;
     if (file == null) return "The take's file could not be found.";
     return _hear(file, assetId, at: at);
   }
@@ -672,7 +698,9 @@ extension CanvasSpeech on CanvasController {
       stopHearing();
       return null;
     }
+    var loads = _loads;
     var file = await CanvasController.takePath(assetId);
+    if (!_stillOn(loads)) return null;
     if (file == null) return "The sound's file could not be found.";
     return _hear(file, what, volume: volume);
   }
@@ -690,10 +718,18 @@ extension CanvasSpeech on CanvasController {
   Future<String?> _hear(String file, String what,
       {double at = 0, double volume = 1}) async {
     stopHearing();
+    var loads = _loads;
     var engine = audio.engine;
-    if (!await engine.start()) return "There is no sound to play it on.";
+    if (!await engine.start()) {
+      return _stillOn(loads) ? "There is no sound to play it on." : null;
+    }
     var track = await engine.open(file);
-    if (track == null || _disposed) return "It could not be played.";
+    // Not heard over a canvas opened while its file was being opened.
+    if (!_stillOn(loads)) {
+      if (track != null) engine.close(track);
+      return null;
+    }
+    if (track == null) return "It could not be played.";
     _speechState.heardTrack = track;
     _speechState.heardVoice = engine.play(track, volume: volume, at: at);
     _speechState.heard = what;
@@ -730,6 +766,7 @@ extension CanvasSpeech on CanvasController {
     }
     var now = speechOf(channel);
     if (now == null || speechPreviewing != null) return null;
+    var loads = _loads;
     var spec = now.copyWith(voice: voice);
     var key = [
       spec.engine.name,
@@ -753,23 +790,25 @@ extension CanvasSpeech on CanvasController {
         ], [
           SpeechTake("", said.seconds, said.words, exact: said.exact)
         ], spec.speed, room: spec.room, boost: spec.boost);
-        if (_disposed) return null;
+        if (!_stillOn(loads)) return null;
         _previewDir ??= await Directory.systemTemp.createTemp("canvas-voices");
         file = path.join(
             _previewDir!.path, "voice-${_speechState.previews.length}.wav");
         await File(file).writeAsBytes(finished.wav, flush: true);
         _speechState.previews[key] = file;
       } on SpeechException catch (e) {
-        return e.message;
+        return _stillOn(loads) ? e.message : null;
       } catch (e) {
         debugPrint("Unable to preview a voice: $e");
-        return "The voice could not speak: $e";
+        return _stillOn(loads) ? "The voice could not speak: $e" : null;
       } finally {
-        speechPreviewing = null;
-        if (!_disposed) notifyListeners();
+        if (_stillOn(loads)) {
+          speechPreviewing = null;
+          notifyListeners();
+        }
       }
     }
-    if (_disposed) return null;
+    if (!_stillOn(loads)) return null;
     return _hear(file, what);
   }
 
@@ -777,8 +816,9 @@ extension CanvasSpeech on CanvasController {
   /// from [frame] -- the playhead with none -- named after the file.
   Future<AudioElement?> addMidiChannelFrom(MediaSource source,
       {int? frame, bool onCanvas = true}) async {
+    var loads = _loads;
     var read = await CanvasController.midiOfAsset(source.assetId);
-    if (read == null || _disposed) return null;
+    if (read == null || !_stillOn(loads)) return null;
     var e = newInstrument(_document);
     var part = e.instrument!.copyWith(notes: read.notes);
     e = e
@@ -795,9 +835,11 @@ extension CanvasSpeech on CanvasController {
   /// putMidiOn adds MIDI file [assetId]'s notes to MIDI channel [channel]'s
   /// part, from [frame]: one change to undo.
   Future<bool> putMidiOn(String channel, String assetId, int frame) async {
+    var loads = _loads;
     var read = await CanvasController.midiOfAsset(assetId);
+    if (read == null || !_stillOn(loads)) return false;
     var e = _instrumentOf(channel);
-    if (read == null || e == null || _disposed) return false;
+    if (e == null) return false;
     var rate = math.max(1, _document.frameRate);
     var offset = math.max(0, frame - e.clip.at) / rate;
     var part = e.instrument!;
@@ -815,8 +857,9 @@ extension CanvasSpeech on CanvasController {
   /// file [assetId]'s notes, in beats, as many whole bars long as they are.
   Future<bool> midiClipFromFile(String channel, int row, String assetId,
       {String name = ""}) async {
+    var loads = _loads;
     var read = await CanvasController.midiOfAsset(assetId);
-    if (read == null || _instrumentOf(channel) == null || _disposed) {
+    if (read == null || !_stillOn(loads) || _instrumentOf(channel) == null) {
       return false;
     }
     var spb = math.max(0.001, _document.audio.secondsPerBeat);
@@ -934,8 +977,10 @@ extension CanvasSpeech on CanvasController {
     }
     if (!singing.add(channel)) return null;
     notifyListeners();
+    var loads = _loads;
     try {
       var said = await _singSource(channel);
+      if (!_stillOn(loads)) return null;
       if (said == null) return "The take's file could not be read.";
       var (source, words) = said;
       var rate = math.max(1, _document.frameRate);
@@ -946,7 +991,7 @@ extension CanvasSpeech on CanvasController {
       var settings =
           SingSettings(vibrato: spec.vibrato, glideSeconds: spec.glide);
       var out = await _sungAway(source, sung, settings);
-      if (_disposed) return null;
+      if (!_stillOn(loads)) return null;
       var dir = await Directory.systemTemp.createTemp("canvas-sung");
       String? id;
       try {
@@ -956,7 +1001,8 @@ extension CanvasSpeech on CanvasController {
       } finally {
         await dir.delete(recursive: true).catchError((_) => dir);
       }
-      if (id == null || _disposed) return "The sung take could not be kept.";
+      if (!_stillOn(loads)) return null;
+      if (id == null) return "The sung take could not be kept.";
       var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
       if (lane == null) return null;
       var count = _document.elements
@@ -977,10 +1023,12 @@ extension CanvasSpeech on CanvasController {
       return null;
     } catch (e) {
       debugPrint("Unable to sing: $e");
-      return "It could not be sung: $e";
+      return _stillOn(loads) ? "It could not be sung: $e" : null;
     } finally {
-      singing.remove(channel);
-      if (!_disposed) notifyListeners();
+      if (_stillOn(loads)) {
+        singing.remove(channel);
+        notifyListeners();
+      }
     }
   }
 

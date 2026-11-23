@@ -226,7 +226,29 @@ Two rules for whatever is added to it:
 - **State about the open canvas is forgotten in `_forgetDocument`**
   (`controller/saving.dart`). The session outlives the canvas, so a field
   that names one of its elements, scenes, sheets or devices is met by the
-  next canvas unless it is cleared there.
+  next canvas unless it is cleared there. `test/canvas_forget_document_test.dart`
+  holds this: it reads the controller and its parts, collects every field
+  that can change (each one not final, and each final collection,
+  `ValueNotifier` or holder class, with the fields of each holder), and
+  fails for any that `load`, `_forgetDocument`, a holder's own
+  `forgetDocument` or one of the methods it names in `_lettingGo` does not
+  assign, clear or make anew. A new field is therefore one of two things:
+  the canvas's, and let go of there (a holder that is wholly the canvas's,
+  such as `_InstrumentState`, is made anew, which covers any field added to
+  it later); or the person's or the run's, a view setting, a tool, an
+  engine or a cache keyed by what it holds, and named in the test's
+  `_outlivesACanvas` with why. What is held live (keys, metronomes, a voice
+  heard alone) is let go of in `_letGoOfLive`, which leaving the page calls
+  too.
+- **A job that waits writes only to the canvas it began on.** One that
+  awaits something slow (a voice, a file, a render, a disk write) and then
+  changes the document or the controller takes `_loads` as it starts and
+  asks `_stillOn` before it writes; if another canvas has opened, it drops
+  what it brought and leaves any busy mark alone (`_forgetDocument` has
+  already cleared it). `runCode` (`controller/code_runs.dart`) is the
+  pattern. A render written only onto something that still sounds the same
+  (`renderParts`, a clip's warp) is keyed by what it holds and needs no
+  guard.
 - **Working out a new document is the model's job.** A function of the
   document (`castAdded`, `layoutsSynced`) lives in `model/`, where the quick
   model tests reach it, and the controller's part calls it and `apply`.
