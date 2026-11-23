@@ -28,6 +28,9 @@ extension CanvasCodeTasks on CanvasController {
     if (_codeTaskBusy.contains(e.id)) return;
     var (code, run) = e.codeIn(_document);
     if (code == null) return;
+    // A check still building as another canvas opens was the last one's,
+    // and lands nowhere: not even on a card of the same id.
+    var loads = _loads;
     bool? built;
     if (e.checks.any((c) => c.kind == CodeCheckKind.builds)) {
       _codeTaskBusy.add(e.id);
@@ -35,10 +38,10 @@ extension CanvasCodeTasks on CanvasController {
       try {
         built = await _builds(code, run);
       } finally {
-        _codeTaskBusy.remove(e.id);
+        if (_loads == loads) _codeTaskBusy.remove(e.id);
       }
     }
-    if (_disposed) return;
+    if (_disposed || _loads != loads) return;
     _codeTaskChecks[e.id] = (_codeNow(code), built);
     _codeViewChanged();
   }

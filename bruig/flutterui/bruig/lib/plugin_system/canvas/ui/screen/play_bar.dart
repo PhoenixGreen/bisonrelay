@@ -23,6 +23,14 @@ import 'package:bruig/theming_system/theme_manager.dart';
 // right Back to the timeline, what is lit, a "?" and the settings. It sits
 // over or under the panels (CanvasController.barBelow), so it stays put
 // whichever are open; the timeline draws its own only without the page.
+//
+// _CanvasPlayBarState._bar is the layout and what fits (_measured, with
+// _panels, _middle and _right); the pieces it lays out are each a method
+// of the state: _transport; _readout, with its timing menu (_timingPanel,
+// _timingTitle, _timing of _lengthFields and _tempoFields, _loopFields);
+// _tempo; _marker and _markerButton; _knife, _toggles and _lit, what the
+// settings turn on lit on the bar; and _more, the settings. Back to the
+// timeline is its own widget, _BackToTimeline, with its list, _OffList.
 
 /// playBarHeight is the bar: its controls, with no captions over them --
 /// the captions are their hover text. See CanvasControlScope.
@@ -177,309 +185,226 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   /// frames. The playhead's readout and marker follow playheadMoved, since
   /// the bar is not built again for each frame of play. Play and Record
   /// light in the studio palette's colours (StudioColors).
+  ///
+  /// The bar is laid out in three: the panels on the left, the middle
+  /// (transport, readout, tempo, marker) always in the same place, and on
+  /// the right Back to the timeline, what is lit and the settings. A bar
+  /// too narrow for the panels' names beside the middle drops them and the
+  /// tempo (see _measured). The transport is made in the layout, with what
+  /// this build read, since a new width lays the bar out again without
+  /// building it.
   Widget _bar(
       ThemeNotifier theme, StudioColors studio, CanvasDocument document) {
-    var sound = document.kind.isAudio;
-    var audio = document.audio;
-    var rate = math.max(1, document.frameRate);
-    void writeAudio(AudioSettings next) =>
-        controller.apply(document.copyWith(audio: next));
-    var (from: loopFrom, length: loopLength) = controller.loopRange;
     var looping = controller.looping;
-
-    // The timing: how long the canvas is and how fast; the tempo, time and
-    // quantise the bars are counted in (and slots launch on); then the loop.
-    Widget timing() {
-      Widget length = document.editingMaster
-          // The master is as long as the scenes it covers: no length to set.
-          ? TransportReadout(
-              key: const ValueKey("canvasFramesMaster"),
-              caption: "LENGTH",
-              value: "${document.frames}",
-              tooltip: "How long the whole sequence runs: every scene end "
-                  "to end. The master canvas is as long as what it covers, "
-                  "so this follows the scenes rather than being set here.",
-            )
-          : CanvasNumberField(
-              key: const ValueKey("canvasFrames"),
-              label: "Length",
-              value: document.frames.toDouble(),
-              min: 1,
-              max: maxFrameCount.toDouble(),
-              width: 68,
-              grow: false,
-              onChanged: (v) {
-                controller.beginInteraction();
-                controller.setSceneLength(v.round(), transient: true);
-              },
-              onCommit: controller.endInteraction,
-            );
-      var runs = TransportReadout(
-        key: const ValueKey("timingRuns"),
-        caption: "RUNS",
-        value: document.isAnimated
-            ? "${document.durationSeconds.toStringAsFixed(1)} s"
-            : "Still",
-        tooltip: "How long it runs, at its frames a second",
-      );
-      return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TransportGroup(children: [
-              length,
-              CanvasNumberField(
-                key: const ValueKey("canvasFrameRate"),
-                label: "Per second",
-                value: document.frameRate.toDouble(),
-                min: 1,
-                max: 60,
-                width: 48,
-                grow: false,
-                onChanged: (v) {
-                  controller.beginInteraction();
-                  controller.apply(document.copyWith(frameRate: v.round()),
-                      transient: true);
-                },
-                onCommit: controller.endInteraction,
-              ),
-              runs,
-            ]),
-            const SizedBox(height: 8),
-            TransportGroup(children: [
-              // Taps of the beat the time signature counts; the tempo is in
-              // quarter notes, as everywhere else.
-              TapTempoButton(
-                  onTempo: (bpm) => writeAudio(
-                      audio.copyWith(tempo: bpm * audio.beatUnit / 4))),
-              CanvasNumberField(
-                key: const ValueKey("audioTempo"),
-                label: "Tempo (BPM)",
-                value: audio.tempo,
-                min: 20,
-                max: 400,
-                decimals: 2,
-                width: 64,
-                grow: false,
-                onChanged: (v) {
-                  controller.beginInteraction();
-                  controller.apply(
-                      document.copyWith(audio: audio.copyWith(tempo: v)),
-                      transient: true);
-                },
-                onCommit: controller.endInteraction,
-              ),
-              CanvasDropdown<String>(
-                key: const ValueKey("audioSignature"),
-                label: "Time signature",
-                value: audio.signature,
-                width: 64,
-                options: [
-                  for (var (b, u) in timeSignatures) ("$b/$u", "$b/$u"),
-                  if (!timeSignatures
-                      .any((t) => "${t.$1}/${t.$2}" == audio.signature))
-                    (audio.signature, audio.signature),
-                ],
-                onChanged: (v) {
-                  var parts = v.split("/");
-                  writeAudio(audio.copyWith(
-                      beatsPerBar: int.parse(parts[0]),
-                      beatUnit: int.parse(parts[1])));
-                },
-              ),
-              CanvasDropdown<Quantise>(
-                key: const ValueKey("audioQuantise"),
-                label: "Quantise",
-                value: audio.quantise,
-                width: 74,
-                options: [for (var q in Quantise.values) (q, q.label)],
-                onChanged: (q) => writeAudio(audio.copyWith(quantise: q)),
-              ),
-              TransportButton(
-                key: const ValueKey("metronome"),
-                tooltip: "Metronome: a click on every beat while it plays",
-                on: controller.metronome,
-                onPressed: () => controller.metronome = !controller.metronome,
-                child: const MetronomeIcon(),
-              ),
-            ]),
-          ]);
-    }
-
     var timelinePlays = controller.timelinePlaying;
     // The bar holds what is pressed while working; the timing is behind the
     // readout, the rest behind settings, and an option turned on there
     // shows lit on the bar, to be turned off here.
     var back = controller.anythingOffTimeline;
-    Widget transportMin() => TransportGroup(children: [
-          // To the start: the playhead to the first frame.
-          TransportButton(
-            key: const ValueKey("toStart"),
-            icon: Icons.skip_previous,
-            tooltip: "To the start",
-            onPressed: controller.toStart,
+    var readout = _readout(theme, document, looping);
+    var marker = _marker(document);
+    var knife = _knife();
+    var toggles = _toggles();
+    var lit = _lit(knife, toggles);
+    var more = _more(knife, toggles);
+
+    return TooltipVisibility(
+      visible: false,
+      child: CanvasControlScope(
+        maxWidth: 400,
+        hoverCaptions: true,
+        child: LayoutBuilder(builder: (context, box) {
+          var room = box.maxWidth;
+          var compact = _measured(context, room);
+          return Row(children: [
+            _panels(compact),
+            const SizedBox(width: 12),
+            _middle(room, [
+              _transport(studio, document, timelinePlays, looping),
+              readout,
+              if (!compact) _tempo(theme, document),
+              const SizedBox(width: 4),
+              marker,
+            ]),
+            const SizedBox(width: 12),
+            _right(back, lit, more),
+          ]);
+        }),
+      ),
+    );
+  }
+
+  /// _measured readies the layout for [room] and says whether it is
+  /// compact. Measured, not guessed: names while they fit beside the
+  /// middle; a new text size or other buttons are measured again, after
+  /// this frame (see _measure).
+  bool _measured(BuildContext context, double room) {
+    var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+    var dock = controller.dock;
+    var measuredFor = "$scale|${dock.switcher}|${dock.showLayouts}|"
+        "${dock.arrangements.length}|${dock.places}";
+    if (measuredFor != _wideFor) {
+      _wideFor = measuredFor;
+      _wideNeeds = null;
+      _centreWide = null;
+      _compact = false;
+    }
+    var compact = _compact;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure(room));
+    return compact;
+  }
+
+  /// _panels is the panels' switcher, on the left; scrolled rather than
+  /// overflowing.
+  Widget _panels(bool compact) {
+    var switcher = DockSwitcherBar(controller: controller, compact: compact);
+    return Expanded(
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: KeyedSubtree(key: _leftKey, child: switcher),
+        ),
+      ),
+    );
+  }
+
+  /// _middle is [children] in the middle, always in the same place:
+  /// transport, playhead and markers. Never past the bar: the first frame,
+  /// before it measures itself compact, a hair smaller, not overflowing.
+  Widget _middle(double room, List<Widget> children) => ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: math.max(0.0, room - 24)),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+              key: _centreKey,
+              mainAxisSize: MainAxisSize.min,
+              children: children),
+        ),
+      );
+
+  /// _right is the bar's right: Back to the timeline when something has
+  /// left it ([back]), then what is [lit], the "?" and the settings
+  /// ([more]).
+  Widget _right(bool back, Widget lit, Widget more) => Expanded(
+        child: Row(children: [
+          // Back to the timeline has all the room the rest leaves, so it
+          // keeps its words; it gives way to them only short of it.
+          Expanded(
+            child: back
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: _BackToTimeline(controller: controller))
+                : const SizedBox.shrink(),
           ),
-          TransportButton(
-            key: const ValueKey("play"),
-            icon: timelinePlays ? Icons.pause : Icons.play_arrow,
-            tooltip: timelinePlays ? "Pause" : "Play (Space)",
-            on: timelinePlays,
-            lit: studio.meterLow,
-            onPressed: !controller.canPlay ? null : controller.togglePlay,
-          ),
-          TransportButton(
-            key: const ValueKey("stopPlaying"),
-            icon: Icons.stop,
-            tooltip: "Stop: back to where Play started; again, to the start",
-            onPressed: controller.stopPlaying,
-          ),
-          TransportButton(
-            key: const ValueKey("record"),
-            tooltip: controller.recording
-                ? "Stop recording: what was played is kept"
-                : "Record: what is played -- on an instrument, or launched "
-                    "from slots -- is written onto the timeline",
-            on: controller.recording,
-            lit: const Color(0xFF4A1F1F),
-            onPressed: () => controller.recording = !controller.recording,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: controller.recording
-                      ? studio.arm
-                      : const Color(0xFF9A5A5A)),
+          // Against the panel's right edge, whatever is beside.
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  lit,
+                  const SizedBox(width: 6),
+                  const HelpNote(
+                    id: "playBar",
+                    title: "The play bar",
+                    paragraphs: _playBarHelp,
+                  ),
+                  const SizedBox(width: 4),
+                  more,
+                ]),
+              ),
             ),
           ),
-          TransportButton(
-            key: const ValueKey("loop"),
-            icon: Icons.repeat,
-            tooltip: "Loop: play goes round between the brace's ends on the "
-                "ruler",
-            on: looping,
-            onPressed: () => controller.looping = !looping,
+        ]),
+      );
+
+  /// _transport is to the start, play, stop, record, loop and, with
+  /// several scenes, which of the two Play means. [timelinePlays] and
+  /// [looping] are as the bar read them.
+  Widget _transport(StudioColors studio, CanvasDocument document,
+          bool timelinePlays, bool looping) =>
+      TransportGroup(children: [
+        // To the start: the playhead to the first frame.
+        TransportButton(
+          key: const ValueKey("toStart"),
+          icon: Icons.skip_previous,
+          tooltip: "To the start",
+          onPressed: controller.toStart,
+        ),
+        TransportButton(
+          key: const ValueKey("play"),
+          icon: timelinePlays ? Icons.pause : Icons.play_arrow,
+          tooltip: timelinePlays ? "Pause" : "Play (Space)",
+          on: timelinePlays,
+          lit: studio.meterLow,
+          onPressed: !controller.canPlay ? null : controller.togglePlay,
+        ),
+        TransportButton(
+          key: const ValueKey("stopPlaying"),
+          icon: Icons.stop,
+          tooltip: "Stop: back to where Play started; again, to the start",
+          onPressed: controller.stopPlaying,
+        ),
+        TransportButton(
+          key: const ValueKey("record"),
+          tooltip: controller.recording
+              ? "Stop recording: what was played is kept"
+              : "Record: what is played -- on an instrument, or launched "
+                  "from slots -- is written onto the timeline",
+          on: controller.recording,
+          lit: const Color(0xFF4A1F1F),
+          onPressed: () => controller.recording = !controller.recording,
+          child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: controller.recording
+                    ? studio.arm
+                    : const Color(0xFF9A5A5A)),
           ),
-          // Which of the two Play means, with several scenes: lit, the
-          // timeline runs along them all, the scenes over the channels.
-          if (document.hasScenes)
-            TransportButton(
-              key: const ValueKey("playAll"),
-              icon: Icons.playlist_play,
-              tooltip: controller.playAll
-                  ? "Plays every scene: press for the scene in front of you"
-                  : "Play every scene, one after another",
-              on: controller.playAll,
-              onPressed: () => controller.playAll = !controller.playAll,
-            ),
-        ]);
-    // Where the playhead is; pressed, the timing it is counted in.
-    var readout = MenuAnchor(
+        ),
+        TransportButton(
+          key: const ValueKey("loop"),
+          icon: Icons.repeat,
+          tooltip: "Loop: play goes round between the brace's ends on the "
+              "ruler",
+          on: looping,
+          onPressed: () => controller.looping = !looping,
+        ),
+        // Which of the two Play means, with several scenes: lit, the
+        // timeline runs along them all, the scenes over the channels.
+        if (document.hasScenes)
+          TransportButton(
+            key: const ValueKey("playAll"),
+            icon: Icons.playlist_play,
+            tooltip: controller.playAll
+                ? "Plays every scene: press for the scene in front of you"
+                : "Play every scene, one after another",
+            on: controller.playAll,
+            onPressed: () => controller.playAll = !controller.playAll,
+          ),
+      ]);
+
+  /// _readout is where the playhead is; pressed, the timing it is counted
+  /// in (_timingMenu), which the bar follows every change of while open.
+  Widget _readout(ThemeNotifier theme, CanvasDocument document, bool looping) {
+    var sound = document.kind.isAudio;
+    var rate = math.max(1, document.frameRate);
+    return MenuAnchor(
       controller: _timingMenu,
       onOpen: () => _followEdits(true),
       onClose: () => _followEdits(false),
-      menuChildren: [
-        Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Its title, and a close.
-                SizedBox(
-                  height: 24,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text("Timing",
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colors.onSurface)),
-                    const SizedBox(width: 24),
-                    InkWell(
-                      key: const ValueKey("timingClose"),
-                      borderRadius: BorderRadius.circular(4),
-                      onTap: _timingMenu.close,
-                      child: Icon(Icons.close,
-                          size: 14, color: theme.colors.onSurfaceVariant),
-                    ),
-                  ]),
-                ),
-                const SizedBox(height: 6),
-                timing(),
-                const SizedBox(height: 8),
-                SizedBox(
-                    width: 300,
-                    child:
-                        Divider(height: 1, color: theme.colors.outlineVariant)),
-                const SizedBox(height: 6),
-                // The loop: switched on here as by the loop button.
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(
-                    height: 24,
-                    child: FittedBox(
-                      child: Switch(
-                        key: const ValueKey("timingLoop"),
-                        value: looping,
-                        onChanged: (v) => controller.looping = v,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text("Loop",
-                      style: TextStyle(
-                          fontSize: 11, color: theme.colors.onSurface)),
-                ]),
-                const SizedBox(height: 6),
-                TransportGroup(children: [
-                  TransportReadout(
-                    key: const ValueKey("loopFrom"),
-                    fieldKey: const ValueKey("loopFromField"),
-                    caption: "LOOP FROM",
-                    dim: !looping,
-                    value: sound
-                        ? barsText(audio, loopFrom, rate)
-                        : "${loopFrom + 1}",
-                    widest: sound
-                        ? barsText(
-                            audio, math.max(0, document.frames - 1), rate)
-                        : "${document.frames}",
-                    tooltip: "Where the loop starts. Press to type it.",
-                    onSubmit: (typed) {
-                      var at = parsePosition(typed, audio, rate, bars: sound);
-                      if (at == null) return false;
-                      controller.setLoop(at, loopLength);
-                      return true;
-                    },
-                  ),
-                  TransportReadout(
-                    key: const ValueKey("loopLength"),
-                    fieldKey: const ValueKey("loopLengthField"),
-                    caption: "FOR",
-                    dim: !looping,
-                    value: sound
-                        ? lengthText(audio, loopLength, rate)
-                        : "$loopLength",
-                    widest: sound
-                        ? lengthText(audio, document.frames, rate)
-                        : "${document.frames}",
-                    tooltip: "How long the loop is. Press to type it.",
-                    onSubmit: (typed) {
-                      var length = parseLength(typed, audio, rate, bars: sound);
-                      if (length == null) return false;
-                      controller.setLoop(loopFrom, length);
-                      return true;
-                    },
-                  ),
-                ]),
-              ]),
-        ),
-      ],
+      menuChildren: [_timingPanel(theme, document, looping)],
       builder: (context, menu, _) =>
           Row(mainAxisSize: MainAxisSize.min, children: [
         ListenableBuilder(
           listenable: controller.playheadMoved,
           builder: (context, _) => TransportPosition(
-            audio: audio,
+            audio: document.audio,
             bars: sound,
             frame: controller.frame,
             frames: document.frames,
@@ -495,70 +420,318 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
         ),
       ]),
     );
-    // The marker under the playhead, named, or Markers: its panel lists
-    // every marker and adds one (see marker_panel.dart).
-    var marker = MenuAnchor(
-      alignmentOffset: const Offset(0, 6),
-      menuChildren: [
-        Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            child: MarkerPanel(controller: controller)),
-      ],
-      builder: (context, menu, _) => ListenableBuilder(
-          listenable: controller.playheadMoved,
-          builder: (context, _) => _markerButton(document, menu)),
+  }
+
+  /// _timingPanel is the timing menu: its title and close, the timing, and
+  /// the loop, switched on here as by the loop button.
+  Widget _timingPanel(
+          ThemeNotifier theme, CanvasDocument document, bool looping) =>
+      Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _timingTitle(theme),
+              const SizedBox(height: 6),
+              _timing(document),
+              const SizedBox(height: 8),
+              SizedBox(
+                  width: 300,
+                  child:
+                      Divider(height: 1, color: theme.colors.outlineVariant)),
+              const SizedBox(height: 6),
+              // The loop: switched on here as by the loop button.
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(
+                  height: 24,
+                  child: FittedBox(
+                    child: Switch(
+                      key: const ValueKey("timingLoop"),
+                      value: looping,
+                      onChanged: (v) => controller.looping = v,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text("Loop",
+                    style:
+                        TextStyle(fontSize: 11, color: theme.colors.onSurface)),
+              ]),
+              const SizedBox(height: 6),
+              _loopFields(document, looping),
+            ]),
+      );
+
+  /// _timingTitle is the timing menu's title, and a close.
+  Widget _timingTitle(ThemeNotifier theme) => SizedBox(
+        height: 24,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text("Timing",
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colors.onSurface)),
+          const SizedBox(width: 24),
+          InkWell(
+            key: const ValueKey("timingClose"),
+            borderRadius: BorderRadius.circular(4),
+            onTap: _timingMenu.close,
+            child: Icon(Icons.close,
+                size: 14, color: theme.colors.onSurfaceVariant),
+          ),
+        ]),
+      );
+
+  /// _timing is how long the canvas is and how fast (_lengthFields); then
+  /// the tempo, time and quantise the bars are counted in, and slots launch
+  /// on (_tempoFields).
+  Widget _timing(CanvasDocument document) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _lengthFields(document),
+            const SizedBox(height: 8),
+            _tempoFields(document),
+          ]);
+
+  /// _lengthFields are the canvas's length, its frames a second, and how
+  /// long that runs.
+  Widget _lengthFields(CanvasDocument document) {
+    Widget length = document.editingMaster
+        // The master is as long as the scenes it covers: no length to set.
+        ? TransportReadout(
+            key: const ValueKey("canvasFramesMaster"),
+            caption: "LENGTH",
+            value: "${document.frames}",
+            tooltip: "How long the whole sequence runs: every scene end "
+                "to end. The master canvas is as long as what it covers, "
+                "so this follows the scenes rather than being set here.",
+          )
+        : CanvasNumberField(
+            key: const ValueKey("canvasFrames"),
+            label: "Length",
+            value: document.frames.toDouble(),
+            min: 1,
+            max: maxFrameCount.toDouble(),
+            width: 68,
+            grow: false,
+            onChanged: (v) {
+              controller.beginInteraction();
+              controller.setSceneLength(v.round(), transient: true);
+            },
+            onCommit: controller.endInteraction,
+          );
+    var runs = TransportReadout(
+      key: const ValueKey("timingRuns"),
+      caption: "RUNS",
+      value: document.isAnimated
+          ? "${document.durationSeconds.toStringAsFixed(1)} s"
+          : "Still",
+      tooltip: "How long it runs, at its frames a second",
     );
-    // What is turned on in the settings, lit on the bar: the knife, and the
-    // timeline's switches.
-    PlayBarToggle knife = (
-      key: "toolKnife",
-      icon: Icons.content_cut,
-      label: "Knife: cut clips",
-      on: controller.timelineTool == TimelineTool.knife,
-      toggle: () => controller.timelineTool =
-          controller.timelineTool == TimelineTool.knife
-              ? TimelineTool.select
-              : TimelineTool.knife,
-    );
-    var toggles = <PlayBarToggle>[
-      (
-        key: "follow",
-        icon: Icons.keyboard_tab,
-        label: "Follow the playhead",
-        on: controller.followPlayhead,
-        toggle: () => controller.followPlayhead = !controller.followPlayhead,
+    return TransportGroup(children: [
+      length,
+      CanvasNumberField(
+        key: const ValueKey("canvasFrameRate"),
+        label: "Per second",
+        value: document.frameRate.toDouble(),
+        min: 1,
+        max: 60,
+        width: 48,
+        grow: false,
+        onChanged: (v) {
+          controller.beginInteraction();
+          controller.apply(document.copyWith(frameRate: v.round()),
+              transient: true);
+        },
+        onCommit: controller.endInteraction,
       ),
-      (
-        key: "snap",
-        icon: Icons.grid_4x4,
-        label: "Snapping",
-        on: controller.snapping,
-        toggle: () => controller.snapping = !controller.snapping,
+      runs,
+    ]);
+  }
+
+  /// _tempoFields are tap tempo, the tempo, the time signature, quantise
+  /// and the metronome.
+  Widget _tempoFields(CanvasDocument document) {
+    var audio = document.audio;
+    void writeAudio(AudioSettings next) =>
+        controller.apply(document.copyWith(audio: next));
+    return TransportGroup(children: [
+      // Taps of the beat the time signature counts; the tempo is in
+      // quarter notes, as everywhere else.
+      TapTempoButton(
+          onTempo: (bpm) =>
+              writeAudio(audio.copyWith(tempo: bpm * audio.beatUnit / 4))),
+      CanvasNumberField(
+        key: const ValueKey("audioTempo"),
+        label: "Tempo (BPM)",
+        value: audio.tempo,
+        min: 20,
+        max: 400,
+        decimals: 2,
+        width: 64,
+        grow: false,
+        onChanged: (v) {
+          controller.beginInteraction();
+          controller.apply(document.copyWith(audio: audio.copyWith(tempo: v)),
+              transient: true);
+        },
+        onCommit: controller.endInteraction,
       ),
-      (
-        key: "metronome",
-        icon: Icons.av_timer,
-        label: "Metronome",
+      CanvasDropdown<String>(
+        key: const ValueKey("audioSignature"),
+        label: "Time signature",
+        value: audio.signature,
+        width: 64,
+        options: [
+          for (var (b, u) in timeSignatures) ("$b/$u", "$b/$u"),
+          if (!timeSignatures.any((t) => "${t.$1}/${t.$2}" == audio.signature))
+            (audio.signature, audio.signature),
+        ],
+        onChanged: (v) {
+          var parts = v.split("/");
+          writeAudio(audio.copyWith(
+              beatsPerBar: int.parse(parts[0]), beatUnit: int.parse(parts[1])));
+        },
+      ),
+      CanvasDropdown<Quantise>(
+        key: const ValueKey("audioQuantise"),
+        label: "Quantise",
+        value: audio.quantise,
+        width: 74,
+        options: [for (var q in Quantise.values) (q, q.label)],
+        onChanged: (q) => writeAudio(audio.copyWith(quantise: q)),
+      ),
+      TransportButton(
+        key: const ValueKey("metronome"),
+        tooltip: "Metronome: a click on every beat while it plays",
         on: controller.metronome,
-        toggle: () => controller.metronome = !controller.metronome,
+        onPressed: () => controller.metronome = !controller.metronome,
+        child: const MetronomeIcon(),
       ),
-      (
-        key: "automationArm",
-        icon: Icons.timeline,
-        label: "Record moves settings (automation)",
-        on: controller.automationArmed,
-        toggle: () => controller.automationArmed = !controller.automationArmed,
+    ]);
+  }
+
+  /// _loopFields are where the loop starts and how long it is, each
+  /// pressed to type it: in bars for sound, frames for scenes; dim while
+  /// the loop is off.
+  Widget _loopFields(CanvasDocument document, bool looping) {
+    var sound = document.kind.isAudio;
+    var audio = document.audio;
+    var rate = math.max(1, document.frameRate);
+    var (from: loopFrom, length: loopLength) = controller.loopRange;
+    return TransportGroup(children: [
+      TransportReadout(
+        key: const ValueKey("loopFrom"),
+        fieldKey: const ValueKey("loopFromField"),
+        caption: "LOOP FROM",
+        dim: !looping,
+        value: sound ? barsText(audio, loopFrom, rate) : "${loopFrom + 1}",
+        widest: sound
+            ? barsText(audio, math.max(0, document.frames - 1), rate)
+            : "${document.frames}",
+        tooltip: "Where the loop starts. Press to type it.",
+        onSubmit: (typed) {
+          var at = parsePosition(typed, audio, rate, bars: sound);
+          if (at == null) return false;
+          controller.setLoop(at, loopLength);
+          return true;
+        },
       ),
-      (
-        key: "trackpadScrolls",
-        icon: Icons.swipe_outlined,
-        label: "Scrubbing",
-        on: controller.trackpadScrolls,
-        toggle: () => controller.trackpadScrolls = !controller.trackpadScrolls,
+      TransportReadout(
+        key: const ValueKey("loopLength"),
+        fieldKey: const ValueKey("loopLengthField"),
+        caption: "FOR",
+        dim: !looping,
+        value: sound ? lengthText(audio, loopLength, rate) : "$loopLength",
+        widest: sound
+            ? lengthText(audio, document.frames, rate)
+            : "${document.frames}",
+        tooltip: "How long the loop is. Press to type it.",
+        onSubmit: (typed) {
+          var length = parseLength(typed, audio, rate, bars: sound);
+          if (length == null) return false;
+          controller.setLoop(loopFrom, length);
+          return true;
+        },
       ),
-    ];
+    ]);
+  }
+
+  /// _marker is the marker under the playhead, named, or Markers: its panel
+  /// lists every marker and adds one (see marker_panel.dart).
+  Widget _marker(CanvasDocument document) => MenuAnchor(
+        alignmentOffset: const Offset(0, 6),
+        menuChildren: [
+          Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: MarkerPanel(controller: controller)),
+        ],
+        builder: (context, menu, _) => ListenableBuilder(
+            listenable: controller.playheadMoved,
+            builder: (context, _) => _markerButton(document, menu)),
+      );
+
+  /// _knife is the timeline's knife, as a setting the bar can light.
+  PlayBarToggle _knife() => (
+        key: "toolKnife",
+        icon: Icons.content_cut,
+        label: "Knife: cut clips",
+        on: controller.timelineTool == TimelineTool.knife,
+        toggle: () => controller.timelineTool =
+            controller.timelineTool == TimelineTool.knife
+                ? TimelineTool.select
+                : TimelineTool.knife,
+      );
+
+  /// _toggles are the timeline's switches, in the settings and lit on the
+  /// bar when on.
+  List<PlayBarToggle> _toggles() => [
+        (
+          key: "follow",
+          icon: Icons.keyboard_tab,
+          label: "Follow the playhead",
+          on: controller.followPlayhead,
+          toggle: () => controller.followPlayhead = !controller.followPlayhead,
+        ),
+        (
+          key: "snap",
+          icon: Icons.grid_4x4,
+          label: "Snapping",
+          on: controller.snapping,
+          toggle: () => controller.snapping = !controller.snapping,
+        ),
+        (
+          key: "metronome",
+          icon: Icons.av_timer,
+          label: "Metronome",
+          on: controller.metronome,
+          toggle: () => controller.metronome = !controller.metronome,
+        ),
+        (
+          key: "automationArm",
+          icon: Icons.timeline,
+          label: "Record moves settings (automation)",
+          on: controller.automationArmed,
+          toggle: () =>
+              controller.automationArmed = !controller.automationArmed,
+        ),
+        (
+          key: "trackpadScrolls",
+          icon: Icons.swipe_outlined,
+          label: "Scrubbing",
+          on: controller.trackpadScrolls,
+          toggle: () =>
+              controller.trackpadScrolls = !controller.trackpadScrolls,
+        ),
+      ];
+
+  /// _lit is what is turned on in the settings, lit on the bar: part of the
+  /// timeline shown, the knife, and the timeline's switches.
+  Widget _lit(PlayBarToggle knife, List<PlayBarToggle> toggles) {
     var show = controller.timelineShow;
-    var lit = Row(mainAxisSize: MainAxisSize.min, children: [
+    return Row(mainAxisSize: MainAxisSize.min, children: [
       // Showing only some: lit, and pressed, everything again.
       if (show != TimelineShow.everything)
         TransportButton(
@@ -584,112 +757,19 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             onPressed: t.toggle,
           ),
     ]);
-    // One button for every setting the bar has: see play_bar_settings.dart.
-    var more = PlayBarSettingsButton(
-      controller: controller,
-      knife: knife,
-      toggles: toggles,
-      onBarBelow: () => controller.barBelow = !controller.barBelow,
-      onAddMarker: () => addMarker(controller, TimelineActionKind.locator),
-      onCustomiseSidebars: widget.onCustomiseSidebars,
-    );
-
-    return TooltipVisibility(
-      visible: false,
-      child: CanvasControlScope(
-        maxWidth: 400,
-        hoverCaptions: true,
-        child: LayoutBuilder(builder: (context, box) {
-          var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-          // Measured, not guessed: names while they fit beside the middle; a
-          // new text size or other buttons are measured again.
-          var dock = controller.dock;
-          var measuredFor = "$scale|${dock.switcher}|${dock.showLayouts}|"
-              "${dock.arrangements.length}|${dock.places}";
-          if (measuredFor != _wideFor) {
-            _wideFor = measuredFor;
-            _wideNeeds = null;
-            _centreWide = null;
-            _compact = false;
-          }
-          var compact = _compact;
-          var room = box.maxWidth;
-          WidgetsBinding.instance.addPostFrameCallback((_) => _measure(room));
-          var switcher =
-              DockSwitcherBar(controller: controller, compact: compact);
-          return Row(children: [
-            // The panels, on the left; scrolled rather than overflowing.
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: KeyedSubtree(key: _leftKey, child: switcher),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // In the middle, always in the same place: transport, playhead
-            // and markers. Never past the bar: the first frame, before it
-            // measures itself compact, a hair smaller, not overflowing.
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: math.max(0.0, room - 24)),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                    key: _centreKey,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      transportMin(),
-                      readout,
-                      if (!compact) _tempo(theme, document),
-                      const SizedBox(width: 4),
-                      marker,
-                    ]),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // On the right: Back to the timeline when something has left it,
-            // then what is lit, the "?" and the settings.
-            Expanded(
-              child: Row(children: [
-                // Back to the timeline has all the room the rest leaves, so
-                // it keeps its words; it gives way to them only short of it.
-                Expanded(
-                  child: back
-                      ? Align(
-                          alignment: Alignment.centerLeft,
-                          child: _BackToTimeline(controller: controller))
-                      : const SizedBox.shrink(),
-                ),
-                // Against the panel's right edge, whatever is beside.
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      reverse: true,
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        lit,
-                        const SizedBox(width: 6),
-                        const HelpNote(
-                          id: "playBar",
-                          title: "The play bar",
-                          paragraphs: _playBarHelp,
-                        ),
-                        const SizedBox(width: 4),
-                        more,
-                      ]),
-                    ),
-                  ),
-                ),
-              ]),
-            ),
-          ]);
-        }),
-      ),
-    );
   }
+
+  /// _more is one button for every setting the bar has: see
+  /// play_bar_settings.dart.
+  Widget _more(PlayBarToggle knife, List<PlayBarToggle> toggles) =>
+      PlayBarSettingsButton(
+        controller: controller,
+        knife: knife,
+        toggles: toggles,
+        onBarBelow: () => controller.barBelow = !controller.barBelow,
+        onAddMarker: () => addMarker(controller, TimelineActionKind.locator),
+        onCustomiseSidebars: widget.onCustomiseSidebars,
+      );
 
   /// _tempo is what the playhead is counted in, small beside where it is:
   /// the tempo and metre of a piece of sound, a scene's frames a second.

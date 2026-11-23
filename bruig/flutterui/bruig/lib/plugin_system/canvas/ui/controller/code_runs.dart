@@ -71,11 +71,14 @@ extension CanvasCodeRuns on CanvasController {
   Future<void> endLiveCode() async {
     var live = _codeLive;
     if (live == null) return;
+    var loads = _loads;
     var png = await codeLiveSnap?.call();
+    // Another canvas opened meanwhile: the preview was the last one's.
+    if (_loads != loads) return;
     _codeLive = null;
     var picture =
         png == null ? null : await CanvasController.saveCodePicture(png);
-    if (_disposed) return;
+    if (_disposed || _loads != loads) return;
     var e = _document.elementById(live.$1);
     if (e is CodeRunElement &&
         e.result != null &&
@@ -97,6 +100,9 @@ extension CanvasCodeRuns on CanvasController {
     var entry = entryFile(e, code);
     var runner = runnerOf(e, code);
     if (entry == null || runner == CodeRunner.none) return;
+    // The canvas it was started on: one opened while it runs is not, and
+    // nothing of the run reaches it, even a panel of the same id.
+    var loads = _loads;
     var logs = _codeRuns[e.id] = <CodeLog>[];
     // Run by hand: shown now, not when the scene's clock comes to it.
     _codeRanNow.add(e.id);
@@ -114,7 +120,7 @@ extension CanvasCodeRuns on CanvasController {
           : await host.run(runner, code, entry, size, (l) {
               // Only the first [maxCodeLogs] lines are kept, so a program
               // that prints for ever fills neither screen nor file.
-              if (logs.length >= maxCodeLogs) return;
+              if (_loads != loads || logs.length >= maxCodeLogs) return;
               logs.add(l.capped);
               _codeViewChanged();
             });
@@ -124,12 +130,13 @@ extension CanvasCodeRuns on CanvasController {
         CodeLog("The run stopped: $err", kind: CodeLogKind.error)
       ]);
     }
+    if (_loads != loads) return;
     _codeRuns.remove(e.id);
     if (_disposed) return;
     var picture = outcome.picture == null
         ? ""
         : (await CanvasController.saveCodePicture(outcome.picture!)) ?? "";
-    if (_disposed) return;
+    if (_disposed || _loads != loads) return;
     // The element as it is now: it may have been moved while it ran.
     var now = _document.elementById(e.id);
     if (now is! CodeRunElement) {

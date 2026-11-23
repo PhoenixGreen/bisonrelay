@@ -1,11 +1,26 @@
+import 'dart:async';
+import 'dart:ui' show Offset, Size;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/code_runners.dart';
+import 'package:bruig/plugin_system/canvas/model/code_starters.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_run_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/play_task_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
@@ -25,6 +40,23 @@ ShapeElement slotted(String id) {
       width: 40,
       height: 40,
       motion: ElementMotion.none.withClip(clip).inSlot(0, clip.id)));
+}
+
+/// _FakeHost runs nothing: it notes the code it was handed, prints a line,
+/// and, while [gate] is set, finishes only once that completes.
+class _FakeHost implements CodeRunHost {
+  final List<String> ran = [];
+  Completer<void>? gate;
+
+  @override
+  Future<CodeRunOutcome> run(CodeRunner runner, CodeElement code,
+      CodeFile entry, Size size, void Function(CodeLog) onLog) async {
+    ran.add(entry.text);
+    onLog(const CodeLog("Printed by the last canvas's run"));
+    await gate?.future;
+    return const CodeRunOutcome(
+        logs: [CodeLog("Printed by the last canvas's run")]);
+  }
 }
 
 // canvas_controller_load_test.dart holds the editing session to letting go
@@ -351,6 +383,289 @@ void main() {
       expect(c.rowFolded("scenes"), !folded);
       c.load(emptyCanvas());
       expect(c.rowFolded("scenes"), folded);
+    });
+  });
+
+  group("opening another canvas forgets the last's code", () {
+    // Element ids are saved with a canvas, so one received from somebody
+    // else can carry the ids of a Run panel run here on another canvas.
+    // Nothing of that run may reach it: not the leave to open it live, not
+    // a run still going, not what was printed, not a task card's tick.
+    late _FakeHost host;
+    setUp(() {
+      host = _FakeHost();
+      CanvasController.codeRunHost = host;
+    });
+    tearDown(() => CanvasController.codeRunHost = null);
+
+    CanvasController lesson(String starter) {
+      var c = CanvasController(const CanvasDocument());
+      addTearDown(c.dispose);
+      c.addCodeLesson(
+          starter: codeStarters.firstWhere((s) => s.key == starter));
+      return c;
+    }
+
+    CodeRunElement runOf(CanvasController c) =>
+        c.document.elements.whereType<CodeRunElement>().single;
+
+    List<String> printed(Iterable<CodeLog> logs) =>
+        [for (var l in logs) l.text];
+
+    /// received is [doc] as another person's canvas with the same ids: its
+    /// code is not what was run here, and it carries its own last run.
+    CanvasDocument received(CanvasDocument doc) {
+      var code = doc.elements.whereType<CodeElement>().single;
+      var run = doc.elements.whereType<CodeRunElement>().single;
+      return doc
+          .withElement(code.withFileText(
+              code.files.first.id, "<p>The sender's own page</p>"))
+          .withElement(run.copyWith(
+              result: CodeRunResult(
+                  runner: "Web",
+                  at: DateTime.utc(2026),
+                  logs: const [CodeLog("The sender's run")])));
+    }
+
+    test("a Run panel run on the last is not opened live on this one",
+        () async {
+      var c = lesson("web");
+      await c.runCode(runOf(c));
+      expect(host.ran, hasLength(1));
+
+      c.load(received(c.document));
+      c.selectOnly(runOf(c).id);
+      c.liveCode(runOf(c));
+      expect(c.codeLive, isNull,
+          reason: "its code has never been run here: Run was not pressed");
+    });
+
+    test("a run still going is not this canvas's, and lands nowhere", () async {
+      var c = lesson("web");
+      host.gate = Completer<void>();
+      var going = c.runCode(runOf(c));
+      expect(c.codeRunning(runOf(c).id), isTrue);
+
+      c.load(received(c.document));
+      expect(c.codeRunning(runOf(c).id), isFalse);
+      var show = c.codeRunShowFor(runOf(c));
+      expect(show.running, isFalse);
+      expect(printed(show.logs), isEmpty);
+
+      host.gate!.complete();
+      await going;
+      expect(printed(runOf(c).result!.logs), ["The sender's run"],
+          reason: "the last canvas's run is not written into this one");
+      expect(c.canUndo, isFalse);
+    });
+
+    test("a preview open live, and what it printed, are the last's", () async {
+      var c = lesson("web");
+      await c.runCode(runOf(c));
+      c.selectOnly(runOf(c).id);
+      c.liveCode(runOf(c));
+      expect(c.codeLive, runOf(c).id);
+      c.liveCodeLog(const CodeLog("Pressed on the last canvas"));
+
+      c.load(received(c.document));
+      expect(c.codeLive, isNull);
+      var show = c.codeRunShowFor(runOf(c));
+      expect(show.live, isFalse);
+      expect(printed(show.logs), isNot(contains("Pressed on the last canvas")));
+      await c.endLiveCode();
+      expect(printed(runOf(c).result!.logs), ["The sender's run"]);
+    });
+
+    test("a task card checked on the last is not ticked on a copy of it", () {
+      var c = lesson("web");
+      var code = c.document.elements.whereType<CodeElement>().single;
+      c.addCodeTask(code);
+      var card = c.document.elements.whereType<CodeTaskElement>().single;
+      c.setCodeTask(card.copyWith(checks: const [
+        CodeCheck(CodeCheckKind.has, "A page", text: "<"),
+      ]));
+      card = c.document.elements.whereType<CodeTaskElement>().single;
+      c.checkCodeTask(card);
+      expect(c.codeTaskShowFor(card).checked, isTrue);
+
+      // The same lesson opened again: the same ids and the same code.
+      c.load(c.document);
+      expect(c.codeTaskShowFor(card).checked, isFalse,
+          reason: "nobody has checked it on this canvas");
+    });
+
+    test("a task card's check still building lands nowhere", () async {
+      var c = lesson("dart");
+      var code = c.document.elements.whereType<CodeElement>().single;
+      c.addCodeTask(code);
+      var card = c.document.elements.whereType<CodeTaskElement>().single;
+      var checking = c.checkCodeTask(card);
+      expect(c.codeTaskShowFor(card).checking, isTrue);
+
+      c.load(c.document);
+      expect(c.codeTaskShowFor(card).checking, isFalse);
+      await checking;
+      expect(c.codeTaskShowFor(card).checked, isFalse,
+          reason: "it was the last canvas's check");
+    });
+  });
+
+  group("opening another canvas forgets what was set going on the last", () {
+    // Each names an element or a channel by id; another canvas with an
+    // element or a channel of the same id is not the one it was set on.
+    CanvasController editor(CanvasDocument doc) {
+      var c = CanvasController(doc, audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    AudioElement sound(String id) => AudioElement(ElementBase(id: id),
+        clip: const MediaClip(
+            timed: true, playlist: [MediaSource(assetId: "x.mp3", length: 2)]));
+
+    test("a channel armed to record", () {
+      var c = editor(const CanvasDocument());
+      c.toggleArm("keys");
+      c.load(const CanvasDocument());
+      expect(c.armed, isEmpty);
+    });
+
+    test("a channel soloed", () {
+      var c = editor(const CanvasDocument());
+      c.toggleSolo("drums");
+      c.load(const CanvasDocument());
+      expect(c.solo, isEmpty);
+    });
+
+    test("a setting held by hand off its lane", () {
+      var c = editor(const CanvasDocument());
+      c.overridden["drums"] = {"volume"};
+      c.load(const CanvasDocument());
+      expect(c.anyOverridden, isFalse,
+          reason: "a canvas opened plays as written");
+    });
+
+    test("a setting waiting for a controller's knob", () {
+      var c = editor(const CanvasDocument());
+      c.learnControl("drums", "volume");
+      c.load(const CanvasDocument());
+      expect(c.learning, isNull);
+    });
+
+    test("a channel's automation lanes shown", () {
+      var c = editor(const CanvasDocument());
+      c.toggleAutomation("drums");
+      c.load(const CanvasDocument());
+      expect(c.automationShown, isEmpty);
+    });
+
+    test("channels picked for the sound tools", () {
+      var c = editor(const CanvasDocument());
+      c.selectedChannel = "drums";
+      c.load(const CanvasDocument());
+      expect(c.selectedChannels, isEmpty);
+    });
+
+    test("an element whose copies a click places", () {
+      var c = editor(const CanvasDocument());
+      c.placingCopies = "coin";
+      c.load(const CanvasDocument());
+      expect(c.placingCopies, isNull);
+    });
+
+    test("a brush stroke held back on a picture", () {
+      var c = editor(const CanvasDocument());
+      c.holdStroke("photo", const [Offset(1, 1), Offset(5, 5)],
+          keeps: true, teaches: false);
+      c.load(const CanvasDocument());
+      expect(c.hasPendingStroke, isFalse);
+      expect(c.pendingPicture, isNull);
+    });
+
+    test("an element's motion chain previewed part way", () {
+      var c = editor(const CanvasDocument());
+      c.previewMotionFrom("hero", 1);
+      c.load(const CanvasDocument());
+      expect(c.motionPreview, isNull);
+    });
+
+    test("Phrasing open on a channel's take", () {
+      var c = editor(const CanvasDocument());
+      c.openPhrasing("voice", 0, 0);
+      c.load(const CanvasDocument());
+      expect(c.phrasing, isNull);
+    });
+
+    test("a text's piece picked in its Layers", () {
+      var text = const TextElement(ElementBase(id: "title"),
+          items: [TextItem(id: "part")]);
+      var c = editor(CanvasDocument(elements: [text]));
+      c.pickTextLayer("title", "part");
+      expect(c.textLayer(text)?.id, "part");
+      c.load(CanvasDocument(elements: [text]));
+      expect(c.textLayer(text), isNull);
+    });
+
+    test("an element's anchor shown", () {
+      var c = editor(const CanvasDocument());
+      c.showAnchor("hero", true);
+      c.load(const CanvasDocument());
+      expect(c.anchorShown("hero"), isFalse);
+    });
+
+    test("a play task's steps ticked", () {
+      var card = const PlayTaskElement(ElementBase(id: "card"),
+          checks: [PlayCheck(PlayCheckKind.self, "Sit up straight")]);
+      var c = editor(CanvasDocument(elements: [card]));
+      c.tickPlayStep(card, 0);
+      expect(c.playTaskShowFor(card).done, [true]);
+      c.load(CanvasDocument(elements: [card]));
+      expect(c.playTaskShowFor(card).done, [false],
+          reason: "a lesson opened again starts fresh");
+    });
+
+    test("a layout's cell picked, and its reading order being set", () {
+      var page = const LayoutElement(ElementBase(id: "page"));
+      var c = editor(CanvasDocument(elements: [page]));
+      c.pickLayoutCell("page", "c1");
+      c.beginReadingOrder(page);
+      c.clickReadingOrder("c1");
+      c.load(CanvasDocument(elements: [page]));
+      expect(c.layoutCell("page"), isNull);
+      expect(c.orderingLayout, isNull);
+      expect(c.orderClicked, isEmpty);
+    });
+
+    test("a sprite or a tile map being painted", () {
+      var c = editor(const CanvasDocument());
+      c.paintSprite("walker");
+      c.paintTiles("ground");
+      c.load(const CanvasDocument());
+      expect(c.spritePaint, isNull);
+      expect(c.tilePaint, isNull);
+    });
+
+    test("the clip editor open on a channel's slot", () {
+      var doc = CanvasDocument(elements: [sound("a")]);
+      var c = editor(doc);
+      c.setSessionClip("a", 0,
+          const SessionClip(id: "one", sound: MediaSource(assetId: "x.mp3")));
+      c.openClipEditor("a", 0);
+      expect(c.clipEditing, isNotNull);
+      c.load(c.document);
+      expect(c.clipEditing, isNull);
+      expect(c.clipEditorShown, isFalse);
+    });
+
+    test("channels dragged into another order", () {
+      var doc = CanvasDocument(elements: [sound("a"), sound("b")]);
+      var c = editor(doc);
+      List<String> order() => [for (var ch in c.timelineChannels) ch.key];
+      var first = order();
+      c.moveChannel(first.last, 0);
+      expect(order(), isNot(first));
+      c.load(doc);
+      expect(order(), first);
     });
   });
 

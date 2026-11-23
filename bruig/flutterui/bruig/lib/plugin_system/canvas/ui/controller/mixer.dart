@@ -1112,4 +1112,15 @@ class _MixerState {
   final Set<String> automationShown = {};
 
   final Map<String, List<String>> automationRows = {};
+
+  /// forgetDocument lets go of what names the open canvas's channels, as
+  /// another is opened. Not [listening], which the engine holds too, nor
+  /// [freezing], a job still going; nor whether automation is armed, the
+  /// bar's switch rather than any channel's.
+  void forgetDocument() {
+    learning = null;
+    solo.clear();
+    automationShown.clear();
+    automationRows.clear();
+  }
 }

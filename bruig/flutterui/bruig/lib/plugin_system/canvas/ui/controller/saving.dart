@@ -88,6 +88,15 @@ extension CanvasSaving on CanvasController {
     _codeFull.clear();
     _codePane.clear();
     _codeEditing = null;
+    // Its Run panels: those run here, which alone may open live; those
+    // running, whose runs are let go (nothing stops one: runCode drops what
+    // it brings back); the one open live, which the stage shuts once it is
+    // gone; and its task cards' checks.
+    _codeRunHere.clear();
+    _codeRuns.clear();
+    _codeLive = null;
+    _codeTaskChecks.clear();
+    _codeTaskBusy.clear();
     // The editor's loop, round a stretch of that canvas's frames.
     _playbackState.looping = false;
     _playbackState.loop = null;
@@ -120,6 +129,32 @@ extension CanvasSaving on CanvasController {
     _synthSeen = null;
     _panelState.forgetDocument();
     _abB.clear();
+    // Its channels as worked on: armed, soloed, held off their lanes,
+    // waiting for a knob, their lanes shown, picked, dragged into order,
+    // and Phrasing or the clip editor open on one.
+    _armed.clear();
+    _mixerState.forgetDocument();
+    _overridden.clear();
+    _selectedChannels = {};
+    _speechState.channelOrder = const [];
+    _speechState.phrasing = null;
+    _clipEditing = _pianoRoll = null;
+    _clipEditorShown = _pianoRollShown = false;
+    rollSelected.clear();
+    // What its elements were in the middle of: copies being placed, a
+    // stroke held back, a motion previewed part way, a text's piece or a
+    // layout's cell picked, an anchor shown, a lesson's steps ticked, a
+    // sprite or a tile map painted.
+    _placingCopies = null;
+    _pendingStroke = null;
+    _pendingPicture = null;
+    _sessionState.motionPreview = null;
+    _pictures.textLayers.clear();
+    _keyframes.anchorsShown.clear();
+    _playTasks.states.clear();
+    _layouts.forgetDocument();
+    if (_spritePaint != null) paintSprite(null);
+    if (_tilePaint != null) paintTiles(null);
   }
 
   /// _openSoundDesk opens the mixer and the effects: what an audio document
