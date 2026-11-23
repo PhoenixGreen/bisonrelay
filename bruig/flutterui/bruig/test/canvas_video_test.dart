@@ -20,6 +20,15 @@ import 'package:path/path.dart' as path;
 // with the wrong arguments is a file that exists, has a sensible size, and
 // will not play.
 
+/// _framesFolders are the folders an export is writing its frames into
+/// now, by name. A test asks that none is there afterwards that was not
+/// there before; a count would not do, since other test files run at the
+/// same time in processes of their own and make and remove theirs here.
+Set<String> _framesFolders() => {
+      for (var e in Directory.systemTemp.listSync())
+        if (e.path.contains("bruig-canvas-video")) e.path
+    };
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -171,18 +180,11 @@ head -c 4000 /dev/zero >> "\$out"
     });
 
     test("the frames are cleared up even though the file is kept", () async {
-      var before = Directory.systemTemp
-          .listSync()
-          .where((e) => e.path.contains("bruig-canvas-video"))
-          .length;
+      var before = _framesFolders();
       var export =
           await renderVideo(moving(frames: 3), viaFiles: true, scale: 0.25);
       expect(export!.data.length, greaterThan(1000));
-      var after = Directory.systemTemp
-          .listSync()
-          .where((e) => e.path.contains("bruig-canvas-video"))
-          .length;
-      expect(after, before);
+      expect(_framesFolders().difference(before), isEmpty);
     });
 
     test("an encoder that fails produces nothing rather than a broken file",
@@ -205,10 +207,7 @@ head -c 4000 /dev/zero >> "\$out"
         return;
       }
 
-      var before = Directory.systemTemp
-          .listSync()
-          .where((e) => e.path.contains("bruig-canvas-video"))
-          .length;
+      var before = _framesFolders();
 
       var seen = <int>[];
       var mp4 = await renderVideo(moving(),
@@ -238,11 +237,7 @@ head -c 4000 /dev/zero >> "\$out"
       expect(webm.data.sublist(0, 4), [0x1A, 0x45, 0xDF, 0xA3]);
       expect(webm.data.length, greaterThan(1000));
 
-      var after = Directory.systemTemp
-          .listSync()
-          .where((e) => e.path.contains("bruig-canvas-video"))
-          .length;
-      expect(after, before,
+      expect(_framesFolders().difference(before), isEmpty,
           reason: "the frames it wrote out are not left behind");
     }, timeout: const Timeout(Duration(minutes: 2)));
   });
@@ -317,18 +312,9 @@ head -c 4000 /dev/zero >> "\$out"
     });
 
     test("and the working directory goes when it is done", () async {
-      var before = Directory.systemTemp
-          .listSync()
-          .whereType<Directory>()
-          .where((d) => d.path.contains("bruig-canvas-video"))
-          .length;
+      var before = _framesFolders();
       await renderVideo(moving(frames: 2), scale: 0.25);
-      var after = Directory.systemTemp
-          .listSync()
-          .whereType<Directory>()
-          .where((d) => d.path.contains("bruig-canvas-video"))
-          .length;
-      expect(after, before);
+      expect(_framesFolders().difference(before), isEmpty);
     });
   });
 }
