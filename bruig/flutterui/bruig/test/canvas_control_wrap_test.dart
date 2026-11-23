@@ -166,7 +166,7 @@ void main() {
       // a setting found twice over.
       await text(tester, 300);
       expect(find.byKey(const ValueKey("more-textBox")), findsNothing);
-      expect(find.byKey(const ValueKey("boxBorder")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textBoxBorder")), findsOneWidget);
     });
 
     testWidgets("and the sides, the corners and the room line up",
@@ -175,15 +175,20 @@ void main() {
       // padding's sides are three blocks of four, one under another, in the
       // same columns.
       await text(tester, 360);
-      for (var link in ["boxBorderLink", "boxRadiusLink", "boxPaddingLink"]) {
+      for (var link in [
+        "textBoxBorderLink",
+        "textBoxRadiusLink",
+        "textBoxPaddingLink"
+      ]) {
         await tester.ensureVisible(find.byKey(ValueKey(link)));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(ValueKey(link)));
         await tester.pumpAndSettle();
       }
 
-      var sides = tester.getRect(find.byKey(const ValueKey("boxBorderTop")));
-      for (var key in ["boxRadius↖", "boxPadTop"]) {
+      var sides =
+          tester.getRect(find.byKey(const ValueKey("textBoxBorderTop")));
+      for (var key in ["textBoxRadius↖", "textBoxPadTop"]) {
         var box = tester.getRect(find.byKey(ValueKey(key)));
         expect(box.left, closeTo(sides.left, 0.5), reason: key);
         expect(box.width, closeTo(sides.width, 0.5), reason: key);
@@ -191,7 +196,11 @@ void main() {
       expect(tester.takeException(), isNull);
 
       // Joined again, for the tests after this one.
-      for (var link in ["boxBorderLink", "boxRadiusLink", "boxPaddingLink"]) {
+      for (var link in [
+        "textBoxBorderLink",
+        "textBoxRadiusLink",
+        "textBoxPaddingLink"
+      ]) {
         await tester.ensureVisible(find.byKey(ValueKey(link)));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(ValueKey(link)));

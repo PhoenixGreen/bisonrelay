@@ -5,7 +5,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 
 // path_settings.dart is a path's panel (see element_panel.dart): quick

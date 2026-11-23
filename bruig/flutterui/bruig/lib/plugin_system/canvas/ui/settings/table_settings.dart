@@ -14,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // table_settings.dart is a table's settings.
 

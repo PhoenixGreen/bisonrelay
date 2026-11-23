@@ -9,14 +9,14 @@ import 'package:bruig/plugin_system/canvas/ui/picking/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/instrument_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
-    show panelRow, cell, CanvasQuickStrip;
+    show panelRow, cell, CanvasQuickStrip, SettingsWrite;
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
 // audio_settings.dart is an Audio element's settings in setup order: the

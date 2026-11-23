@@ -5,6 +5,14 @@ import 'package:flutter/material.dart';
 
 // type_parts.dart is how words are set, a control at a time (see
 // panel_parts.dart), the same on every element that draws words.
+//
+// It holds two kits for the same thing. The controls a piece at a time
+// (typeFont, typeSize, typeLetters and labelType built from them) are what
+// a text, a shape's label, a table, a button and a counter's number and
+// words use.
+// typeGroups is a second, whole set in two "more" groups, weight as a list
+// and italic as a button where the other kit has a number and a switch; a
+// team's names and a counter's buttons use it.
 
 /// TypeEdit is how a control changes [spec]: [onChanged] for each step of a
 /// drag, [begin] and [commit] round a one-go change.
@@ -216,3 +224,253 @@ Widget labelType(TypeEdit t,
           ]),
           ...typeLetters(t, vertical: false, justify: false),
         ]);
+
+/// typeGroups is the shared type controls for elements that draw words.
+List<Widget> typeGroups(
+  TextSpec spec,
+  ValueChanged<TextSpec> onChanged,
+  VoidCallback begin,
+  VoidCallback commit, {
+  String label = "Type",
+
+  /// hideCaption drops the first caption where the section says it already.
+  bool hideCaption = false,
+
+  /// remember prefixes the two buttons' open state, so a panel with three
+  /// sets (a counter's number, words and buttons) does not open all three.
+  String remember = "type",
+
+  /// rule draws the line under each group; off where they run on into what
+  /// follows as one subject (a text element's face, colour and box).
+  bool rule = true,
+}) {
+  var t = TypeEdit(spec, onChanged, begin, commit);
+  return [
+    CanvasMoreGroup(
+        label: label,
+        hideCaption: hideCaption,
+        rule: rule,
+        remember: "${remember}Type",
+        tooltip: "Spacing, alignment and case",
+        row: _faceRow(t),
+        more: _spacingMore(t)),
+    CanvasMoreGroup(
+        label: "Colour",
+        rule: rule,
+        remember: "${remember}Colour",
+        tooltip: "The shadow and the glow",
+        row: _colourRow(t),
+        more: _lightMore(t)),
+  ];
+}
+
+/// _faceRow is the face, its size and weight, then italic and underline.
+List<Widget> _faceRow(TypeEdit t) {
+  var spec = t.spec;
+  return [
+    CanvasDropdown<String>(
+      label: "Font",
+      value: spec.fontFamily,
+      // Least widths, not widths: six things share the line, and
+      // wider minimums push the switches down in a narrow sidebar.
+      width: 60,
+      options: [for (var f in canvasFonts) (f, f)],
+      onChanged: (v) => t.now(spec.copyWith(fontFamily: v)),
+    ),
+    CanvasNumberField(
+      key: const ValueKey("typeSize"),
+      label: "Size",
+      value: spec.fontSize,
+      min: 1,
+      max: 800,
+      width: 44,
+      onChanged: (v) => t.onChanged(spec.copyWith(fontSize: v)),
+      onCommit: t.commit,
+    ),
+    CanvasDropdown<int>(
+      label: "Weight",
+      value: spec.weight,
+      width: 56,
+      options: const [
+        (100, "Thin"),
+        (300, "Light"),
+        (400, "Regular"),
+        (500, "Medium"),
+        (600, "Semibold"),
+        (700, "Bold"),
+        (800, "Extrabold"),
+        (900, "Black"),
+      ],
+      onChanged: (v) => t.now(spec.copyWith(weight: v)),
+    ),
+    // Italic and underline, which end the type row.
+    CanvasIconButton(
+      icon: Icons.format_italic,
+      tooltip: "Italic",
+      active: spec.italic,
+      onPressed: () => t.now(spec.copyWith(italic: !spec.italic)),
+    ),
+    CanvasIconButton(
+      icon: Icons.format_underlined,
+      tooltip: "Underline",
+      active: spec.underline,
+      onPressed: () => t.now(spec.copyWith(underline: !spec.underline)),
+    ),
+  ];
+}
+
+/// _spacingMore is what is behind the type row's button: spacing between
+/// letters and lines, alignment both ways, and case.
+List<Widget> _spacingMore(TypeEdit t) {
+  var spec = t.spec;
+  return [
+    CanvasNumberField(
+      label: "Letter",
+      value: spec.letterSpacing,
+      min: -50,
+      max: 200,
+      decimals: 1,
+      width: 54,
+      onChanged: (v) => t.onChanged(spec.copyWith(letterSpacing: v)),
+      onCommit: t.commit,
+    ),
+    CanvasNumberField(
+      label: "Line",
+      value: spec.lineHeight,
+      min: 0.5,
+      max: 5,
+      decimals: 2,
+      width: 54,
+      onChanged: (v) => t.onChanged(spec.copyWith(lineHeight: v)),
+      onCommit: t.commit,
+    ),
+    CanvasDropdown<TextAlignSpec>(
+      label: "Align",
+      value: spec.align,
+      width: 92,
+      options: [for (var a in TextAlignSpec.values) (a, a.label)],
+      onChanged: (v) => t.now(spec.copyWith(align: v)),
+    ),
+    CanvasDropdown<VerticalAlignSpec>(
+      label: "Vertical",
+      value: spec.verticalAlign,
+      width: 86,
+      options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+      onChanged: (v) => t.now(spec.copyWith(verticalAlign: v)),
+    ),
+    CanvasDropdown<TextCase>(
+      label: "Case",
+      value: spec.textCase,
+      width: 96,
+      options: [for (var c in TextCase.values) (c, c.label)],
+      onChanged: (v) => t.now(spec.copyWith(textCase: v)),
+    ),
+  ];
+}
+
+/// _colourRow is the colour, first, as it is what is changed first; then
+/// the outline's and the shadow's amount and colour.
+List<Widget> _colourRow(TypeEdit t) {
+  var spec = t.spec;
+  return [
+    // The swatch can fade the words between two colours across their box,
+    // unless outlined or filled with a picture or pattern. See TextSpec.fade.
+    CanvasColorButton(
+      label: "Colour",
+      color: spec.color,
+      gradient: spec.fade,
+      onChanged: (c) => t.now(spec.copyWith(color: c)),
+      onGradientChanged: (g) => t.now(
+          g == null ? spec.copyWith(flatText: true) : spec.copyWith(fade: g)),
+    ),
+    CanvasNumberField(
+      label: "Outline",
+      value: spec.outlineWidth,
+      min: 0,
+      max: 60,
+      decimals: 1,
+      width: 54,
+      onChanged: (v) => t.onChanged(spec.copyWith(outlineWidth: v)),
+      onCommit: t.commit,
+    ),
+    // No caption: it is the outline's colour, beside its thickness.
+    CanvasColorButton(
+      color: spec.outlineColor,
+      onChanged: (c) => t.now(spec.copyWith(outlineColor: c)),
+    ),
+    // The shadow's amount and colour with them: two of each in the same
+    // shape read as one line rather than four things.
+    CanvasNumberField(
+      label: "Shadow",
+      value: spec.shadowBlur,
+      min: 0,
+      max: 120,
+      width: 54,
+      onChanged: (v) => t.onChanged(spec.copyWith(shadowBlur: v)),
+      onCommit: t.commit,
+    ),
+    CanvasColorButton(
+      color: spec.shadowColor,
+      onChanged: (c) => t.now(spec.copyWith(shadowColor: c)),
+    ),
+  ];
+}
+
+/// _lightMore is what is behind the colour row's button: where the light
+/// falls from, and the glow.
+List<Widget> _lightMore(TypeEdit t) {
+  var spec = t.spec;
+  return [
+    // Where the light is, not where the shadow goes: one light for a scene,
+    // the same two numbers on every element in it.
+    CanvasNumberField(
+      key: const ValueKey("textShadowAngle"),
+      label: "Direction",
+      value: spec.shadowAngle,
+      min: 0,
+      max: 360,
+      width: 60,
+      onChanged: (v) => t.onChanged(spec.copyWith(shadowAngle: v)),
+      onCommit: t.commit,
+    ),
+    CanvasNumberField(
+      key: const ValueKey("textShadowDistance"),
+      label: "Distance",
+      value: spec.shadowDistance,
+      min: 0,
+      max: 400,
+      decimals: 1,
+      width: 60,
+      onChanged: (v) => t.onChanged(spec.copyWith(shadowDistance: v)),
+      onCommit: t.commit,
+    ),
+    CanvasNumberField(
+      key: const ValueKey("textGlow"),
+      label: "Glow",
+      value: spec.glowBlur,
+      min: 0,
+      max: 200,
+      width: 54,
+      onChanged: (v) => t.onChanged(spec.copyWith(glowBlur: v)),
+      onCommit: t.commit,
+    ),
+    CanvasColorButton(
+      label: "Light",
+      color: spec.glowColor,
+      onChanged: (c) => t.now(spec.copyWith(glowColor: c)),
+    ),
+    if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
+      const CanvasHint(
+          "Direction is where the light is, read like a compass: 0 is "
+          "straight up, 90 to the right. The shadow falls the other way, "
+          "Distance away from the words. At a distance of 0 it sits "
+          "directly underneath them, which is a shadow that reads as a "
+          "glow in its own colour."),
+    if (spec.glowBlur > 0)
+      const CanvasHint(
+          "Glow is light all round the letters, in its own colour, and it "
+          "is drawn behind them — so a picture or a pattern showing "
+          "through the words cannot cut it up, and an outline sits over "
+          "it rather than under it."),
+  ];
+}

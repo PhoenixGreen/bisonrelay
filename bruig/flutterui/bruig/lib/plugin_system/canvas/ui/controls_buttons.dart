@@ -574,7 +574,7 @@ Widget _maybeTooltip(String message, Widget child) =>
 
 /// CanvasKeyframeDot is the diamond beside an animatable setting: lit where
 /// a keyframe sits on the current frame, pressed to add or remove one. What
-/// the keyframe holds is the caller's (see valueDot in settings_shared.dart).
+/// the keyframe holds is the caller's (see valueDot in panel_parts.dart).
 class CanvasKeyframeDot extends StatelessWidget {
   final bool on;
 

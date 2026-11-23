@@ -15,7 +15,9 @@ import 'package:flutter/material.dart';
 // panel_parts.dart is what every element's settings are built from: the
 // quick strip, state notes, a box placement picker, looks as rows (the
 // Chain's own), and motion as lines opening the Chain, each the same on
-// every element.
+// every element; and the small things every panel shares: how it writes
+// the element, a keyframe diamond for a value, a boxed section, a number as
+// a heading's summary says it.
 
 /// CanvasQuickStrip is an element's most-changed settings in a card over
 /// its sections, never a section away.
@@ -849,3 +851,78 @@ class _MotionLine extends StatelessWidget {
     );
   }
 }
+
+typedef SettingsWrite = void Function(CanvasElement);
+
+/// freshOf is [e] as the document has it now, or null: after an await the
+/// old read may be stale, and writing it back would undo changes.
+T? freshOf<T extends CanvasElement>(CanvasController controller, T e) {
+  var now = controller.document.elementById(e.id);
+  return now is T ? now : null;
+}
+
+/// valueDot is the diamond beside an animatable property: a real channel,
+/// so a key can pin a caption's slide without pinning its box.
+Widget valueDot(CanvasController controller, CanvasElement e, String channel,
+    String what, double value) {
+  var animated = controller.document.isAnimated;
+  var on = controller.hasValueKey(e, channel);
+  return CanvasKeyframeDot(
+    on: on,
+    enabled: animated,
+    tooltip: !animated
+        ? "Give the canvas more than one frame to animate $what"
+        : on
+            ? "Remove the keyframe for $what here"
+            : "Add a keyframe for $what here",
+    onPressed: () {
+      controller.beginInteraction();
+      if (on) {
+        controller.clearValueKey(e, channel);
+      } else {
+        controller.setValueKey(e, channel, value);
+      }
+      controller.endInteraction();
+    },
+  );
+}
+
+/// boxed draws a rule and a gap round a section that is a panel (a table
+/// with scrollbars), giving it an edge among captioned groups.
+Widget boxed(BuildContext context, Widget child) => Builder(
+    // Asked where drawn, not of [context], which is above any section: in a
+    // section the box is the card the expander draws itself as.
+    builder: (context) =>
+        CanvasCards.on(context) ? child : _boxed(context, child));
+
+Widget _boxed(BuildContext context, Widget child) {
+  var theme = ThemeNotifier.of(context);
+  return Padding(
+    // A group's own gap below, so boxed sections and captioned groups space
+    // alike.
+    padding: const EdgeInsets.only(bottom: canvasGroupGap),
+    // Builder, because the settings' context is above the CanvasControlScope
+    // that says column or band, so asking it directly always says "band".
+    child: Builder(
+      builder: (context) => Container(
+        // Full column width, open or shut: sized to itself, a shut section
+        // shrinks to its heading and reads as a stray button.
+        width: double.infinity,
+        // Equal above and below, so a heading's button is not hard against
+        // the top.
+        padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: theme.colors.outlineVariant),
+          color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.25),
+        ),
+        child: child,
+      ),
+    ),
+  );
+}
+
+/// shortNumber is [v] as a summary writes it: whole where whole, else to
+/// one place.
+String shortNumber(double v) =>
+    v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);

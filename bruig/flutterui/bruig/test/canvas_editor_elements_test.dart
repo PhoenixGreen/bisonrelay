@@ -1739,6 +1739,27 @@ void main() {
       await typeNumber(tester, "elementW", "500");
       expect(baseIn(controller).width, isNot(before));
     });
+
+    testWidgets("a covering picture let go is stretched, so a side squashes it",
+        (tester) async {
+      // Covering, a picture trims what overruns its box; let go and still
+      // covering, pulling a side would trim rather than squash it.
+      var document = const CanvasDocument();
+      var controller = CanvasController(document.addElement(const ImageElement(
+          ElementBase(id: "p", width: 200, height: 100, lockAspect: true),
+          fit: ImageFit.cover)));
+      addTearDown(controller.dispose);
+      controller.selectOnly("p");
+      await pump(tester, designSidebar(controller));
+
+      await tester.ensureVisible(find.byIcon(Icons.link));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.link));
+      await tester.pumpAndSettle();
+      var picture = controller.document.elements.single as ImageElement;
+      expect(picture.base.lockAspect, isFalse);
+      expect(picture.fit, ImageFit.stretch);
+    });
   });
 
   group("a dropdown's ink", () {

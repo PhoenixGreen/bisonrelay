@@ -674,6 +674,7 @@ class ImageElement extends CanvasElement {
   /// resized, or let go: let go, a covering picture becomes stretched, so
   /// pulling a side squashes rather than trims it. Held again, the fit is
   /// left alone.
+  @override
   ImageElement withProportionsKept(bool keep) {
     var next = withBase(lockAspect: keep) as ImageElement;
     if (!keep && fit == ImageFit.cover) {

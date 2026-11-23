@@ -5,8 +5,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
-    show panelRow, cell, CanvasQuickStrip;
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+    show panelRow, cell, CanvasQuickStrip, SettingsWrite;
 import 'package:flutter/material.dart';
 
 // play_task_settings.dart is a play task card's settings: what it listens

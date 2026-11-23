@@ -11,11 +11,11 @@ import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
-    show panelRow, cell, CanvasQuickStrip;
+    show panelRow, cell, CanvasQuickStrip, SettingsWrite;
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
 // video_settings.dart is a Video element's settings, in the order one is set

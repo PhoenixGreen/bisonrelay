@@ -888,6 +888,11 @@ abstract class CanvasElement {
   /// offered where it has an effect.
   bool get scalesInside => false;
 
+  /// withProportionsKept is this element with its width and height held
+  /// together as it is resized, or let go (ElementBase.lockAspect). A kind
+  /// whose contents change with it says so (a picture squashes).
+  CanvasElement withProportionsKept(bool keep) => withBase(lockAspect: keep);
+
   /// withBase is [ElementBase.copyWith] through [rebase], for one-line
   /// property changes. It takes everything copyWith does but the id, which
   /// [withId] changes.

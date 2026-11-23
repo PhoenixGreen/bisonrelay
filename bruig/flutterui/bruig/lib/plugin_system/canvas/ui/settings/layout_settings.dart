@@ -8,7 +8,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -337,8 +338,7 @@ List<Widget> layoutSettings(
                               fillLabel: "Fill",
                               remember: "layoutCellStyle",
                               rule: false,
-                              fill: true,
-                              context: context),
+                              fillPickedIn: context),
                       ]),
               ]),
           PanelBit(PanelSection.look,
@@ -397,8 +397,7 @@ List<Widget> layoutSettings(
                     fillLabel: "Fill",
                     remember: "layoutCells",
                     rule: false,
-                    fill: true,
-                    context: context),
+                    fillPickedIn: context),
               ]),
         ]),
   ];

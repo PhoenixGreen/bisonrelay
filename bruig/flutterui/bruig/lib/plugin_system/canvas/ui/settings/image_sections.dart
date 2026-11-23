@@ -23,7 +23,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_actions.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_saved.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/position_group.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 import 'package:flutter/material.dart';
 
 // image_sections.dart is a picture's panel: its layers, then the picked

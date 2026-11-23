@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
     show boxSummary;
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 import 'package:flutter/material.dart';
 
 // counter_settings.dart is a counter's settings in setup order. Count holds
@@ -292,8 +292,7 @@ List<PanelBit> counterBits(
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
               remember: "counter",
               rule: false,
-              fill: true,
-              context: context,
+              fillPickedIn: context,
               compact: true),
           CanvasControlGroup(label: "Size", rule: false, children: [
             CanvasToggle(

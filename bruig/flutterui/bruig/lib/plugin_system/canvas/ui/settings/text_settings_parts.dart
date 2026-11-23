@@ -363,7 +363,7 @@ List<Widget> _animationBits(
     // A destruction is an exit, said here as in a shape's panel: people look
     // for one in the arrival list.
     if (a.cuts)
-      ...effectBits(a.effect, a.scatters, done,
+      ..._effectBits(a.effect, a.scatters, done,
           live: (next) => live(a.copyWith(effect: next))),
     // A drawn mark's look (an underline's line, a highlight's band), only
     // where something is drawn.
@@ -524,7 +524,7 @@ List<Widget> _animationBits(
             },
             onCommit: done,
           ),
-        easeDropdown<ChartEase>(
+        _easeDropdown<ChartEase>(
           label: "End curve",
           value: a.ease,
           values: ChartEase.values,
@@ -700,4 +700,161 @@ List<Widget> _markBits({
           "and Away how far under the letters it sits."),
     ],
   ];
+}
+
+/// _effectBits are a cutting preset's settings (pieces, throw, turn), for a
+/// part's arrival; [scatters] false hides throwing where pieces stay put
+/// (mosaic, glitch).
+List<Widget> _effectBits(
+  EffectSpec effect,
+  bool scatters,
+  VoidCallback commit, {
+  required void Function(EffectSpec) live,
+}) =>
+    [
+      CanvasControlGroup(label: "The pieces", children: [
+        CanvasNumberField(
+          key: const ValueKey("effectPieces"),
+          label: "Across",
+          min: 1,
+          max: 64,
+          decimals: 0,
+          width: 62,
+          value: effect.pieces.toDouble(),
+          onChanged: (v) => live(effect.copyWith(pieces: v.round())),
+          onCommit: commit,
+        ),
+        if (scatters) ...[
+          CanvasNumberField(
+            key: const ValueKey("effectScatter"),
+            label: "Thrown",
+            min: 0,
+            max: 8,
+            decimals: 2,
+            width: 62,
+            value: effect.scatter,
+            onChanged: (v) => live(effect.copyWith(scatter: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("effectSpin"),
+            label: "Turn",
+            min: -4,
+            max: 4,
+            decimals: 2,
+            width: 62,
+            value: effect.spin,
+            onChanged: (v) => live(effect.copyWith(spin: v)),
+            onCommit: commit,
+          ),
+        ],
+        CanvasNumberField(
+          key: const ValueKey("effectStagger"),
+          label: "Spread",
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          value: effect.stagger,
+          onChanged: (v) => live(effect.copyWith(stagger: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("effectSeed"),
+          label: "Shuffle",
+          min: 1,
+          max: 9999,
+          decimals: 0,
+          width: 62,
+          value: effect.seed.toDouble(),
+          onChanged: (v) => live(effect.copyWith(seed: v.round())),
+          onCommit: commit,
+        ),
+        CanvasHint(scatters
+            ? "Across is how many pieces the element is cut into along its "
+                "width; the rows follow, so a piece stays roughly square. "
+                "Thrown is how far a piece travels to get to its place, as a "
+                "fraction of the element — 0 leaves every piece where it "
+                "belongs and the effect becomes a fade in tiles. Spread is "
+                "how much later the last piece moves than the first: 0 moves "
+                "them all together."
+            : "Across is how coarse the cut is: the blocks of a mosaic, the "
+                "slices of a glitch. Spread is how much later the last one "
+                "settles than the first."),
+      ]),
+    ];
+
+/// _easeDropdown is a choice of easing, each drawn as its curve; [curve] is
+/// the easing over 0..1.
+Widget _easeDropdown<T>({
+  String label = "Curve",
+  required T value,
+  required List<T> values,
+  required String Function(T) name,
+  required double Function(double) Function(T) curve,
+  required ValueChanged<T> onChanged,
+}) =>
+    CanvasDropdown<T>(
+      label: label,
+      value: value,
+      width: 148,
+      options: [for (var v in values) (v, name(v))],
+      leading: (v) => _EaseCurveIcon(curve(v)),
+      onChanged: onChanged,
+    );
+
+/// _EaseCurveIcon is a small drawing of an easing: time along, progress up, the
+/// start and end levels marked so an overshoot shows.
+class _EaseCurveIcon extends StatelessWidget {
+  final double Function(double) curve;
+  const _EaseCurveIcon(this.curve);
+
+  @override
+  Widget build(BuildContext context) {
+    var colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 22,
+      height: 14,
+      child: CustomPaint(
+          painter: _EaseCurvePainter(
+              curve, colors.primary, colors.outline.withValues(alpha: 0.35))),
+    );
+  }
+}
+
+class _EaseCurvePainter extends CustomPainter {
+  final double Function(double) curve;
+  final Color ink;
+  final Color guide;
+  _EaseCurvePainter(this.curve, this.ink, this.guide);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Room above and below for a curve that goes past either end.
+    var top = size.height * 0.22, bottom = size.height * 0.85;
+    double y(double v) => bottom - (bottom - top) * v;
+    var lines = Paint()
+      ..color = guide
+      ..strokeWidth = 1;
+    canvas.drawLine(Offset(0, y(0)), Offset(size.width, y(0)), lines);
+    canvas.drawLine(Offset(0, y(1)), Offset(size.width, y(1)), lines);
+    var path = Path();
+    const steps = 40;
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      var at = Offset(size.width * t, y(curve(t)).clamp(0.0, size.height));
+      i == 0 ? path.moveTo(at.dx, at.dy) : path.lineTo(at.dx, at.dy);
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = ink
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..strokeJoin = StrokeJoin.round);
+  }
+
+  @override
+  bool shouldRepaint(_EaseCurvePainter old) =>
+      old.curve != curve || old.ink != ink || old.guide != guide;
 }

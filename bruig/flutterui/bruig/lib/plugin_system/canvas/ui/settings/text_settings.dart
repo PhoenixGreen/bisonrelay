@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_fields.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
@@ -23,7 +25,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/position_group.dart';
+import 'package:bruig/components/text.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/fill_controls.dart';
 
 part 'text_settings_piece.dart';
 part 'text_settings_words.dart';
@@ -55,6 +60,9 @@ Widget textPanel(
   return elementPanel(context, controller, e, write, begin, commit,
       parts: layers,
       quick: _bodyQuick(controller, e, write, begin, commit),
+      position: e.wordsSetIn(controller.document) == WordsSet.onLine
+          ? _placedByLine(controller, e, write, begin, commit)
+          : null,
       // A look on all of it and one on its words, each a layer of its own.
       looks: PanelLooks(
           said: _looksSaid(e, {"", MotionDevice.bodyLayer}),
@@ -73,6 +81,24 @@ Widget textPanel(
           ]),
       bits: _bodyBits(context, controller, e, write, begin, commit));
 }
+
+/// _placedByLine stands for the position group while the words ride a line:
+/// they take their place and angle from the line, so the group's fields
+/// would move them off it, and only their opacity is their own.
+Widget _placedByLine(CanvasController controller, TextElement e,
+        SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
+    CanvasControlGroup(label: e.kind.label, children: [
+      const Padding(
+        padding: EdgeInsets.only(top: controlLabelHeight, right: 6),
+        child: SizedBox(
+          height: controlHeight,
+          child: Center(
+            child: Txt.S("Placed by the line it follows"),
+          ),
+        ),
+      ),
+      opacityField(controller, e, write, begin, commit),
+    ]);
 
 /// _TextWrites is how the text panel writes [e]: [now] as one undo step,
 /// [live] as one step of typing or a drag, kept until commit, and [piece]
@@ -295,8 +321,7 @@ List<PanelBit> _bodyBits(
           label: "Box behind the words",
           remember: "text",
           rule: false,
-          fill: true,
-          context: context,
+          fillPickedIn: context,
           compact: true),
     ]),
     PanelBit(PanelSection.layout,
@@ -390,7 +415,7 @@ List<PanelBit> _bodyBits(
                 label: "Follow",
                 value: e.curve?.elementId ?? "",
                 width: 156,
-                options: curveOptions(controller),
+                options: _curveOptions(controller),
                 onChanged: (v) => w.now(v.isEmpty
                     ? e.copyWith(clearCurve: true)
                     : e.copyWith(
@@ -517,3 +542,12 @@ List<PanelBit> _bodyBits(
         children: [_textStyleCard(controller, e)]),
   ];
 }
+
+/// _curveOptions is every line and path on the canvas for text to ride: to
+/// a reader both are lines.
+List<(String, String)> _curveOptions(CanvasController controller) => [
+      ("", "Nothing"),
+      for (var element in controller.document.elements)
+        if (element is LineElement || element is PathElement)
+          (element.id, element.name),
+    ];

@@ -7,7 +7,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // line_settings.dart is a line's panel (see element_panel.dart): quick
 // strip, Look (stroke, ends, dashes) and Layout (length and angle).

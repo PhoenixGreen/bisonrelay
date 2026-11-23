@@ -112,8 +112,9 @@ All from `ui/controls.dart`, which says what each is for.
 - **On or off**: `CanvasToggle`, a line with a switch at its end.
 - **A colour**: `CanvasColorButton`.
 - **Four numbers that are usually one** (a border's sides, a box's corners):
-  `CanvasSidesField`, through `roomFields` and `cornerFields`: one stepper
-  and a link that splits it.
+  `CanvasSidesField`, through `roomFields` and `cornerFields`
+  (`box_group.dart`): one stepper and a link that splits it. Give each set
+  a `prefix` of its own: it names the keys and what is remembered split.
 - **A section's tools**: `CanvasToolTiles`, with the settings of the one in
   hand under them.
 - **Something to do**: `CanvasTextButton` for an action said in words;
@@ -125,24 +126,48 @@ All from `ui/controls.dart`, which says what each is for.
 
 Do not build any of this again for an element:
 
-- **Place and size**: `positionGroup` (`settings_shared.dart`), in Layout.
+- **Place and size**: `positionGroup` (`position_group.dart`), in Layout.
+  An element whose place is set by something else hands the frame its own
+  group as `position:`: words riding a line show only their opacity
+  (`opacityField`), and a picture's tools put theirs there.
 - **Looks**: `LooksGroup` (`panel_parts.dart`), in Look, from the model's
   own list of each look's settings.
 - **On a stage**: `stageSpotSettings`.
 - **Motion**: `MotionSummary`, the Arrival and Leaving pickers, and the cue
   card. How a clip moves is set in the Chain, not here.
 - **Presets**: `presetsSection`, in More.
-- **Type**: `type_parts.dart` (`TypeEdit`, `typeFont`, `typeSize`...),
-  wherever words are drawn.
-- **A box** (fill, border, corners, padding): `boxGroup`; **a fill** of a
-  picture or a pattern: `fillBits`.
+- **Type**: `type_parts.dart` (`TypeEdit`, `typeFont`, `typeSize`,
+  `labelType`...), wherever words are drawn. `typeGroups` there is a
+  second, whole set, used by a team and a counter's buttons; new panels
+  build from the pieces.
+- **A box** (fill, border, corners, padding): `boxGroup`
+  (`box_group.dart`); **a fill** of a picture or a pattern: `fillBits`
+  (`fill_controls.dart`).
+
+## Where the shared pieces are
+
+| File | What it holds | Who uses it |
+|---|---|---|
+| `element_panel.dart` | the frame, `elementPanel`, its shell `panelFrame`, and `PanelBit` | every panel |
+| `panel_kit.dart` | the folding sections, the tiles and tool tiles, and the hold | every panel |
+| `panel_parts.dart` | the kit: the quick strip, `panelRow` and `cell`, looks and motion lines, and the small things every panel shares (`SettingsWrite`, `freshOf` for after an await, `valueDot`, `boxed`, `shortNumber`) | every panel |
+| `position_group.dart` | `positionGroup`: place, size, turn, slant, anchor, depth, and what the element does on each page shape | the frame; a picture's tools; words on a line (`opacityField`) |
+| `box_group.dart` | `boxGroup`, and the side and corner fields it is made of | a text's box, a counter's two, a button, a chart's card, audio, video, a picture's frame, sheet music, a Layout's cells |
+| `fill_controls.dart` | `fillBits`: a picture or a pattern as a fill | a text's letters, a box, a shape |
+| `type_parts.dart` | how words are set, a control at a time, and `typeGroups` | wherever words are drawn |
+
+A control only one panel uses lives with that panel: a text's cutting
+pieces and the easing dropdown are in `text_settings_parts.dart`.
 
 ## What a panel remembers
 
 Which sections are open is remembered per kind of element, on disk:
 `section(e, "look", ...)` is kept as `shape.look`, so a shape's Look and a
 chart's Look do not share an answer. A section of your own gets a name of
-its own in the same way (`image.picture.mask`, not `mask`).
+its own in the same way (`image.picture.mask`, not `mask`). The same goes
+for the smaller memories: a box's `remember` name keys its "more" group and
+its split sides (`counterButtonBoxBorder`, not `boxBorder`), so two boxes
+in one panel open and split apart.
 
 ## Standing still during a drag
 

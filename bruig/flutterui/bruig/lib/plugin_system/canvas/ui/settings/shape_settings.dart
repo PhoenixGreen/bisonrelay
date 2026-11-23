@@ -11,7 +11,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/fill_controls.dart';
 
 // shape_settings.dart is a shape's panel (see element_panel.dart): quick
 // strip, Content (shape, points, corners, label, tail) and Look.

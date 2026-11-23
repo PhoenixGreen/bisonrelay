@@ -19,7 +19,6 @@ import 'package:bruig/plugin_system/canvas/ui/picking/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/picking/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/drawing/vector_tool_hint.dart';

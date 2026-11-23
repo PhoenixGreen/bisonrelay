@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
     show typeSummary;
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 
 // button_settings.dart is a button's panel (see element_panel.dart): quick
 // strip, Content (words and action) and Look (type, box, hover colours).
@@ -117,8 +117,7 @@ Widget buttonPanel(
                   e.box, (box) => write(e.copyWith(box: box)), begin, commit,
                   remember: "button",
                   rule: false,
-                  fill: true,
-                  context: context,
+                  fillPickedIn: context,
                   compact: true),
               CanvasControlGroup(
                 label: "Under the pointer",

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 
 import 'support/canvas_app.dart';
 import 'support/canvas_sidebar_host.dart';
+import 'support/kept_lists.dart';
 
 // canvas_text_panel_keys_test.dart is what a text element's settings show,
 // in the real sidebar at the width it opens at, every section open, for
@@ -37,8 +36,9 @@ import 'support/canvas_sidebar_host.dart';
 // is built can be shown to change nothing a person sees. Set TEXT_PANEL to
 // a folder and run this file on the code as it is: each state's lists are
 // written there. Make the change and run it again: a state whose lists
-// differ fails, naming the first difference. Without TEXT_PANEL nothing is
-// kept, so the test is harmless in the whole suite.
+// differ fails, showing both where they part (kept_lists.dart). Without
+// TEXT_PANEL nothing is kept, so the test is harmless in the whole suite.
+// canvas_panel_keys_test.dart keeps the same lists for every other kind.
 
 const _screen = Size(300, 9000);
 
@@ -198,47 +198,6 @@ List<_State> _states() => [
       ),
     ];
 
-/// _keyOf is [key] as a string that is the same from run to run: a key
-/// made fresh each time (a GlobalKey, a UniqueKey) has a number of its own,
-/// which is left out.
-String _keyOf(Key key) =>
-    key.toString().replaceAll(RegExp(r"#[0-9a-f]{5}"), "#");
-
-/// _seen is every key in the sidebar in order, and every piece of text it
-/// shows in order (an icon is a glyph of text too).
-(List<String>, List<String>) _seen(WidgetTester tester) {
-  var keys = <String>[], words = <String>[];
-  void visit(Element el) {
-    var w = el.widget;
-    if (w.key case var k?) keys.add(_keyOf(k));
-    if (w is RichText) words.add(w.text.toPlainText());
-    if (w is EditableText) words.add(w.controller.text);
-    el.visitChildren(visit);
-  }
-
-  tester.element(find.byType(CanvasSidebarHost)).visitChildren(visit);
-  return (keys, words);
-}
-
-/// _kept compares [lines] with those written for [name] under TEXT_PANEL,
-/// or writes them if there are none yet.
-void _kept(String name, String what, List<String> lines) {
-  var dir = Platform.environment["TEXT_PANEL"];
-  if (dir == null || dir.isEmpty) return;
-  Directory(dir).createSync(recursive: true);
-  var file = File("$dir/${name.replaceAll(" ", "_")}.$what.txt");
-  if (!file.existsSync()) {
-    file.writeAsStringSync(lines.join("\n"));
-    return;
-  }
-  var was = file.readAsStringSync().split("\n");
-  for (var i = 0; i < was.length || i < lines.length; i++) {
-    var a = i < was.length ? was[i] : "(none)";
-    var b = i < lines.length ? lines[i] : "(none)";
-    expect(b, a, reason: "$name: $what, line ${i + 1} of ${was.length}");
-  }
-}
-
 void main() {
   // Each state from a panel as a new run has it, so that what the one
   // before opened does not show in the next, whichever run alone.
@@ -267,7 +226,7 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      var (keys, words) = _seen(tester);
+      var (keys, words) = shownUnder(tester, find.byType(CanvasSidebarHost));
       for (var k in state.keys) {
         expect(keys, contains("[<'$k'>]"), reason: "${state.name}: $k");
       }
@@ -275,8 +234,8 @@ void main() {
         expect(words.any((s) => s.contains(w)), isTrue,
             reason: "${state.name}: \"$w\"");
       }
-      _kept(state.name, "keys", keys);
-      _kept(state.name, "words", words);
+      keepOrCompareLines("TEXT_PANEL", state.name, "keys", keys);
+      keepOrCompareLines("TEXT_PANEL", state.name, "words", words);
     });
   }
 }
