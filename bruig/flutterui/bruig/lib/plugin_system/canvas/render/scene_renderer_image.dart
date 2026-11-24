@@ -57,14 +57,18 @@ void _paintImage(
   if (drift != null) {
     var inner = e.box.inner(bounds);
     canvas.save();
-    if (!e.layered || e.clip) canvas.clipRect(inner);
+    // The frame is cut where the picture stands, before the drift moves it:
+    // cut after, a round frame would zoom with the picture and be squared
+    // off by the box (a circle drifting in came out an octagon).
+    if (!e.layered || e.clip) _clipToFrame(canvas, inner, e, drifting: true);
     _applyDrift(canvas, inner, e.animation.loop, drift);
     // Its adjustments moved with it as pixels, not filtered where they
     // land: see adjustSteadily.
     adjustSteadily = true;
   }
   try {
-    _paintImageInside(canvas, bounds, e, images, arrive: arrive);
+    _paintImageInside(canvas, bounds, e, images,
+        arrive: arrive, framed: drift != null);
   } finally {
     adjustSteadily = steady;
   }
@@ -193,9 +197,35 @@ void _throughAdjustments(ui.Canvas canvas, Rect inner, Rect room,
   through(canvas, adjustments.length - 1);
 }
 
+/// _clipToFrame cuts [canvas] to [e]'s frame about [inner]: its shape, its
+/// box's rounded corners, or the box itself -- with room for an outside
+/// outline, except while drifting, where the picture is larger than its box
+/// and would show in that room.
+void _clipToFrame(ui.Canvas canvas, Rect inner, ImageElement e,
+    {bool drifting = false}) {
+  // A frame cuts the picture to a shape -- the same shapes an element can be
+  // drawn as, so anything added there is a frame here for nothing.
+  if (e.frame != null) {
+    canvas
+        .clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
+  } else if (e.box.isRounded) {
+    // The picture's corners follow the box's, pulled in by the padding so a
+    // rounded frame stays concentric with the border drawn round it.
+    canvas.clipRRect(e.box.insetRounded(inner));
+  } else if (drifting) {
+    canvas.clipRect(inner);
+  } else {
+    // Room for an outside outline: a picture filling its box (Cover) has its
+    // edge on the clip. The picture itself stays inside the box.
+    canvas.clipRect(inner.inflate(_outlineRoom(e)));
+  }
+}
+
+/// _paintImageInside draws [e]'s picture in its box; [framed] when the
+/// caller has already cut it to its frame (a drift, cut before it moves).
 void _paintImageInside(
     ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images,
-    {_LayerArrive? arrive}) {
+    {_LayerArrive? arrive, bool framed = false}) {
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
@@ -211,20 +241,7 @@ void _paintImageInside(
   }
 
   canvas.save();
-  // A frame cuts the picture to a shape -- the same shapes an element can be
-  // drawn as, so anything added there is a frame here for nothing.
-  if (e.frame != null) {
-    canvas
-        .clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
-  } else if (e.box.isRounded) {
-    // The picture's corners follow the box's, pulled in by the padding so a
-    // rounded frame stays concentric with the border drawn round it.
-    canvas.clipRRect(e.box.insetRounded(inner));
-  } else {
-    // Room for an outside outline: a picture filling its box (Cover) has its
-    // edge on the clip. The picture itself stays inside the box.
-    canvas.clipRect(inner.inflate(_outlineRoom(e)));
-  }
+  if (!framed) _clipToFrame(canvas, inner, e);
   _paintPicture(canvas, inner, e, image, images);
   canvas.restore();
 }

@@ -11,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/box_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
@@ -162,5 +164,33 @@ void main() {
     var half = _zoom.driftAt(4.5, last: 10)!;
     expect(half, greaterThan(at4));
     expect(half, lessThan(at5));
+  });
+
+  // A round picture drifting in keeps its round frame: the frame is cut
+  // where the picture stands, not zoomed with it (it was, and the box then
+  // squared it off -- Ken's "cropped on all sides as it animates in").
+  group("a drifting picture keeps its frame", () {
+    ImageElement round({ShapeKind? frame, BoxSpec box = const BoxSpec()}) =>
+        ImageElement(const ElementBase(id: "i", width: 100, height: 100),
+            assetId: "red",
+            fit: ImageFit.stretch,
+            frame: frame,
+            box: box,
+            animation: const ElementAnimation(loop: _zoom));
+
+    test("a circle frame", () async {
+      var e = round(frame: ShapeKind.circle);
+      expect(await pixel(e, 10, 50, 50), [255, 0, 0]);
+      // Just outside the circle at its lower right: inside a frame zoomed
+      // twice over, outside the frame as it stands.
+      expect(await pixel(e, 10, 88, 88), isNot([255, 0, 0]));
+      expect(await pixel(e, 10, 12, 12), isNot([255, 0, 0]));
+    });
+
+    test("a box rounded all the way", () async {
+      var e = round(box: const BoxSpec(borderRadius: 50, padding: 0));
+      expect(await pixel(e, 10, 50, 50), [255, 0, 0]);
+      expect(await pixel(e, 10, 88, 88), isNot([255, 0, 0]));
+    });
   });
 }
