@@ -205,6 +205,33 @@ void main() {
         reason: "and how big each one is");
   });
 
+  testWidgets("a colour of any kind: the app's picker beside the swatches",
+      (tester) async {
+    // Ken, 2026-11-24: the card offered seven swatches and nothing else, so
+    // a band in a steel grey could be neither picked nor seen as set.
+    var controller = await bar(tester);
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+    const steel = Color(0xFF2E3742);
+    controller.setSceneTransition(
+        0, controller.document.transitionAfter(0).copyWith(color: steel));
+    await tester.pumpAndSettle();
+    var picker = find.byKey(const ValueKey("transitionColourPicker"));
+    expect(picker, findsOneWidget);
+    var chip = find.descendant(of: picker, matching: find.byType(Container));
+    expect(
+        (tester.widget<Container>(chip.first).decoration as BoxDecoration)
+            .color,
+        steel,
+        reason: "the colour as set shows, though none of the swatches");
+    // It opens the app's colour picker.
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+  });
+
   test("the preview works from the shared canvas, whichever scene was last",
       () {
     // Asked for the join after whatever scene was last open, the button did

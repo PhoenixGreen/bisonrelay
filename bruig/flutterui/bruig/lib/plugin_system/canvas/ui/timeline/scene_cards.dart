@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/components/color_picker.dart' show pickColor;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
@@ -652,6 +653,8 @@ class _ColourCell extends StatelessWidget {
     Color(0xFF9A92EA),
   ];
 
+  bool get _isChoice => _choices.any((c) => c.toARGB32() == colour.toARGB32());
+
   @override
   Widget build(BuildContext context) {
     var s = MixerLook.of(context).studio;
@@ -664,26 +667,76 @@ class _ColourCell extends StatelessWidget {
             child: Text(label,
                 maxLines: 1, style: TextStyle(fontSize: 10, color: s.muted)),
           ),
-          Wrap(spacing: 3, runSpacing: 3, children: [
-            for (var (i, c) in _choices.indexed)
-              InkWell(
-                key: ValueKey("transitionColour-$i"),
-                onTap: () => onChanged(c),
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: c,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color:
-                            c.toARGB32() == colour.toARGB32() ? s.text : s.edge,
-                        width: c.toARGB32() == colour.toARGB32() ? 2 : 1),
+          Wrap(
+              spacing: 3,
+              runSpacing: 3,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (var (i, c) in _choices.indexed)
+                  InkWell(
+                    key: ValueKey("transitionColour-$i"),
+                    onTap: () => onChanged(c),
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: c.toARGB32() == colour.toARGB32()
+                                ? s.text
+                                : s.edge,
+                            width: c.toARGB32() == colour.toARGB32() ? 2 : 1),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-          ]),
+                // Any colour: the picker every other colour setting opens. Its
+                // chip is the colour as set where none of the swatches is, picked
+                // as they are; else a palette mark.
+                _AnyColour(
+                    colour: colour, chosen: !_isChoice, onChanged: onChanged),
+              ]),
         ]);
+  }
+}
+
+/// _AnyColour is the transition card's way to any colour: a chip the size
+/// of its swatches that opens the app's colour picker.
+class _AnyColour extends StatelessWidget {
+  final Color colour;
+
+  /// chosen is the set colour being none of the swatches: shown, and marked
+  /// as the one picked.
+  final bool chosen;
+  final ValueChanged<Color> onChanged;
+  const _AnyColour(
+      {required this.colour, required this.chosen, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    var s = MixerLook.of(context).studio;
+    return InkWell(
+      key: const ValueKey("transitionColourPicker"),
+      onTap: () async {
+        var picked =
+            await pickColor(context, initial: colour, allowAlpha: false);
+        if (picked != null) onChanged(picked);
+      },
+      child: Container(
+        width: 16,
+        height: 16,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: chosen ? colour : null,
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: chosen ? s.text : s.edge, width: chosen ? 2 : 1),
+        ),
+        child: chosen
+            ? null
+            : Icon(Icons.palette_outlined, size: 11, color: s.muted),
+      ),
+    );
   }
 }
 
