@@ -205,7 +205,20 @@ void paintTextItems(
       continue;
     }
 
-    paintBox(canvas, rect, item.box, images);
+    // Not yet arrived, nothing of it; arriving, its box and picture fade in
+    // with its share of the arrival (its words come by the arrival itself).
+    // A box and a picture have no letters to bring in, and stood there
+    // whole from the arrival's first frame.
+    if (animation != null && animation.on && mine <= 0) continue;
+    var fading = animation != null && animation.on && mine < 1;
+    void faded(ui.Canvas on, void Function() draw) {
+      if (!fading) return draw();
+      on.saveLayer(null, Paint()..color = Color.fromRGBO(255, 255, 255, mine));
+      draw();
+      on.restore();
+    }
+
+    faded(canvas, () => paintBox(canvas, rect, item.box, images));
     var inner = item.box.inner(rect);
     if (inner.width <= 0 || inner.height <= 0) continue;
     // Its words are in the editor's field: the box stays, under them.
@@ -216,7 +229,8 @@ void paintTextItems(
     void drawn(ui.Canvas canvas) {
       if (icon != null) {
         // Its box, tint, outline and underline: see paintTextIcon.
-        paintTextIcon(canvas, inner, icon, images, item.spec);
+        faded(canvas,
+            () => paintTextIcon(canvas, inner, icon, images, item.spec));
         return;
       }
       // The slot decides how the words sit, not the item's alignment: a

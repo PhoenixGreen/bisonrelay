@@ -19,14 +19,33 @@ void _paintText(
   // The extra pieces of writing, over the paragraph in the same box: out
   // here because the body returns from many places. Not on a line (no box).
   if (!e.showsPiecesIn(doc)) return;
+  if (_waitingToArrive(e, pose, e.drawnParts, frame)) return;
   var (animation, reveal) = _arrival(e, pose);
-  paintTextItems(canvas, bounds, e,
-      doc: doc,
-      animation: animation,
-      reveal: reveal,
-      images: images,
-      skip: skipItem,
-      onLayer: onLayer);
+  _leavingWith(canvas, e, pose, () {
+    paintTextItems(canvas, bounds, e,
+        doc: doc,
+        animation: animation,
+        reveal: reveal,
+        images: images,
+        skip: skipItem,
+        onLayer: onLayer);
+  });
+}
+
+/// _leavingWith draws [draw] -- a text's box or its pieces -- fading as the
+/// text leaves by its own leaving preset. The words go by that preset; a box
+/// and a picture piece have no letters to take away, and were left standing
+/// on the page after the words had gone (a ring and its icon still there
+/// in the next part of the scene).
+void _leavingWith(
+    ui.Canvas canvas, TextElement e, Keyframe pose, void Function() draw) {
+  var close = (pose.values[KeyframeChannel.close] ?? 0).clamp(0.0, 1.0);
+  if (close <= 0 || !e.animation.closes) return draw();
+  if (close >= 1) return;
+  canvas.saveLayer(
+      null, Paint()..color = Color.fromRGBO(255, 255, 255, 1 - close));
+  draw();
+  canvas.restore();
 }
 
 void _paintTextBody(
@@ -75,7 +94,7 @@ void _paintTextBody(
 
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) {
-    if (!_waitingToArrive(e, pose, e.drawnParts)) {
+    if (!_waitingToArrive(e, pose, e.drawnParts, frame)) {
       paintBox(canvas, bounds, e.box, images);
     }
     return;
@@ -85,7 +104,7 @@ void _paintTextBody(
   // piece, so they stack with the pieces. See TextElement.slot.
   inner = textBodyRect(e, bounds, doc: doc) ?? inner;
   if (inner.width <= 0 || inner.height <= 0) {
-    if (!_waitingToArrive(e, pose, e.drawnParts)) {
+    if (!_waitingToArrive(e, pose, e.drawnParts, frame)) {
       paintBox(canvas, bounds, e.box, images);
     }
     return;
@@ -109,8 +128,8 @@ void _paintTextBody(
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
   // Nothing yet, its box included, so a slab or bubble does not stand empty
   // waiting for its words from the start of the scene. See _waitingToArrive.
-  if (_waitingToArrive(e, pose, drawn)) return;
-  paintBox(canvas, bounds, e.box, images);
+  if (_waitingToArrive(e, pose, drawn, frame)) return;
+  _leavingWith(canvas, e, pose, () => paintBox(canvas, bounds, e.box, images));
 
   // The words, and what is drawn with them -- after the box, which is not
   // theirs: see MotionDevice.layer.
@@ -222,12 +241,20 @@ void _paintWrappedWords(ui.Canvas canvas, TextElement e, String words,
 /// frame, and so shows nothing yet -- unless it is a mark drawn on words
 /// already there (an underline under a finished sentence), or one of its
 /// [parts] arrives on its own account and this frame may be its moment.
-bool _waitingToArrive(TextElement e, Keyframe pose, List<TextPart> parts) {
+bool _waitingToArrive(
+    TextElement e, Keyframe pose, List<TextPart> parts, int frame) {
   var (animation, reveal) = _arrival(e, pose);
-  return animation.on &&
-      reveal <= 0 &&
-      !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
-      !partsAnimate(parts);
+  if (!animation.on ||
+      reveal > 0 ||
+      (animation.keeps && animation.draw.start == TextDrawStart.showText)) {
+    return false;
+  }
+  // Parts with timings of their own may come before the element's arrival
+  // (a negative offset), so the box shows for one that has started -- but
+  // not for one still to come, or a label held back a second showed its
+  // box (a badge's ring, a panel) from the start of the scene.
+  if (!partsAnimate(parts)) return true;
+  return _partTimings(e, frame, pose).every((t) => t.words <= 0);
 }
 
 /// _partTimings is where each of [e]'s parts has got on [frame], measured
