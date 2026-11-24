@@ -672,8 +672,7 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
   }
 
   // One colour matrix for the preset and both sliders, not a layer each.
-  var matrix = combineMatrices(
-      presetMatrix(filter), colorMatrix(saturation, brightness));
+  var matrix = lookMatrix(filter, saturation, brightness);
   if (matrix != null) paint.colorFilter = ColorFilter.matrix(matrix);
   canvas.drawImageRect(image, src, dst, paint);
 

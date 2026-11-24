@@ -74,8 +74,7 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
       var image = images?.resolve(fill.assetId, const BackgroundRemoval());
       if (image != null) {
         // A picture element's look and two sliders as one matrix (image_look).
-        var matrix = combineMatrices(presetMatrix(fill.filter),
-            colorMatrix(fill.saturation, fill.brightness));
+        var matrix = lookMatrix(fill.filter, fill.saturation, fill.brightness);
         _paintFillImage(canvas, reach, frame, image, fill.tile,
             matrix == null ? null : ColorFilter.matrix(matrix));
 

@@ -69,6 +69,16 @@ List<double>? presetMatrix(ImageFilterPreset filter) {
   }
 }
 
+/// lookMatrix is a picture's whole look as one colour matrix, or null: its
+/// saturation and brightness first, as a photo is exposed, then the named
+/// look laid on the result. The other way round, brightness came after the
+/// look and multiplied its offsets too: noir (grey, contrast about the
+/// middle) took a dark photo to black, and raising brightness only deepened
+/// the contrast, so a dark picture could not be lifted into noir (Ken,
+/// 2026-11-24: the Vault door at brightness 3 still near black).
+List<double>? lookMatrix(ImageFilterPreset filter, double sat, double bri) =>
+    combineMatrices(colorMatrix(sat, bri), presetMatrix(filter));
+
 /// combineMatrices multiplies two 4x5 colour matrices, [a] first. Null is no
 /// change, in and out, so an untouched picture gets no filter at all.
 List<double>? combineMatrices(List<double>? a, List<double>? b) {
