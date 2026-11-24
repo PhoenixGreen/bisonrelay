@@ -12,17 +12,21 @@ import 'package:flutter/material.dart';
 // its contents, so both elements share the one file.
 
 /// showRecentPictures opens the picker and returns the chosen picture's id,
-/// or null. [drawings] shows the Library's drawings instead of its pictures.
+/// or null. [drawings] shows the Library's drawings instead of its pictures;
+/// [both] offers the two, side by side under a switch, for what can show
+/// either (a text's picture piece draws a vector as well as a picture).
 Future<String?> showRecentPictures(BuildContext context,
-        {bool drawings = false}) =>
+        {bool drawings = false, bool both = false}) =>
     showDialog<String>(
       context: context,
-      builder: (context) => _RecentPicturesDialog(drawings: drawings),
+      builder: (context) =>
+          _RecentPicturesDialog(drawings: drawings, both: both),
     );
 
 class _RecentPicturesDialog extends StatefulWidget {
   final bool drawings;
-  const _RecentPicturesDialog({required this.drawings});
+  final bool both;
+  const _RecentPicturesDialog({required this.drawings, this.both = false});
 
   @override
   State<_RecentPicturesDialog> createState() => _RecentPicturesDialogState();
@@ -33,14 +37,30 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
   /// being read.
   List<LibraryAsset>? _assets;
 
+  /// _drawings is which of the two shows: as asked, or as switched to.
+  late bool _drawings = widget.drawings;
+
   @override
   void initState() {
     super.initState();
-    CanvasLibrary.list(
-            kind: widget.drawings ? AssetKind.vector : AssetKind.picture)
+    _read();
+  }
+
+  void _read() {
+    var drawings = _drawings;
+    CanvasLibrary.list(kind: drawings ? AssetKind.vector : AssetKind.picture)
         .then((assets) {
-      if (mounted) setState(() => _assets = assets);
+      if (mounted && drawings == _drawings) setState(() => _assets = assets);
     });
+  }
+
+  void _show(bool drawings) {
+    if (drawings == _drawings) return;
+    setState(() {
+      _drawings = drawings;
+      _assets = null;
+    });
+    _read();
   }
 
   @override
@@ -48,10 +68,24 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
     var theme = ThemeNotifier.of(context);
     var assets = _assets;
 
+    var drawings = _drawings;
     return AlertDialog(
-      title: Txt.L(widget.drawings
-          ? "Drawings you have added"
-          : "Pictures you have added"),
+      title: widget.both
+          ? Row(children: [
+              const Expanded(child: Txt.L("Added to the Library")),
+              SegmentedButton<bool>(
+                key: const ValueKey("recentPicturesKind"),
+                segments: const [
+                  ButtonSegment(value: false, label: Text("Pictures")),
+                  ButtonSegment(value: true, label: Text("Vectors")),
+                ],
+                selected: {drawings},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => _show(s.first),
+              ),
+            ])
+          : Txt.L(
+              drawings ? "Drawings you have added" : "Pictures you have added"),
       content: SizedBox(
         width: 520,
         height: 360,
@@ -59,7 +93,7 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
             ? const Center(child: CircularProgressIndicator())
             : assets.isEmpty
                 ? Center(
-                    child: Txt.S(widget.drawings
+                    child: Txt.S(drawings
                         ? "No drawings yet. Add one and it will be here for "
                             "the next canvas."
                         : "No pictures yet. Add one and it will be here for "

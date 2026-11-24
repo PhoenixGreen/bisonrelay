@@ -367,9 +367,11 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
       CanvasIconButton(
         key: ValueKey("textItemLibrary$at"),
         icon: Icons.photo_library_outlined,
-        tooltip: "Use a picture you have already added",
+        tooltip: "Use a picture or vector you have already added",
         onPressed: () async {
-          var id = await showRecentPictures(context);
+          // Pictures or vectors: a piece draws either (Ken: the vectors
+          // were not offered).
+          var id = await showRecentPictures(context, both: true);
           if (id != null) now(icon.copyWith(assetId: id));
         },
       ),

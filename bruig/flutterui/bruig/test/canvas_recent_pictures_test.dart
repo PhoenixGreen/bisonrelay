@@ -70,14 +70,14 @@ void main() {
   /// open shows the dialog, asking for drawings or pictures, and returns
   /// what it will answer with.
   Future<Future<String?>> open(WidgetTester tester,
-      {bool drawings = false}) async {
+      {bool drawings = false, bool both = false}) async {
     setTestScreen(tester, const Size(1000, 800));
     late BuildContext context;
     await tester.pumpWidget(canvasApp(Builder(builder: (c) {
       context = c;
       return const SizedBox();
     })));
-    var chosen = showRecentPictures(context, drawings: drawings);
+    var chosen = showRecentPictures(context, drawings: drawings, both: both);
     await idle(tester);
     return chosen;
   }
@@ -103,6 +103,24 @@ void main() {
     expect(find.byKey(ValueKey(listedDrawing)), findsOneWidget);
     expect(find.byKey(ValueKey(strayDrawing)), findsNothing);
     expect(find.text("Logo"), findsOneWidget);
+    expect(find.byKey(ValueKey(listed)), findsNothing);
+
+    await tester.tap(find.byKey(ValueKey(listedDrawing)));
+    await idle(tester);
+    expect(await chosen, listedDrawing);
+  });
+
+  testWidgets("both: pictures first, the vectors a switch away",
+      (tester) async {
+    // Ken, 2026-11-24: a text's picture piece draws a vector as well as a
+    // picture, but only the pictures were offered.
+    var chosen = await open(tester, both: true);
+    expect(find.byKey(ValueKey(listed)), findsOneWidget);
+    expect(find.byKey(ValueKey(listedDrawing)), findsNothing);
+    await tester.tap(find.text("Vectors"));
+    await idle(tester);
+    expect(find.byKey(ValueKey(listedDrawing)), findsOneWidget);
+    expect(find.byKey(ValueKey(strayDrawing)), findsNothing);
     expect(find.byKey(ValueKey(listed)), findsNothing);
 
     await tester.tap(find.byKey(ValueKey(listedDrawing)));
