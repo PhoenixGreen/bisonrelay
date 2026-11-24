@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 // over them is see-through: only its caret and selection show, so opening it
 // changes nothing on the page (showWords false). That needs the field to lay
 // the words out exactly as the painter does: the same style (textStyleOf),
+// none of the app's text scaling,
 // each part styled as the painter styles it (partStyle), the same width to
 // wrap in, and room on the right for the caret, which a TextField keeps out
 // of the width it wraps in (_caretRoom).
@@ -254,6 +255,14 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
         onChanged: widget.onChanged,
       ),
     );
+
+    // Not the app's text size: the field lays its words over the canvas's,
+    // which are drawn at their own size whatever the reader's setting. With
+    // the app's text made larger the field's words were larger than the
+    // ones drawn, so a click picked letters off to one side and the
+    // selection sat low -- worst down a paragraph (Ken, 2026-11-24: a
+    // double-click on "under" in Absolute Beginners Piano).
+    field = MediaQuery.withNoTextScaling(child: field);
 
     field = Shortcuts(
       shortcuts: const {
