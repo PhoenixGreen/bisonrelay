@@ -29,14 +29,10 @@ class _SceneSoundDevice extends StatelessWidget {
     var doc = c.document;
     var skin = DeviceSkin.studio(theme.studio);
     var index = doc.at;
-    var name = doc.scene.name.isEmpty
-        ? "${doc.kind.one} ${index + 1}"
-        : doc.scene.name;
-    // What the scene's bus sums: its own channels, and the transitions'.
+    // What the Scenes strip sums: the transitions' sounds, the whole canvas's.
     var rows = <(String, String)>[
       for (var ch in c.timelineChannels)
-        if (ch.lanes.any((l) =>
-            l.scene >= 0 || l.element.id.startsWith(transitionSoundPrefix)))
+        if (ch.lanes.any((l) => l.element.id.startsWith(transitionSoundPrefix)))
           (ch.key, ch.name),
     ];
     var last = index >= doc.allScenes.length - 1;
@@ -44,10 +40,13 @@ class _SceneSoundDevice extends StatelessWidget {
     var sound = after != null && after.on && after.sound.isNotEmpty;
     return DeviceFrame(
       id: "sceneSound",
-      title: "Scene sound",
-      help: "Everything heard in this ${doc.kind.one} -- its channels, its "
-          "elements' sounds and its transition's -- summed into its bus, "
-          "through its devices and on to the master.",
+      title:
+          "${doc.kind.many[0].toUpperCase()}${doc.kind.many.substring(1)} sound",
+      help: "The transitions' sounds, every ${doc.kind.one}'s, summed into "
+          "the one ${doc.kind.many} strip, through its devices and on to the "
+          "master. A sound placed in a ${doc.kind.one} goes through its own "
+          "channel instead. The knob is this ${doc.kind.one}'s own "
+          "transition.",
       skin: skin,
       folded: folded,
       onFold: onFold,
@@ -95,7 +94,7 @@ class _SceneSoundDevice extends StatelessWidget {
         key: const ValueKey("sceneSoundScreen"),
         painter: _SumScreen([
           for (var (k, n) in rows) (n, (levels[k] ?? (-90.0, -90.0)).$1),
-        ], "everything in $name, summed", theme.studio),
+        ], "every transition, summed", theme.studio),
         child: const SizedBox.expand(),
       ),
     );

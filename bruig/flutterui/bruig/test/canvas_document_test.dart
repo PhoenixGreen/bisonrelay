@@ -10,7 +10,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
@@ -41,7 +40,9 @@ void main() {
     expect(back!.elements.length, ElementKind.values.length);
     // Except a stage and parallax, which are kinds of background: asked
     // for, each is a Background element showing it, and reads back as one.
-    expect([for (var e in back.elements) e.kind], [
+    expect([
+      for (var e in back.elements) e.kind
+    ], [
       for (var k in ElementKind.values)
         k == ElementKind.stage || k == ElementKind.parallax
             ? ElementKind.background
@@ -397,7 +398,8 @@ void main() {
   // A received canvas is read with no more than a canvas could hold: a
   // million shapes, or ten million characters, drawn every frame, froze the
   // app (security review, 2026-11-17).
-  test("a canvas is read with no more elements, scenes or words than any "
+  test(
+      "a canvas is read with no more elements, scenes or words than any "
       "canvas has", () {
     var doc = CanvasDocument.fromJson({
       "elements": [
@@ -405,7 +407,9 @@ void main() {
           {"kind": "shape", "id": "s$i", "width": 10, "height": 10},
         {"kind": "text", "id": "t", "text": "x" * (maxTextLength + 10)},
       ],
-      "scenes": [for (var i = 0; i < maxScenes + 5; i++) {"id": "sc$i"}],
+      "scenes": [
+        for (var i = 0; i < maxScenes + 5; i++) {"id": "sc$i"}
+      ],
     });
     expect(doc.allScenes.length, lessThanOrEqualTo(maxScenes + 1));
     var first = CanvasDocument.fromJson({
@@ -414,7 +418,8 @@ void main() {
       ],
     });
     expect((first.elements.single as TextElement).text.length, maxTextLength);
-    expect(doc.goToScene(0).elements.length, lessThanOrEqualTo(maxSceneElements));
+    expect(
+        doc.goToScene(0).elements.length, lessThanOrEqualTo(maxSceneElements));
   });
 
   group("a document of one scene", () {
@@ -439,7 +444,6 @@ void main() {
           transition: SceneTransition.bestFor(SceneTransitionKind.fade),
           cover: PageCover.front,
           camera: const SceneCamera(toZoom: 2),
-          bus: const ChannelMix(gainDb: -6),
         );
 
     test("every setting its scene has survives a save", () {

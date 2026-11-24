@@ -421,9 +421,9 @@ extension CanvasMixing on CanvasController {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
-  /// sceneBus is the shown scene's bus (CanvasScene.bus), which every sound
-  /// in it goes through on its way to the master.
-  ChannelMix get sceneBus => _document.scene.bus;
+  /// sceneBus is the Scenes strip (CanvasDocument.scenesBus): the
+  /// transitions' sounds, for the whole canvas, on their way to the master.
+  ChannelMix get sceneBus => _document.scenesBus;
 
   /// writeStripPart sets strip [owner]'s own EQ, compressor or Ducker (the
   /// master's via mixerMasterKey, the scene bus's, a return's or a
@@ -447,9 +447,8 @@ extension CanvasMixing on CanvasController {
     endInteraction();
   }
 
-  void setSceneBus(ChannelMix bus, {bool transient = false}) => apply(
-      _document.withScene(_document.at, _document.scene.copyWith(bus: bus)),
-      transient: transient);
+  void setSceneBus(ChannelMix bus, {bool transient = false}) =>
+      apply(_document.copyWith(scenesBus: bus), transient: transient);
 
   ReturnChannel? returnOf(String? id) =>
       _document.returns.where((r) => r.id == id).firstOrNull;
@@ -693,14 +692,14 @@ extension CanvasMixing on CanvasController {
     // sound on the channel, as it plays now (lanes' settings in, except
     // those held by hand).
     var strips = <String, ChannelMix>{};
-    // The channels heard through the scene's bus: those whose first sound
-    // (whose strip it is) is in a scene or a transition; not the master's.
+    // The channels heard through the Scenes strip: the transitions'. A sound
+    // placed in a scene goes through its own channel to the master, as the
+    // master's do.
     var inScene = <String>{};
     var now = automationNow;
     for (var lane in lanes) {
       if (!strips.containsKey(lane.channelKey) &&
-          (lane.scene >= 0 ||
-              lane.element.id.startsWith(transitionSoundPrefix))) {
+          lane.element.id.startsWith(transitionSoundPrefix)) {
         inScene.add(lane.channelKey);
       }
       strips.putIfAbsent(lane.channelKey, () {

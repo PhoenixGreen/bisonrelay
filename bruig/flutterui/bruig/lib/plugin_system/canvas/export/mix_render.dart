@@ -63,8 +63,8 @@ Future<bool> _render(
   var strips = <String, ChannelMix>{};
   var places = <String, List<(double, Heard)>>{};
   var clocks = <String, double>{};
-  // The channels heard through the scenes' buses: those whose first sound
-  // (whose strip it is) is a scene's.
+  // The channels heard through the Scenes strip: those whose first sound
+  // (whose strip it is) is a transition's.
   var inScene = <String>{};
   var decodedAny = false;
   // A muted channel a vocoder, a gate or a compressor listens to is still
@@ -166,7 +166,7 @@ void _pass(
     for (var e in places.entries) {
       graph.setPlacement(e.key, heardOn(e.value, middle));
     }
-    // The bus of the scene playing; between scenes, the master.
+    // The Scenes strip, over the whole run (see sceneBuses).
     var (buses, inScene) = scenes;
     var bus = buses
         .where((b) => b.from <= middle && middle < b.until)

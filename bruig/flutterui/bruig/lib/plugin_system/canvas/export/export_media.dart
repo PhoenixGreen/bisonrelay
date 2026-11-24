@@ -53,8 +53,8 @@ class ExportSound {
   /// (seconds into the export, where), in order. See SoundPlacement.
   final List<(double, Heard)> place;
 
-  /// inScene is whether it is a scene's sound (own, backdrop's, transition's)
-  /// heard through the scene's bus (sceneBuses), not straight to the master.
+  /// inScene is whether it is a transition's sound, heard through the Scenes
+  /// strip (sceneBuses), not straight to the master.
   final bool inScene;
 
   /// clock is the seconds into the export its channel's timeline counts from
@@ -98,7 +98,7 @@ class _Placed {
   /// transition: where a placed sound finds its stage.
   final int? scene;
 
-  /// inScene is whether it is heard through its scene's bus.
+  /// inScene is whether it is heard through the Scenes strip.
   final bool inScene;
 
   _Placed(this.element, this.start, this.until,
@@ -162,13 +162,13 @@ class ExportMedia {
       var from = document.hasScenes ? document.startOfScene(i) : 0;
       var until = math.min(run, from + scenes[i].frames);
       for (var e in scenes[i].elements) {
-        if (_timed(e)) placed.add(_Placed(e, from, until, i, true));
+        if (_timed(e)) placed.add(_Placed(e, from, until, i));
       }
       // A scene's backdrop is its own, unless the master's covers it, which
       // is placed once, below, against the whole run.
       if (master?.sharedBackground == null) {
         for (var e in document.backgroundOf(i).media) {
-          if (_timed(e)) placed.add(_Placed(e, from, until, null, true));
+          if (_timed(e)) placed.add(_Placed(e, from, until));
         }
       }
     }
@@ -177,7 +177,8 @@ class ExportMedia {
         if (_timed(e)) placed.add(_Placed(e, 0, run));
       }
     }
-    // What the transitions carry (CanvasDocument.transitionSounds).
+    // What the transitions carry (CanvasDocument.transitionSounds): the
+    // Scenes strip's, the only sounds heard through it.
     for (var e in document.transitionSounds) {
       placed.add(_Placed(e, 0, run, null, true));
     }
@@ -418,22 +419,21 @@ class ExportMedia {
   }
 }
 
-/// SceneBus is a scene's bus over the seconds of the run it plays for.
+/// SceneBus is the Scenes strip over the seconds of the run it plays for.
 typedef SceneBus = ({double from, double until, ChannelMix bus});
 
-/// sceneBuses is each scene's bus where it plays in [document]'s run, for
-/// the sounds heard through it (see ExportSound.inScene).
+/// sceneBuses is the Scenes strip (CanvasDocument.scenesBus) over the whole
+/// of [document]'s run, for the transitions' sounds heard through it (see
+/// ExportSound.inScene): one strip, as the editor plays it.
 List<SceneBus> sceneBuses(CanvasDocument document) {
   var rate = (document.frameRate <= 0 ? 1 : document.frameRate).toDouble();
-  var scenes = document.allScenes;
+  var bus = document.scenesBus;
   return [
-    for (var (i, s) in scenes.indexed)
-      if (document.hasScenes ? document.startOfScene(i) : 0 case var from)
-        (
-          from: from / rate,
-          until: (from + s.frames) / rate,
-          bus: s.bus.copyWith(devices: document.synced(s.bus.devices)),
-        ),
+    (
+      from: 0,
+      until: math.max(1, document.playFrames) / rate,
+      bus: bus.copyWith(devices: document.synced(bus.devices)),
+    ),
   ];
 }
 

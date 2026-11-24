@@ -162,10 +162,10 @@ class _ReturnStrip extends StatelessWidget {
   }
 }
 
-/// _SceneStrip is the bus of the scene shown (see CanvasScene.bus): every
-/// sound in the scene (its channels, backdrop, transition) sums into it on
-/// its way to the master; the master's own sounds go straight there. Its
-/// devices, EQ and compressor in chain order, its pan and its fader.
+/// _SceneStrip is the Scenes strip (CanvasDocument.scenesBus), one for the
+/// whole canvas: the transitions' sounds sum into it on their way to the
+/// master; every other sound goes through its own channel. Its devices, EQ
+/// and compressor in chain order, its pan and its fader.
 class _SceneStrip extends StatelessWidget {
   final String name;
   final ChannelMix mix;

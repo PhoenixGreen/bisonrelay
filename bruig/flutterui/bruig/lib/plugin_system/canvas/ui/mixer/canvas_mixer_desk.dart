@@ -501,9 +501,8 @@ extension _MixerDesk on _CanvasMixerState {
                                 theme: theme,
                                 narrow: controller.narrowStrips
                                     .contains(sceneBusKey)),
-                            name: controller.document.scene.saysAt(
-                                controller.document.at,
-                                controller.document.kind),
+                            // One strip for every scene, named for them all.
+                            name: _capital(controller.document.kind.many),
                             mix: controller.sceneBus,
                             chain: controller.chainOf(sceneBusKey),
                             meter: _Meter(_board, sceneBusKey),
@@ -750,3 +749,7 @@ extension _MixerDesk on _CanvasMixerState {
         onSelect: () => controller.pickStrip(ret.id),
       );
 }
+
+/// _capital is [s] with its first letter a capital: a strip's name.
+String _capital(String s) =>
+    s.isEmpty ? s : "${s[0].toUpperCase()}${s.substring(1)}";

@@ -4,7 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/element_reading.dart';
-import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/model/scene_camera.dart';
 import 'package:bruig/plugin_system/canvas/model/scene_transition.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
@@ -92,10 +91,9 @@ class CanvasScene {
   /// lands where it looks.
   final SceneCamera? camera;
 
-  /// bus is the scene's own strip: everything heard in the scene sums into
-  /// it, through its devices and fader, on the way to the master. The
-  /// master's own sounds go straight to the master. As made, it is neutral.
-  final ChannelMix bus;
+  // No strip of its own: the scenes' sound is one strip for the whole
+  // canvas (CanvasDocument.scenesBus). A "bus" an older file kept here is
+  // read into that.
 
   const CanvasScene({
     required this.id,
@@ -114,7 +112,6 @@ class CanvasScene {
     this.transition,
     this.cover = PageCover.none,
     this.camera,
-    this.bus = const ChannelMix(),
   });
 
   /// _defaults is one as made: what a saved one means by leaving a
@@ -155,7 +152,6 @@ class CanvasScene {
     PageCover? cover,
     SceneCamera? camera,
     bool clearCamera = false,
-    ChannelMix? bus,
   }) =>
       CanvasScene(
         id: id ?? this.id,
@@ -174,7 +170,6 @@ class CanvasScene {
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
         camera: clearCamera ? null : (camera ?? this.camera),
-        bus: bus ?? this.bus,
       );
 
   /// mapColours maps the scene's elements, its own backdrop (hidden while
@@ -207,7 +202,6 @@ class CanvasScene {
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
         if (camera != null) "camera": camera!.toJson(),
-        if (!bus.isDefault) "bus": bus.toJson(),
       };
 
   factory CanvasScene.fromJson(Map<String, dynamic> json) {
@@ -244,7 +238,6 @@ class CanvasScene {
       transition: jsonSpec(json["transition"], SceneTransition.fromJson, null),
       cover: PageCover.fromName(jsonStr(json["cover"])),
       camera: SceneCamera.fromJson(json["camera"]),
-      bus: jsonSpec(json["bus"], ChannelMix.fromJson, _defaults.bus),
     );
   }
 }

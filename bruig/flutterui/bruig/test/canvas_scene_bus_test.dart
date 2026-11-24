@@ -29,10 +29,12 @@ import 'package:path/path.dart' as path;
 
 import 'support/canvas_audio_fake.dart';
 
-// canvas_scene_bus_test.dart is a scene as a bus: everything heard in a
-// scene -- its channels, its backdrop's, its transition's -- summed through
-// the scene's own strip on its way to the master, while the master's own
-// sounds go straight there; each sound still heard from where it is.
+// canvas_scene_bus_test.dart is the Scenes strip: the scenes' own sound --
+// the transitions' -- summed through one strip for the whole canvas on its
+// way to the master, while every other sound goes through its own channel;
+// each sound still heard from where it is. Each scene had a bus of its own,
+// over everything in it, so a fader moved on one scene left every other
+// transition as it was (Ken, 2026-11-24: one Scenes strip, transitions only).
 
 const int rate = 48000;
 
@@ -174,23 +176,47 @@ void main() {
   });
 
   group("the model", () {
-    test("a scene's bus is kept in the file, and left out at its defaults", () {
-      var s = const CanvasScene(id: "a", bus: ChannelMix(gainDb: -4));
-      expect(CanvasScene.fromJson(s.toJson()).bus.gainDb, -4);
-      expect(const CanvasScene(id: "a").toJson().containsKey("bus"), isFalse);
-      expect(CanvasScene.fromJson(const {"id": "a"}).bus.isDefault, isTrue);
+    const two = [
+      CanvasScene(id: "a", frames: 20),
+      CanvasScene(id: "b", frames: 30),
+    ];
+
+    test("the Scenes strip is the canvas's, kept, and left out at defaults",
+        () {
+      var doc = const CanvasDocument(scenes: two)
+          .copyWith(scenesBus: const ChannelMix(gainDb: -4));
+      var back = CanvasDocument.fromJson(doc.toJson());
+      expect(back.scenesBus.gainDb, -4);
+      expect(const CanvasDocument(scenes: two).toJson(),
+          isNot(contains("scenesBus")));
+      expect(
+          CanvasDocument.fromJson(const CanvasDocument(scenes: two).toJson())
+              .scenesBus
+              .isDefault,
+          isTrue);
     });
 
-    test("each scene's bus covers where it plays in the run", () {
-      var doc = CanvasDocument(frameRate: 10, scenes: const [
-        CanvasScene(id: "a", frames: 20, bus: ChannelMix(gainDb: -1)),
-        CanvasScene(id: "b", frames: 30, bus: ChannelMix(gainDb: -2)),
-      ]);
+    test("an older file's strip on each scene is read as the one strip", () {
+      // As Ken's own canvas had it: the fader set scene by scene.
+      var json = const CanvasDocument(scenes: two).toJson();
+      (json["scenes"] as List)[1] = {
+        ...(json["scenes"] as List)[1] as Map<String, dynamic>,
+        "bus": {"gain": -21.0},
+      };
+      var back = CanvasDocument.fromJson(json);
+      expect(back.scenesBus.gainDb, -21);
+      expect(back.toJson()["scenes"].toString(), isNot(contains("bus")),
+          reason: "no longer kept on a scene");
+    });
+
+    test("the Scenes strip covers the whole run", () {
+      var doc = CanvasDocument(frameRate: 10, scenes: two)
+          .copyWith(scenesBus: const ChannelMix(gainDb: -1));
       var buses = sceneBuses(doc);
-      expect(buses.length, 2);
-      expect(buses[0].bus.gainDb, -1);
-      expect(buses[1].from, closeTo(doc.startOfScene(1) / 10, 1e-9));
-      expect(buses[1].until, closeTo(buses[1].from + 3, 1e-9));
+      expect(buses.length, 1);
+      expect(buses.single.bus.gainDb, -1);
+      expect(buses.single.from, 0);
+      expect(buses.single.until, closeTo(doc.playFrames / 10, 1e-9));
     });
   });
 
@@ -254,7 +280,7 @@ void main() {
                 timed: true,
                 channel: channel));
 
-    test("the scene's channels go through its bus; the master's do not",
+    test("the transitions go through the Scenes strip; nothing else does",
         () async {
       var engine = FakeEngine({"t": 2});
       var c = CanvasController(
@@ -266,22 +292,27 @@ void main() {
               CanvasScene(
                   id: "a",
                   frames: 20,
-                  bus: const ChannelMix(gainDb: -5),
+                  transition: const SceneTransition(
+                      kind: SceneTransitionKind.fade,
+                      sound: "t",
+                      soundLength: 2),
                   elements: [sound("rain")]),
               const CanvasScene(id: "b", frames: 20),
             ],
-          ),
+          ).copyWith(scenesBus: const ChannelMix(gainDb: -5)),
           audioEngine: engine);
       addTearDown(c.dispose);
       c.togglePlay();
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(engine.sceneChannels, contains("rain"));
+      expect(engine.sceneChannels, contains("transitions"));
+      expect(engine.sceneChannels, isNot(contains("rain")),
+          reason: "a sound in a scene goes through its own channel");
       expect(engine.sceneChannels, isNot(contains("music")));
       expect(engine.sceneBus.gainDb, -5);
       c.togglePlay();
     });
 
-    test("the bus is changed on the scene shown, as one undo step", () {
+    test("the Scenes strip is every scene's, changed as one undo step", () {
       var c = CanvasController(
           CanvasDocument(scenes: const [
             CanvasScene(id: "a"),
@@ -290,8 +321,10 @@ void main() {
           audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       c.setSceneBus(const ChannelMix(gainDb: -3));
-      expect(c.document.scenes[0].bus.gainDb, -3);
-      expect(c.document.scenes[1].bus.isDefault, isTrue);
+      expect(c.document.scenesBus.gainDb, -3);
+      c.goToScene(1);
+      expect(c.sceneBus.gainDb, -3, reason: "the same strip on every scene");
+      c.goToScene(0);
       c.setDevicesOf(sceneBusKey, [const MixDevice(DeviceKind.reverb)]);
       expect(c.devicesOf(sceneBusKey).single.kind, DeviceKind.reverb);
       expect(c.chainOf(sceneBusKey).first, isNot(chainEq),
@@ -450,7 +483,9 @@ void main() {
         expect(tester.takeException(), isNull);
         var strip = find.byKey(const ValueKey("strip-scene"));
         expect(strip, findsOneWidget);
-        expect(find.text("Rain"), findsOneWidget);
+        expect(find.descendant(of: strip, matching: find.text("Scenes")),
+            findsOneWidget,
+            reason: "named for every scene, not the one shown");
         expect(
             tester.getCenter(strip).dx,
             lessThan(tester
@@ -458,9 +493,7 @@ void main() {
                 .dx));
         await tester.tap(find.byKey(const ValueKey("sceneMute")).first);
         await tester.pump(const Duration(milliseconds: 100));
-        expect(c.document.scenes[0].bus.mute, isTrue);
-        expect(c.document.scenes[1].bus.mute, isFalse,
-            reason: "only the scene shown");
+        expect(c.document.scenesBus.mute, isTrue);
         await tester.tap(find.byKey(const ValueKey("sceneEq")));
         await tester.pump(const Duration(milliseconds: 300));
         expect(c.effectsOf, sceneBusKey, reason: "its chain, opened");

@@ -83,6 +83,13 @@ class CanvasDocument {
   /// masterMix is the master strip every sound is summed through.
   final MasterMix masterMix;
 
+  /// scenesBus is the Scenes strip: the scenes' own sound -- the transitions'
+  /// -- summed through one strip on its way to the master, for the whole
+  /// canvas. Each scene had a strip of its own, so a fader moved on one
+  /// scene left every other transition as it was (Ken, 2026-11-24). As made,
+  /// neutral.
+  final ChannelMix scenesBus;
+
   /// audio is tempo, time signature, and how the sound is published.
   final AudioSettings audio;
 
@@ -192,6 +199,7 @@ class CanvasDocument {
     this.kind = CanvasKind.scenes,
     this.pages = const PagesSpec(),
     this.masterMix = const MasterMix(),
+    this.scenesBus = const ChannelMix(),
     this.audio = const AudioSettings(),
     this.returns = defaultReturns,
     this.session = const SessionGrid(),
@@ -782,6 +790,7 @@ class CanvasDocument {
     CanvasKind? kind,
     PagesSpec? pages,
     MasterMix? masterMix,
+    ChannelMix? scenesBus,
     AudioSettings? audio,
     List<ReturnChannel>? returns,
     SessionGrid? session,
@@ -856,6 +865,7 @@ class CanvasDocument {
       kind: kind ?? this.kind,
       pages: pages ?? this.pages,
       masterMix: masterMix ?? this.masterMix,
+      scenesBus: scenesBus ?? this.scenesBus,
       audio: audio ?? this.audio,
       returns: returns ?? this.returns,
       session: session ?? this.session,
@@ -1107,6 +1117,7 @@ class CanvasDocument {
       if (kind != _defaults.kind) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
       if (!masterMix.isDefault) "masterMix": masterMix.toJson(),
+      if (!scenesBus.isDefault) "scenesBus": scenesBus.toJson(),
       if (!audio.isDefault) "audio": audio.toJson(),
       if (!hasCanvas) "noCanvas": true,
       if (!_sameReturns(returns, defaultReturns))
@@ -1160,6 +1171,22 @@ class CanvasDocument {
 
   String encode() => const JsonEncoder.withIndent("  ").convert(toJson());
 
+  /// _olderScenesBus is the strip a file from before scenesBus kept on each
+  /// scene: the first scene's that changed anything, which now stands for
+  /// them all (most were the same strip set scene by scene), or null.
+  static ChannelMix? _olderScenesBus(Map<String, dynamic> json) {
+    var raw = [
+      ...?(json["scenes"] is List ? json["scenes"] as List : null),
+      json["scene"],
+    ];
+    for (var s in raw.take(maxScenes + 1)) {
+      if (s is! Map) continue;
+      var bus = jsonSpec(s["bus"], ChannelMix.fromJson, null);
+      if (bus != null && !bus.isDefault) return bus;
+    }
+    return null;
+  }
+
   factory CanvasDocument.fromJson(Map<String, dynamic> json) {
     var scenes =
         jsonObjects(json["scenes"], CanvasScene.fromJson, most: maxScenes);
@@ -1209,6 +1236,9 @@ class CanvasDocument {
       pages: jsonSpec(json["pages"], PagesSpec.fromJson, _defaults.pages),
       masterMix:
           jsonSpec(json["masterMix"], MasterMix.fromJson, _defaults.masterMix),
+      scenesBus: jsonSpec(json["scenesBus"], ChannelMix.fromJson, null) ??
+          _olderScenesBus(json) ??
+          _defaults.scenesBus,
       audio: AudioSettings.fromJson(json["audio"]),
       hasCanvas: json["noCanvas"] != true,
       returns: json["returns"] is List
