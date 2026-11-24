@@ -655,6 +655,22 @@ extension CanvasPlayback on CanvasController {
   /// run's, or a join's own), rather than looping.
   void _stepRun(int at, int end) {
     var next = at + 1;
+    // Playing every scene, the loop is the brace on the scene showing: round
+    // from its end to its start along the run, as on one scene. It was left
+    // out here, so with every scene playing the Loop button did nothing.
+    // Its end held to where the scene starts giving way, or a loop of the
+    // whole scene would pass into the next before it came round.
+    if (_playbackState.looping && _playAll && _playheadOn is OnRun) {
+      var (:from, :length) = loopRange;
+      var start = _document.startOfScene(_document.at);
+      var scenes = _document.allScenes.length;
+      var gives = _document.at + 1 < scenes
+          ? _document.startOfScene(_document.at + 1)
+          : _document.playFrames;
+      var a = start + from;
+      var b = math.min(start + from + length, gives);
+      if (b > a && at < b && next >= b) next = a;
+    }
     if (next > end) {
       stopPreview();
       return;

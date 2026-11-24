@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -552,6 +553,34 @@ void _playModes() {
       expect(controller.document.at, 1,
           reason: "the second scene, reached by playing into it");
       expect(controller.playing, isTrue);
+    });
+
+    test("with every scene playing, the loop goes round on its scene", () {
+      // Ken, 2026-11-24: the Loop button did nothing while Play ran every
+      // scene: the run's step never looked at the loop.
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", frames: 20),
+        const CanvasScene(id: "b", frames: 20),
+        const CanvasScene(id: "c", frames: 20),
+      ]));
+      addTearDown(controller.dispose);
+      controller.playAll = true;
+      controller.goToScene(1);
+      controller.looping = true;
+      controller.setLoop(5, 6); // frames 5..10 of the second scene
+      controller.frame = 4;
+      controller.play();
+      var seen = <(int, int)>[];
+      for (var i = 0; i < 20; i++) {
+        controller.tickForTest();
+        seen.add((controller.document.at, controller.frame));
+      }
+      expect(seen.map((s) => s.$1).toSet(), {1},
+          reason: "it never plays on into the next scene");
+      expect(seen.map((s) => s.$2).reduce(math.max), 10,
+          reason: "the loop's last frame is the furthest it goes");
+      expect(seen.where((s) => s.$2 == 5).length, greaterThan(1),
+          reason: "and round again from its start");
     });
 
     test("a scene that holds stops the run at its end", () {
