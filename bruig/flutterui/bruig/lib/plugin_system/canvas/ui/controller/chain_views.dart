@@ -18,6 +18,17 @@ extension CanvasChainViews on CanvasController {
   /// Keyframes card's keyframes -- an element's own, or a team player's.
   bool get trackCurvesShown => _trackCurves;
 
+  /// trackCurvesShowing is whether those Curves fill the Motion view now:
+  /// open, and the selected element's keyframes there to curve. Open on one
+  /// element and another picked with none, the chain shows (with Chain lit
+  /// and Keys to shut) rather than an empty Curves with no tab of its own;
+  /// back on one with keyframes, its Curves again.
+  bool get trackCurvesShowing {
+    if (!_trackCurves) return false;
+    var t = keyframeTarget;
+    return t != null && !t.points && t.track.keys.length >= 2;
+  }
+
   /// trackCurvesFrame is the keyframe the Curves opened on, picked there.
   int? get trackCurvesFrame => _trackCurvesFrame;
 

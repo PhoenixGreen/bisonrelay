@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceKind;
@@ -120,66 +122,12 @@ class _ChainPanelState extends State<ChainPanel> {
                             Expanded(
                               // Narrow, its name gives way; switch marks only.
                               child: LayoutBuilder(
-                                  builder: (context, box) => Row(children: [
-                                        // Its name gives way first, to a
-                                        // share, so the filter keeps room.
-                                        ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                                maxWidth: (box.maxWidth * 0.25)
-                                                    .clamp(80.0, 220.0)),
-                                            child: _ChainWho(
-                                                controller: c, look: look)),
-                                        const SizedBox(width: 6),
-                                        _ChainSwitch(
-                                            motion: motion,
-                                            look: look,
-                                            compact: box.maxWidth < 440,
-                                            onChanged: (m) =>
-                                                c.showChain(motion: m)),
-                                        // Its views, then a word on what it
-                                        // shows, in one row, scrolled when
-                                        // there is not the room.
-                                        Expanded(
-                                          child: SingleChildScrollView(
-                                            key: const ValueKey("chainTabs"),
-                                            scrollDirection: Axis.horizontal,
-                                            child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  if (motion)
-                                                    ..._motionTabs(look)
-                                                  else
-                                                    ..._editorTabs(look),
-                                                  if (chainNote(c)
-                                                      case var note?)
-                                                    Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                              left: 10),
-                                                      child: Text(note,
-                                                          key: const ValueKey(
-                                                              "chainNote"),
-                                                          maxLines: 1,
-                                                          style: TextStyle(
-                                                              fontSize: 11,
-                                                              color: look.studio
-                                                                  .muted)),
-                                                    ),
-                                                  if (_chips(look, motion)
-                                                      case var chips
-                                                      when chips.isNotEmpty)
-                                                    Row(
-                                                        key: const ValueKey(
-                                                            "chainChips"),
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: chips),
-                                                ]),
-                                          ),
-                                        ),
-                                      ])),
+                                  builder: (context, box) => _whatAndViews(
+                                      look, motion, box.maxWidth)),
                             ),
-                            ..._sizeControls(look, narrow: bar.maxWidth < 760),
+                            ..._sizeControls(look,
+                                narrow: bar.maxWidth < 760,
+                                tight: bar.maxWidth < 480),
                           ])),
                 ),
               ),
@@ -303,7 +251,10 @@ extension on _ChainPanelState {
         !target.points &&
         target.player == null &&
         target.track.keys.length >= 2;
-    var curvesOn = c.motionCurvesShown || c.trackCurvesShown;
+    // What the view shows, not only what was asked: Curves asked for on an
+    // element with nothing to curve show the chain (see trackCurvesShowing).
+    var curvesOn =
+        (c.motionCurvesShown && clip != null) || c.trackCurvesShowing;
     // A clip's Curves where one is picked or there are no own keyframes.
     void curves() {
       if (e == null) return;
@@ -490,7 +441,58 @@ extension on _ChainPanelState {
   /// _sizeControls are the header's right end: how much each device shows
   /// at this height, the heights to pick from, filling the window, and the
   /// rest behind "more". [narrow] leaves out the devices' size word.
-  List<Widget> _sizeControls(MixerLook look, {bool narrow = false}) {
+  /// _whatAndViews is the header's left: whose chain, Element/Sound/Motion,
+  /// and its views, in [width]. Its name gives way first, to a share; too
+  /// tight for the switch beside the views (a narrow Chain), the name goes
+  /// and the switch scrolls with the views rather than the row running off
+  /// its right (Ken, 2026-11-24: 3.3 pixels over, in 58).
+  Widget _whatAndViews(MixerLook look, bool motion, double width) {
+    var tight = width < 200;
+    var switcher = _ChainSwitch(
+        motion: motion,
+        look: look,
+        compact: width < 440,
+        onChanged: (m) => c.showChain(motion: m));
+    var views = SingleChildScrollView(
+      key: const ValueKey("chainTabs"),
+      scrollDirection: Axis.horizontal,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (tight) ...[switcher, const SizedBox(width: 6)],
+        if (motion) ..._motionTabs(look) else ..._editorTabs(look),
+        if (chainNote(c) case var note?)
+          Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Text(note,
+                key: const ValueKey("chainNote"),
+                maxLines: 1,
+                style: TextStyle(fontSize: 11, color: look.studio.muted)),
+          ),
+        if (_chips(look, motion) case var chips when chips.isNotEmpty)
+          Row(
+              key: const ValueKey("chainChips"),
+              mainAxisSize: MainAxisSize.min,
+              children: chips),
+      ]),
+    );
+    return Row(children: [
+      if (!tight) ...[
+        ConstrainedBox(
+            constraints:
+                BoxConstraints(maxWidth: math.min(220.0, width * 0.25)),
+            child: _ChainWho(controller: c, look: look)),
+        const SizedBox(width: 6),
+        switcher,
+      ],
+      Expanded(child: views),
+    ]);
+  }
+
+  /// _sizeControls are the header's right: the device tier, the heights,
+  /// fill and more. [tight], the heights go (the header's edge still drags
+  /// the panel taller or shorter): they took most of a narrow Chain's
+  /// header.
+  List<Widget> _sizeControls(MixerLook look,
+      {bool narrow = false, bool tight = false}) {
     // The devices' room: the panel less its header and the lane's padding,
     // as the strip's devices are given it.
     var lane = widget.height - ChainPanel.headerHeight - 14;
@@ -521,21 +523,22 @@ extension on _ChainPanelState {
                 key: const ValueKey("chainTier"), style: mono),
           ),
         ),
-      _Segments(
-        look: look,
-        items: [
-          for (var (name, h) in heights)
-            (
-              "chainHeight-$name",
-              name,
-              !c.chainFull && (widget.height - h).abs() < 2,
-              () {
-                c.chainFull = false;
-                widget.onResize(h);
-              }
-            ),
-        ],
-      ),
+      if (!tight)
+        _Segments(
+          look: look,
+          items: [
+            for (var (name, h) in heights)
+              (
+                "chainHeight-$name",
+                name,
+                !c.chainFull && (widget.height - h).abs() < 2,
+                () {
+                  c.chainFull = false;
+                  widget.onResize(h);
+                }
+              ),
+          ],
+        ),
       const SizedBox(width: 4),
       _IconChip(
         id: "chainMax",

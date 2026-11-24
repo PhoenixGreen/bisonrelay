@@ -431,20 +431,24 @@ class _TrackCurvesState extends State<TrackCurves>
       padding: const EdgeInsets.all(10),
       decoration:
           BoxDecoration(border: Border(left: BorderSide(color: s.edge))),
-      child: picked == null || pick == null
-          ? Text(
-              "The Keyframes card says when each keyframe is; here is how "
-              "much, and how it eases to the next. Drag a key sideways to "
-              "move its keyframe, up or down to change that value. "
-              "Double-click a line for a keyframe there; right-click a key "
-              "to put that value back to rest, or Delete to take its "
-              "keyframe away.\n\nPinch or ⌘-scroll to zoom in on time, "
-              "with ⌥ on the values; swipe or drag the background to move; "
-              "double-click the ruler to see it all. Drag the playhead by "
-              "its cap. Handles shapes an ease by hand.",
-              key: const ValueKey("trackCurvesHint"),
-              style: TextStyle(fontSize: 11.5, height: 1.45, color: s.muted))
-          : _inspector(t, pick, picked, lanes, s),
+      // Scrolled where the panel is short (or the app's text large): its
+      // lines stacked past the bottom of a low Curves.
+      child: SingleChildScrollView(
+          child: picked == null || pick == null
+              ? Text(
+                  "The Keyframes card says when each keyframe is; here is how "
+                  "much, and how it eases to the next. Drag a key sideways to "
+                  "move its keyframe, up or down to change that value. "
+                  "Double-click a line for a keyframe there; right-click a key "
+                  "to put that value back to rest, or Delete to take its "
+                  "keyframe away.\n\nPinch or ⌘-scroll to zoom in on time, "
+                  "with ⌥ on the values; swipe or drag the background to move; "
+                  "double-click the ruler to see it all. Drag the playhead by "
+                  "its cap. Handles shapes an ease by hand.",
+                  key: const ValueKey("trackCurvesHint"),
+                  style:
+                      TextStyle(fontSize: 11.5, height: 1.45, color: s.muted))
+              : _inspector(t, pick, picked, lanes, s)),
     );
 
     return Container(
@@ -453,12 +457,20 @@ class _TrackCurvesState extends State<TrackCurves>
       color: s.panel,
       child: Column(children: [
         toolbar,
+        // The values and the inspector at their widths where there is room,
+        // else at shares, the graph keeping the rest: at full width the
+        // two came to 380 pixels, and a narrower Chain ran off its right.
         Expanded(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            list,
-            Expanded(child: graph),
-            inspector,
-          ]),
+          child: LayoutBuilder(builder: (context, box) {
+            var w = box.maxWidth;
+            return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: math.min(170.0, w * 0.26), child: list),
+                  Expanded(child: graph),
+                  SizedBox(width: math.min(210.0, w * 0.3), child: inspector),
+                ]);
+          }),
         ),
       ]),
     );

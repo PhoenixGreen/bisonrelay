@@ -211,6 +211,53 @@ void main() {
     });
   });
 
+  group("a short or narrow Chain", () {
+    // Ken, 2026-11-24: the key's inspector ran 39 pixels off the bottom of
+    // a low Curves, and the Chain's header and the Curves' columns a few
+    // off the right of a narrow one -- at his larger text size the more so;
+    // the header's left was left 58 pixels for a name, a switch and tabs.
+    for (var (w, h) in [
+      (260.0, 130.0),
+      (290.0, 130.0),
+      (320.0, 130.0),
+      (420.0, 130.0),
+      (900.0, 150.0),
+    ]) {
+      for (var ts in [1.0, 1.3]) {
+        testWidgets("${w.toInt()} by ${h.toInt()}, text x$ts: nothing runs off",
+            (tester) async {
+          var c = CanvasController(
+              CanvasDocument(frames: 100, frameRate: 24, elements: [logo()]));
+          addTearDown(c.dispose);
+          c.selectOnly("logo");
+          c.showChain(motion: true);
+          // Opened on a keyframe: the inspector, the tallest of it.
+          c.showTrackCurves(frame: 24);
+          setTestScreen(tester, Size(w, h + 80));
+          await tester.pumpWidget(host(MediaQuery(
+              data: MediaQueryData(
+                  size: Size(w, h + 80), textScaler: TextScaler.linear(ts)),
+              child: SizedBox(
+                  width: w,
+                  height: h + 40,
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => ChainPanel(
+                          controller: c, height: h + 40, onResize: (_) {}))))));
+          await tester.pump();
+          var g =
+              tester.getRect(find.byKey(const ValueKey("trackCurvesGraph")));
+          await tester.tapAt(Offset(g.left + 12 + 24 / 99 * (g.width - 24),
+              g.top + 34 + (1 - 110 / 120) * (g.height - 54)));
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          // The tap's double-tap wait run out.
+          await tester.pump(const Duration(milliseconds: 500));
+        });
+      }
+    }
+  });
+
   group("the Chain's header", () {
     CanvasController camera() {
       var c = CanvasController(
@@ -251,6 +298,45 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(c.trackCurvesShown, isTrue);
       expect(find.byKey(const ValueKey("trackCurves")), findsOneWidget);
+    });
+
+    testWidgets(
+        "an element with nothing to curve shows its chain, Curves left open",
+        (tester) async {
+      // Ken, 2026-11-24: Curves open on one element, then one with no
+      // animation picked -- an empty Curves stayed, its tab gone, Keys
+      // seemingly stuck open over nothing.
+      var c = CanvasController(
+          CanvasDocument(frames: 100, frameRate: 24, elements: [
+            logo(),
+            ShapeElement(const ElementBase(
+                id: "plain", name: "Plain", width: 20, height: 20)),
+          ]),
+          audioEngine: FakeEngine({}));
+      c.selectOnly("logo");
+      c.showChain(motion: true);
+      c.keysShown = true;
+      addTearDown(() => c.keysShown = false);
+      await show(tester, c);
+      c.showTrackCurves(frame: 0);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey("trackCurvesPanel")), findsOneWidget);
+
+      c.selectOnly("plain");
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey("trackCurvesPanel")), findsNothing,
+          reason: "nothing to curve: its chain instead");
+      expect(find.byKey(const ValueKey("keysStrip-plain")), findsOneWidget);
+      // Keys shuts the strip, from the header the chain is showing with.
+      await tester.tap(find.byKey(const ValueKey("chainKeys")));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.keysShown, isFalse);
+      expect(find.byKey(const ValueKey("keysStrip-plain")), findsNothing);
+
+      // Back on the keyed element, its Curves as they were left.
+      c.selectOnly("logo");
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey("trackCurvesPanel")), findsOneWidget);
     });
 
     testWidgets("Keys, from the Curves, goes back with the keys showing",

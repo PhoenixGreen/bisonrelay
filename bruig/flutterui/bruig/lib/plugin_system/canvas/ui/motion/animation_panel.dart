@@ -362,8 +362,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
     // An element with no clips still has a chain: its moves and looks. The
     // Keyframes card's Curves fill the panel while what they edit is picked.
-    if (controller.trackCurvesShown &&
-        controller.keyframeTarget?.points == false) {
+    if (controller.trackCurvesShowing) {
       return TrackCurves(
           key: const ValueKey("trackCurvesPanel"),
           controller: controller,
