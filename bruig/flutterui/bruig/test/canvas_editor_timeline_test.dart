@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/canvas_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +35,37 @@ void main() {
   Future<void> pump(WidgetTester tester, Widget child,
           {CanvasPreferences? prefs}) =>
       pumpCanvasApp(tester, child, size: const Size(1400, 900), prefs: prefs);
+
+  testWidgets("a zoom along every scene is kept when the timeline is rebuilt",
+      (tester) async {
+    // Ken, 2026-11-24: with every scene showing, zoomed in on one, opening
+    // the mixer beside the timeline put the zoom back to the whole run. A
+    // timeline built afresh took its kept view for one scene's.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      for (var i = 0; i < 4; i++)
+        CanvasScene(id: "s$i", frames: 240, elements: const []),
+    ]));
+    addTearDown(controller.dispose);
+    controller.playAll = true;
+    // The playhead in the stretch zoomed to, as it is when working there.
+    controller.goToScene(1);
+    controller.frame = 60;
+    await pump(tester, CanvasTimeline(controller: controller, showBar: true));
+    // Zoomed in, as a pinch or the zoom keys leave it.
+    controller.timelineView = const TimelineView(240, 120);
+    controller.timelineViewRuns = true;
+    controller.timelineViewSet++;
+    await pump(tester, CanvasTimeline(controller: controller, showBar: true));
+    expect(controller.timelineView, const TimelineView(240, 120));
+    // Another panel opened: the timeline is a new one.
+    await pump(tester, const SizedBox());
+    await pump(
+        tester,
+        CanvasTimeline(
+            key: UniqueKey(), controller: controller, showBar: true));
+    expect(controller.timelineView, const TimelineView(240, 120),
+        reason: "the zoom kept, counted along every scene as it was");
+  });
 
   group("the timeline", () {
     testWidgets("the master canvas's length is a reading, not a field",

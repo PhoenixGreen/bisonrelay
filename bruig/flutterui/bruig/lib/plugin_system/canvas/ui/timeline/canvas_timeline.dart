@@ -441,6 +441,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     if (controller.timelineViewSet != _viewSetSeen) {
       _viewSetSeen = controller.timelineViewSet;
       _view = controller.timelineView;
+      // Counted the way it was kept: a fresh timeline with Play all on was
+      // taking its view for one scene's and throwing it away (Ken: zoomed
+      // in, the mixer opened, and the zoom was gone).
+      _ranRun = controller.timelineViewRuns;
     }
     if (_runs != _ranRun) {
       _ranRun = _runs;
@@ -465,6 +469,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     _viewNow = view;
     // Kept, for the next visit: see CanvasController.canvasView.
     controller.timelineView = _view;
+    controller.timelineViewRuns = _runs;
 
     return Focus(
       focusNode: _focus,

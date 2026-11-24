@@ -1623,6 +1623,11 @@ class CanvasController extends ChangeNotifier {
   TimelineView? timelineView;
   int timelineViewSet = 0;
 
+  /// timelineViewRuns is whether [timelineView] was along every scene (Play
+  /// all) rather than the one: a timeline built afresh -- another panel
+  /// opened beside it -- takes the view up only in the way it was counted.
+  bool timelineViewRuns = false;
+
   /// _speechShown is whether the Chain's sound shows the channel's Speech.
   /// Speech makes clips rather than being a chain step, so it shows on ask.
   bool _speechShown = false;

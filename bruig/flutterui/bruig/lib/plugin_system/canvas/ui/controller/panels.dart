@@ -103,6 +103,7 @@ extension CanvasPanels on CanvasController {
             double.parse(v.first.toStringAsFixed(2)),
             double.parse(v.span.toStringAsFixed(2))
           ],
+        if (timelineView != null && timelineViewRuns) "viewRuns": true,
         if (_effectsOf case var e?) "effectsOf": e,
       };
 
@@ -126,6 +127,7 @@ extension CanvasPanels on CanvasController {
         TimelineView(first.toDouble(), span.toDouble()),
       _ => null,
     };
+    timelineViewRuns = state["viewRuns"] == true;
     timelineViewSet++;
     if (state["effectsOf"] case String e) _effectsOf = e;
     notifyListeners();

@@ -131,6 +131,7 @@ extension CanvasSaving on CanvasController {
     laneHeights.clear();
     _narrowStrips.clear();
     timelineView = null;
+    timelineViewRuns = false;
     timelineViewSet++;
     _effectsOf = null;
     // What was fetched and compared for its elements and devices.
