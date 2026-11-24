@@ -169,9 +169,9 @@ class MixGraph {
   }
   (double, double) _masterLevels = (0, 0);
 
-  /// The scene's bus (CanvasScene.bus): [_sceneKeys] land on [_sceneOut]
-  /// per speaker, keeping pans; each pair runs a strip of the scene's
-  /// settings into the master. Null strips (a default bus): the master.
+  /// The Scenes strip (CanvasDocument.scenesBus): [_sceneKeys] land on
+  /// [_sceneOut] per speaker, keeping pans; each pair runs a strip of its
+  /// settings into the master. Null only until setScene is first called.
   List<StripProcessor>? _scene;
   String _sceneSignature = "";
   ChannelMix _sceneMix = const ChannelMix();
@@ -249,11 +249,14 @@ class MixGraph {
   /// it instead of the master.
   void setScene(ChannelMix bus, Set<String> channels) {
     _sceneKeys = channels;
-    if (identical(bus, _sceneMix)) return;
+    if (identical(bus, _sceneMix) && _scene != null) return;
     _stripsChanged();
     // As for a channel (see setChannel): differing only in fader and
-    // device settings, the strips are retuned and the fader ramps.
-    var signature = bus.isDefault ? "" : _structureOf(bus, _soundOf(bus));
+    // device settings, the strips are retuned and the fader ramps. A strip
+    // at its defaults runs too: passed by, the transitions reached the
+    // master with nothing on the Scenes strip's meter, as if not routed
+    // there at all (Ken, 2026-11-24).
+    var signature = _structureOf(bus, _soundOf(bus));
     if (signature == _sceneSignature) {
       if (_scene case var strips?) {
         for (var s in strips) {
@@ -271,10 +274,6 @@ class MixGraph {
 
   void _buildScene({List<StripProcessor>? carry}) {
     _stripsChanged();
-    if (_sceneSignature.isEmpty) {
-      _scene = null;
-      return;
-    }
     var pairs = (_layout.channels + 1) ~/ 2;
     _scene = [
       for (var k = 0; k < pairs; k++)

@@ -101,8 +101,32 @@ void main() {
     test("a bus at its defaults changes nothing", () {
       var plain = run(const ChannelMix(), viaBus: false);
       var bussed = run(const ChannelMix());
-      expect(bussed[0], plain[0]);
-      expect(bussed[1], plain[1]);
+      for (var c = 0; c < 2; c++) {
+        for (var i = 0; i < plain[c].length; i += 97) {
+          expect(bussed[c][i], closeTo(plain[c][i], 1e-6));
+        }
+      }
+    });
+
+    test("at its defaults, the Scenes strip still carries the sound", () {
+      // Ken, 2026-11-24: the transitions were heard but nothing reached the
+      // Scenes strip: at its defaults it was passed by, straight to the
+      // master, and its meter never moved.
+      var g = MixGraph()
+        ..setSpeakers(SpeakerLayout.stereo)
+        ..setMaster(const MasterMix(limiter: false))
+        ..setReturns(const [])
+        ..setChannel("scene", const ChannelMix())
+        ..setScene(const ChannelMix(), {"scene"});
+      for (var block = 0; block < 4; block++) {
+        g.begin(512);
+        var (l, r) = g.input("scene", 512);
+        for (var i = 0; i < 512; i++) {
+          l[i] = r[i] = 0.2 * math.sin(2 * math.pi * 330 * i / rate);
+        }
+        g.finish(Float32List(512), Float32List(512), 512);
+      }
+      expect(g.levels(sceneBusKey).$1, greaterThan(0.1));
     });
 
     test("a bus that changes nothing, though in use, changes nothing", () {
