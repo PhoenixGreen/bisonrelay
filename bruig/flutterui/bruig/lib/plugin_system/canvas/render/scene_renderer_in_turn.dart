@@ -60,8 +60,9 @@ void paintTableInTurn(ui.Canvas canvas, Rect bounds, TableElement e,
 /// has an animation of its own, or the drawing's arrival brings its shapes
 /// in one after another, and it is not leaving. See VectorCue.
 bool _shapeByShape(VectorElement e, Keyframe pose) {
-  var shapes = e.shapes;
-  if (shapes == null || shapes.isEmpty) return false;
+  var raw = e.shapes;
+  if (raw == null || raw.isEmpty) return false;
+  var shapes = vectorShown(raw);
   if (_ownShapes(e)) return true;
   if ((pose.values[KeyframeChannel.close] ?? 0) > 0) return false;
   return e.animation.on && sequenced(shapes) && _vectorArrival(e, pose) != null;
@@ -73,9 +74,11 @@ bool _shapeByShape(VectorElement e, Keyframe pose) {
 /// so about the whole. [last] is the scene's last frame.
 void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     Keyframe pose, int frame, int last) {
-  var shapes = e.shapes!;
+  var shapes = vectorShown(e.shapes!);
   var arrival = _vectorArrival(e, pose);
   var times = arrival == null ? null : cueTimes(shapes, arrival.$2);
+  // Set in time, each shape keeps the scene's clock, not the arrival's.
+  var timed = vectorTimed(shapes);
   var own = _ownShapes(e);
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
   // How far through its arrival the drawing is, easing included: the clock
@@ -94,7 +97,9 @@ void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     if (arrival != null && times != null) {
       var (at, span) = arrival;
       var (start, length) = times[i];
-      reveal = ((through * span - start) / length).clamp(0.0, 1.0);
+      reveal = timed
+          ? ((frame - at - start) / length).clamp(0.0, 1.0)
+          : ((through * span - start) / length).clamp(0.0, 1.0);
       arrived = loopsOwn ? (at + start + length).round() : at + span;
     }
     // A loop of its own about its own box; the drawing's, where the drawing
@@ -116,6 +121,13 @@ void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     if (!animation.on) {
       // Nothing to play coming in: there from its turn.
       if (reveal > 0) draw();
+      continue;
+    }
+    if (animation.preset == ElementAnimationPreset.drawOn) {
+      // Drawn along its own line, in place: no box to move.
+      if (reveal <= 0) continue;
+      withVectorDrawn(
+          reveal >= 1 ? 1 : animation.progressAt(reveal).clamp(0.0, 1.0), draw);
       continue;
     }
     paintArriving(

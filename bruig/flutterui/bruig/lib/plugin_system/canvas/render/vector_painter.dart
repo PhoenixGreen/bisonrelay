@@ -17,7 +17,102 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 /// so an outline is worked out once, not every frame.
 final Expando<Path> _paths = Expando<Path>();
 
-Path vectorShapePath(VectorShape shape) => _paths[shape] ??= shape.path;
+Path vectorShapePath(VectorShape shape) =>
+    _paths[shape] ??= _hasPoints(shape) || shape.label == null
+        ? shape.path
+        : (Path()..addRect(shape.label!.box));
+
+/// _hasPoints is whether [shape] has an outline, not only a label.
+bool _hasPoints(VectorShape shape) =>
+    shape.paths.any((run) => run.nodes.isNotEmpty);
+
+/// _drawnShare is how much of each shape's line is drawn, while a drawing
+/// arrives by Draw on: 1 the whole line. See withVectorDrawn.
+double _drawnShare = 1;
+
+/// withVectorDrawn runs [paint] with only [share] of every line drawn, the
+/// fills faded in behind, the labels faded in: the Draw on arrival.
+void withVectorDrawn(double share, void Function() paint) {
+  var was = _drawnShare;
+  _drawnShare = share.clamp(0.0, 1.0);
+  try {
+    paint();
+  } finally {
+    _drawnShare = was;
+  }
+}
+
+final Expando<List<VectorShape>> _shown = Expando<List<VectorShape>>();
+
+/// vectorShown is what [shapes] draw once their repeats are laid out and
+/// their bound sizes applied: each repeated shape as its copies, in turn,
+/// each bound shape stretched to its value. Editing works on [shapes]
+/// themselves; only the painters and their timing read this. Worked out
+/// once per list -- shapes are never changed in place.
+List<VectorShape> vectorShown(List<VectorShape> shapes) {
+  if (!shapes.any((s) => s.repeat != null || s.bind?.share != null)) {
+    return shapes;
+  }
+  return _shown[shapes] ??= [
+    for (var s in shapes) ..._copiesOf(_bound(s)),
+  ];
+}
+
+/// _bound is [shape] stretched by its bound value, from its left edge (or
+/// its foot), its label and points alike.
+VectorShape _bound(VectorShape shape) {
+  var k = shape.bind?.share;
+  if (k == null) return shape;
+  var box = shape.path.getBounds();
+  if (box.isEmpty && box.width == 0 && box.height == 0) return shape;
+  var vertical = shape.bind!.vertical;
+  VectorNode stretch(VectorNode n) => vertical
+      ? n.copyWith(
+          y: box.bottom - (box.bottom - n.y) * k,
+          inY: n.inY * k,
+          outY: n.outY * k)
+      : n.copyWith(
+          x: box.left + (n.x - box.left) * k, inX: n.inX * k, outX: n.outX * k);
+  return shape.copyWith(paths: [
+    for (var run in shape.paths)
+      run.copyWith(nodes: [for (var n in run.nodes) stretch(n)]),
+  ]);
+}
+
+/// _copiesOf is [shape]'s repeat laid out: the shape itself, then each copy
+/// moved on and coming in after the one before.
+List<VectorShape> _copiesOf(VectorShape shape) {
+  var r = shape.repeat;
+  if (r == null || r.count <= 1) return [shape];
+  var each = r.each ?? shape.cueLength;
+  return [
+    for (var i = 0; i < r.count; i++) _copy(shape, r, i, each),
+  ];
+}
+
+VectorShape _copy(VectorShape shape, VectorRepeat r, int i, int? each) {
+  var by = r.offsetOf(i);
+  var colour = r.colours.isEmpty ? null : r.colours[i % r.colours.length];
+  var timed = shape.cue == VectorCue.at;
+  return shape.copyWith(
+    paths: by == Offset.zero
+        ? null
+        : [
+            for (var run in shape.paths)
+              run.copyWith(
+                  nodes: [for (var n in run.nodes) n.moved(n.point + by)]),
+          ],
+    label: shape.label?.moved(by),
+    fill: colour != null && shape.fill != null ? colour : null,
+    stroke: colour != null && shape.stroke != null ? colour : null,
+    // The first keeps the shape's own cue; each copy follows the one before
+    // (or, set in time, [each] frames after it).
+    cue: i == 0 ? null : (timed ? VectorCue.at : VectorCue.after),
+    cueAt: timed ? shape.cueAt + i * (each ?? 1) : null,
+    cueLength: each,
+    clearRepeat: true,
+  );
+}
 
 final Expando<Path> _lines = Expando<Path>();
 
@@ -240,11 +335,146 @@ List<VectorDrawn> vectorDrawn(List<VectorShape> shapes) {
   return out;
 }
 
+/// _paintLabel sets [label]'s words in its box, in [colour].
+void _paintLabel(ui.Canvas canvas, VectorLabel label, Color colour) {
+  if (colour.a <= 0) return;
+  var painter = TextPainter(
+    text: TextSpan(
+      text: label.text,
+      style: TextStyle(
+        fontFamily: label.family,
+        fontSize: label.size,
+        fontWeight: FontWeight.values[((label.weight ~/ 100) - 1).clamp(0, 8)],
+        letterSpacing: label.spacing,
+        height: label.leading,
+        color: colour,
+      ),
+    ),
+    textAlign: label.align,
+    textDirection: TextDirection.ltr,
+  )..layout(minWidth: label.width, maxWidth: label.width);
+  painter.paint(canvas, label.at);
+  painter.dispose();
+}
+
+/// _dashed is [path] broken into [dash] (on, off, on, off ...) lengths.
+Path _dashed(Path path, List<double> dash) {
+  var total = dash.fold(0.0, (a, b) => a + b);
+  if (dash.isEmpty || total <= 0) return path;
+  var out = Path();
+  for (var m in path.computeMetrics()) {
+    var at = 0.0, k = 0;
+    while (at < m.length) {
+      var len = dash[k % dash.length];
+      if (k.isEven) {
+        out.addPath(
+            m.extractPath(at, math.min(m.length, at + len)), Offset.zero);
+      }
+      at += len;
+      k++;
+    }
+  }
+  return out;
+}
+
+/// _trimmedTo is the first [share] of each run of [path], for Draw on.
+Path _trimmedTo(Path path, double share) {
+  if (share >= 1) return path;
+  var out = Path();
+  for (var m in path.computeMetrics()) {
+    out.addPath(m.extractPath(0, m.length * share), Offset.zero);
+  }
+  return out;
+}
+
+/// _withHeads draws [shape]'s line ends on [path]'s open runs, and gives
+/// back the line cut short so it ends inside an arrowhead, not past its tip.
+Path _withHeads(ui.Canvas canvas, VectorShape shape, Path path, Paint paint) {
+  if (shape.headStart == VectorHead.none && shape.headEnd == VectorHead.none) {
+    return path;
+  }
+  var size = shape.headSize * shape.strokeWidth;
+  var solid = Paint()
+    ..color = paint.color
+    ..shader = paint.shader
+    ..isAntiAlias = true;
+  var out = Path();
+  for (var m in path.computeMetrics()) {
+    if (m.isClosed || m.length <= 0) {
+      out.addPath(m.extractPath(0, m.length), Offset.zero);
+      continue;
+    }
+    var from = 0.0, to = m.length;
+    void head(VectorHead kind, ui.Tangent? t, bool atEnd) {
+      if (t == null || kind == VectorHead.none) return;
+      // The way out of the line at this end.
+      var dir = atEnd ? t.vector : -t.vector;
+      var unit = dir.distance == 0 ? const Offset(1, 0) : dir / dir.distance;
+      var side = Offset(-unit.dy, unit.dx);
+      var tip = t.position;
+      switch (kind) {
+        case VectorHead.arrow:
+          var back = tip - unit * size;
+          canvas.drawPath(
+              Path()
+                ..moveTo(tip.dx, tip.dy)
+                ..lineTo(back.dx + side.dx * size * 0.55,
+                    back.dy + side.dy * size * 0.55)
+                ..lineTo(back.dx - side.dx * size * 0.55,
+                    back.dy - side.dy * size * 0.55)
+                ..close(),
+              solid);
+          var cut = math.min(size * 0.7, m.length / 2);
+          if (atEnd) {
+            to -= cut;
+          } else {
+            from += cut;
+          }
+        case VectorHead.dot:
+          canvas.drawCircle(tip, size / 2, solid);
+        case VectorHead.bar:
+          canvas.drawLine(
+              tip + side * (size / 2),
+              tip - side * (size / 2),
+              Paint()
+                ..color = paint.color
+                ..strokeWidth = shape.strokeWidth
+                ..strokeCap = StrokeCap.butt);
+        case VectorHead.none:
+          break;
+      }
+    }
+
+    head(shape.headStart, m.getTangentForOffset(0), false);
+    head(shape.headEnd, m.getTangentForOffset(m.length), true);
+    if (to > from) out.addPath(m.extractPath(from, to), Offset.zero);
+  }
+  return out;
+}
+
 /// _strokeDrawn draws the line of [d] with [paint]: a shape's own, or one
-/// stroke round a combined outline -- [extra] wider, for a tint's reach.
+/// stroke round a combined outline -- [extra] wider, for a tint's reach --
+/// [drawn] of it along, dashed and ended as the shape asks.
 void _strokeDrawn(ui.Canvas canvas, VectorDrawn d, Paint paint,
-    {double extra = 0}) {
+    {double extra = 0, double drawn = 1}) {
   var shape = d.style;
+  var plain = drawn >= 1 &&
+      shape.dash == null &&
+      shape.headStart == VectorHead.none &&
+      shape.headEnd == VectorHead.none;
+  if (!plain && !d.combined && !shape.ownLine) {
+    var line = _trimmedTo(vectorShapePath(shape), drawn);
+    line = _withHeads(canvas, shape, line, paint);
+    if (shape.dash case var dash?) line = _dashed(line, dash);
+    canvas.drawPath(
+        line,
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = shape.strokeWidth + extra
+          ..strokeCap = shape.cap
+          ..strokeJoin = shape.join);
+    return;
+  }
   if (!d.combined && shape.ownLine) {
     var band = vectorLinePath(shape);
     canvas.drawPath(band, paint..style = PaintingStyle.fill);
@@ -314,7 +544,7 @@ void _paintVector(
   if (e.shownIn(box, e.viewBox) case var shown?) canvas.clipRect(shown);
   canvas.translate(p.dx, p.dy);
   canvas.scale(p.sx, p.sy);
-  for (var d in vectorDrawn(shapes)) {
+  for (var d in vectorDrawn(vectorShown(shapes))) {
     _paintGroup(canvas, d);
   }
   canvas.restore();
@@ -341,17 +571,29 @@ void _paintGroup(ui.Canvas canvas, VectorDrawn d, {bool evenHidden = false}) {
     return paint;
   }
 
-  if (shape.fill case var fill? when fill.a > 0) {
+  // Drawing on, the fill comes in behind the line: faint until it is
+  // nearly all drawn.
+  var drawn = _drawnShare;
+  Color faded(Color c, double k) => k >= 1 ? c : c.withValues(alpha: c.a * k);
+  if (shape.fill case var fill?
+      when fill.a > 0 && (d.combined || _hasPoints(shape))) {
     canvas.drawPath(
-        d.outline, paintOf(fill, shape.fillFade, d.outline.getBounds()));
+        d.outline,
+        paintOf(
+            faded(fill, drawn * drawn), shape.fillFade, d.outline.getBounds()));
   }
   if (shape.stroke case var stroke?
-      when stroke.a > 0 && shape.strokeWidth > 0) {
+      when stroke.a > 0 && shape.strokeWidth > 0 && drawn > 0) {
     _strokeDrawn(
         canvas,
         d,
         paintOf(stroke, shape.strokeFade,
-            d.outline.getBounds().inflate(shape.strokeWidth / 2)));
+            d.outline.getBounds().inflate(shape.strokeWidth / 2)),
+        drawn: drawn);
+  }
+  if (shape.label case var label? when label.text.isNotEmpty) {
+    _paintLabel(canvas, label,
+        faded(label.color ?? shape.fill ?? const Color(0xFFFFFFFF), drawn));
   }
   if (layered) {
     if (shape.tints.isNotEmpty) _paintTints(canvas, d.members, shape.tints);
@@ -379,6 +621,7 @@ List<(double, double)> naturalTimes(List<VectorShape> shapes, int span) {
         VectorCue.together => before,
         VectorCue.after => before + took,
         VectorCue.gap => math.max(before, before + took + s.cueGap),
+        VectorCue.at => s.cueAt.toDouble(),
       };
     }
     out.add((start, length));
@@ -399,6 +642,8 @@ double naturalLength(List<VectorShape> shapes, int span) {
 /// the arrival stretches them alike. See naturalTimes.
 List<(double, double)> cueTimes(List<VectorShape> shapes, int span) {
   var times = naturalTimes(shapes, span);
+  // Set in time, they are real frames: not fitted to the arrival.
+  if (vectorTimed(shapes)) return times;
   var whole = naturalLength(shapes, span);
   var k = whole <= 0 ? 1.0 : span / whole;
   return [for (var (start, length) in times) (start * k, length * k)];
@@ -408,11 +653,17 @@ List<(double, double)> cueTimes(List<VectorShape> shapes, int span) {
 List<double> cueStarts(List<VectorShape> shapes, int span) =>
     [for (var (start, _) in cueTimes(shapes, span)) start];
 
+/// vectorTimed is whether any of [shapes] is set to a time of its own
+/// (VectorCue.at): then every shape's times are real frames.
+bool vectorTimed(List<VectorShape> shapes) =>
+    shapes.any((s) => s.cue == VectorCue.at && s.combine == null);
+
 /// sequenced is whether any of [shapes] comes in other than with the one
 /// before -- whether the drawing comes in shape by shape rather than as one.
 bool sequenced(List<VectorShape> shapes) {
   var groups = vectorDrawn(shapes);
-  return groups.skip(1).any((d) => d.style.cue != VectorCue.together) ||
+  return vectorTimed(shapes) ||
+      groups.skip(1).any((d) => d.style.cue != VectorCue.together) ||
       groups.any((d) => d.style.cueLength != null);
 }
 

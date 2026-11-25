@@ -555,7 +555,8 @@ List<(double, double)> layerNaturalTimes(List<ImageLayer> stack, int span) {
       var (before, took) = natural[i - 1];
       start = switch (l.cue) {
         VectorCue.together => before,
-        VectorCue.after => before + took,
+        // A layer is never set to a time (see PartsCard): as after.
+        VectorCue.after || VectorCue.at => before + took,
         VectorCue.gap => math.max(before, before + took + l.cueGap),
       };
     }

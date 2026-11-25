@@ -57,6 +57,10 @@ enum ElementAnimationPreset implements ArrivalPreset {
   split("Split open", ElementAnimationFamily.reveal, TextMotion.split),
   snap("Snap on", ElementAnimationFamily.reveal, TextMotion.snap),
 
+  /// drawOn draws a drawing's lines along their own paths and fades its
+  /// fills in behind (see withVectorDrawn); anything else wipes across.
+  drawOn("Draw on", ElementAnimationFamily.reveal, TextMotion.wipe),
+
   spinIn("Spin in", ElementAnimationFamily.transform, TextMotion.spin,
       turns: 1),
   spinBack(

@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageCrop;
+import 'package:bruig/plugin_system/canvas/model/data_sync.dart'
+    show boundValue;
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
@@ -277,6 +279,8 @@ List<Widget> vectorSettings(
         }
         now(next);
       }),
+    if (e.edited && shown != null && one)
+      _shapeExtras(controller, shown, change, commit),
   ];
   return [
     section(e, "drawing",
@@ -1456,6 +1460,57 @@ Widget _shapeGroup(
           ],
           onChanged: (v) => change((s) => s.copyWith(join: v)),
         ),
+      if (lined && open) ...[
+        for (var (start, key, label) in const [
+          (true, "vectorHeadStart", "Start"),
+          (false, "vectorHeadEnd", "End"),
+        ])
+          CanvasDropdown<VectorHead>(
+            key: ValueKey(key),
+            label: label,
+            value: start ? shown.headStart : shown.headEnd,
+            width: 80,
+            options: [for (var h in VectorHead.values) (h, h.label)],
+            onChanged: (v) => change((s) =>
+                start ? s.copyWith(headStart: v) : s.copyWith(headEnd: v)),
+          ),
+        if (shown.headStart != VectorHead.none ||
+            shown.headEnd != VectorHead.none)
+          CanvasNumberField(
+            key: const ValueKey("vectorHeadSize"),
+            label: "Head size",
+            value: shown.headSize,
+            min: 1,
+            max: 20,
+            decimals: 1,
+            width: 56,
+            onChanged: (v) =>
+                change((s) => s.copyWith(headSize: v), live: true),
+            onCommit: commit,
+          ),
+      ],
+      if (lined)
+        CanvasDropdown<int>(
+          key: const ValueKey("vectorDash"),
+          label: "Dashes",
+          value: _dashKind(shown),
+          width: 80,
+          options: const [
+            (0, "None"),
+            (1, "Dashed"),
+            (2, "Long"),
+            (3, "Dotted"),
+          ],
+          onChanged: (v) => change((s) {
+            var w = math.max(1.0, s.strokeWidth);
+            return switch (v) {
+              1 => s.copyWith(dash: [w * 3, w * 2]),
+              2 => s.copyWith(dash: [w * 6, w * 3]),
+              3 => s.copyWith(dash: [w * 0.01, w * 2], cap: StrokeCap.round),
+              _ => s.copyWith(clearDash: true),
+            };
+          }),
+        ),
       if (lined)
         CanvasHint([
           if (mine && pointLined)
@@ -1652,4 +1707,272 @@ List<Widget> _textSettings(VectorElement e, CanvasController controller) {
       onChanged: (c) => controller.vectorTextColour = c,
     ),
   ];
+}
+
+/// _dashKind is which of the Dashes choices [s]'s dashes are: 0 none, 1
+/// dashed, 2 long, 3 dotted.
+int _dashKind(VectorShape s) {
+  var d = s.dash;
+  if (d == null || d.length < 2) return 0;
+  if (d[0] < 0.1 * d[1]) return 3;
+  return d[0] / math.max(1e-6, s.strokeWidth) > 4.5 ? 2 : 1;
+}
+
+/// _shapeExtras is the picked shape's words, its repeat and its data: what
+/// a diagram asks of a shape beyond its colours.
+Widget _shapeExtras(
+    CanvasController controller,
+    VectorShape shown,
+    void Function(VectorShape Function(VectorShape), {bool live}) change,
+    VoidCallback commit) {
+  var label = shown.label;
+  var repeat = shown.repeat;
+  var bind = shown.bind;
+  var sheets = controller.document.sheets;
+  // Words start across the top of the shape, as wide as it.
+  VectorLabel fresh(VectorShape s) {
+    var box = s.path.getBounds();
+    return box.isEmpty && box.width == 0
+        ? const VectorLabel()
+        : VectorLabel(at: box.topLeft, width: math.max(40, box.width));
+  }
+
+  VectorShape bound(VectorShape s, VectorBind b) =>
+      s.copyWith(bind: b.withValue(boundValue(controller.document.sheets, b)));
+  return CanvasMoreGroup(
+    key: const ValueKey("vectorShapeExtras"),
+    label: "Words · repeat · data",
+    remember: "vectorShapeExtrasMore",
+    tooltip: "Repeat & data",
+    rule: false,
+    row: [
+      CanvasTextField(
+        key: const ValueKey("vectorLabelText"),
+        label: "Words",
+        value: label?.text ?? "",
+        hint: "Words on the shape",
+        onChanged: (v) => change(
+            (s) => v.isEmpty
+                ? s.copyWith(clearLabel: true)
+                : s.copyWith(label: (s.label ?? fresh(s)).copyWith(text: v)),
+            live: true),
+        onCommit: commit,
+      ),
+      if (label != null) ...[
+        CanvasNumberField(
+          key: const ValueKey("vectorLabelSize"),
+          label: "Size",
+          value: label.size,
+          min: 4,
+          max: 400,
+          width: 56,
+          onChanged: (v) => change(
+              (s) => s.copyWith(label: s.label?.copyWith(size: v)),
+              live: true),
+          onCommit: commit,
+        ),
+        CanvasColorButton(
+          key: const ValueKey("vectorLabelColour"),
+          label: "Colour",
+          color: label.color ?? shown.fill ?? const Color(0xFFFFFFFF),
+          onChanged: (c) =>
+              change((s) => s.copyWith(label: s.label?.copyWith(color: c))),
+        ),
+        CanvasDropdown<TextAlign>(
+          key: const ValueKey("vectorLabelAlign"),
+          label: "Align",
+          value: label.align,
+          width: 72,
+          options: const [
+            (TextAlign.left, "Left"),
+            (TextAlign.center, "Centre"),
+            (TextAlign.right, "Right"),
+          ],
+          onChanged: (v) =>
+              change((s) => s.copyWith(label: s.label?.copyWith(align: v))),
+        ),
+      ],
+    ],
+    more: [
+      CanvasNumberField(
+        key: const ValueKey("vectorRepeatCount"),
+        label: "Copies",
+        value: (repeat?.count ?? 1).toDouble(),
+        min: 1,
+        max: VectorRepeat.maxCount.toDouble(),
+        width: 56,
+        onChanged: (v) => change((s) {
+          var n = v.round();
+          if (n <= 1) return s.copyWith(clearRepeat: true);
+          var r = s.repeat;
+          var w = s.path.getBounds().width;
+          return s.copyWith(
+              repeat: VectorRepeat(
+                  count: n,
+                  columns: r?.columns ?? n,
+                  step: r?.step ?? Offset(w * 1.2, 0),
+                  rowStep: r?.rowStep ?? s.path.getBounds().height * 1.2,
+                  colours: r?.colours ?? const [],
+                  each: r?.each));
+        }, live: true),
+        onCommit: commit,
+      ),
+      if (repeat != null)
+        for (var (key, name, get, set) in <(
+          String,
+          String,
+          double,
+          VectorRepeat Function(VectorRepeat, double)
+        )>[
+          (
+            "vectorRepeatCols",
+            "Across",
+            repeat.columns.toDouble(),
+            (r, v) => VectorRepeat(
+                count: r.count,
+                columns: v.round().clamp(1, r.count),
+                step: r.step,
+                rowStep: r.rowStep,
+                colours: r.colours,
+                each: r.each)
+          ),
+          (
+            "vectorRepeatStep",
+            "Apart",
+            repeat.step.dx,
+            (r, v) => VectorRepeat(
+                count: r.count,
+                columns: r.columns,
+                step: Offset(v, r.step.dy),
+                rowStep: r.rowStep,
+                colours: r.colours,
+                each: r.each)
+          ),
+          (
+            "vectorRepeatRow",
+            "Row apart",
+            repeat.rowStep,
+            (r, v) => VectorRepeat(
+                count: r.count,
+                columns: r.columns,
+                step: r.step,
+                rowStep: v,
+                colours: r.colours,
+                each: r.each)
+          ),
+          (
+            "vectorRepeatEach",
+            "Frames each",
+            (repeat.each ?? 0).toDouble(),
+            (r, v) => VectorRepeat(
+                count: r.count,
+                columns: r.columns,
+                step: r.step,
+                rowStep: r.rowStep,
+                colours: r.colours,
+                each: v < 1 ? null : v.round())
+          ),
+        ])
+          CanvasNumberField(
+            key: ValueKey(key),
+            label: name,
+            value: get,
+            min: key == "vectorRepeatCols"
+                ? 1
+                : (key == "vectorRepeatEach" ? 0 : -5000),
+            max: 5000,
+            width: 56,
+            onChanged: (v) => change(
+                (s) => s.repeat == null
+                    ? s
+                    : s.copyWith(repeat: set(s.repeat!, v)),
+                live: true),
+            onCommit: commit,
+          ),
+      if (sheets.isNotEmpty) ...[
+        CanvasDropdown<String>(
+          key: const ValueKey("vectorBindSheet"),
+          label: "Size from",
+          value: bind?.sheet ?? "",
+          width: 110,
+          options: [
+            ("", "Its own"),
+            for (var sh in sheets) (sh.id, sh.name.isEmpty ? sh.id : sh.name),
+          ],
+          onChanged: (v) => change((s) => v.isEmpty
+              ? s.copyWith(clearBind: true)
+              : bound(
+                  s,
+                  VectorBind(
+                      sheet: v,
+                      cell: s.bind?.cell ?? "B2",
+                      max: s.bind?.max ?? 100,
+                      vertical: s.bind?.vertical ?? false))),
+        ),
+        if (bind != null) ...[
+          CanvasTextField(
+            key: const ValueKey("vectorBindCell"),
+            label: "Cell",
+            value: bind.cell,
+            width: 56,
+            grow: false,
+            onChanged: (v) => change(
+                (s) => s.bind == null
+                    ? s
+                    : bound(
+                        s,
+                        VectorBind(
+                            sheet: s.bind!.sheet,
+                            cell: v,
+                            max: s.bind!.max,
+                            vertical: s.bind!.vertical)),
+                live: true),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("vectorBindMax"),
+            label: "Full at",
+            value: bind.max,
+            min: 0,
+            max: 1e9,
+            decimals: 2,
+            width: 72,
+            onChanged: (v) => change(
+                (s) => s.bind == null
+                    ? s
+                    : bound(
+                        s,
+                        VectorBind(
+                            sheet: s.bind!.sheet,
+                            cell: s.bind!.cell,
+                            max: v,
+                            vertical: s.bind!.vertical)),
+                live: true),
+            onCommit: commit,
+          ),
+          CanvasDropdown<bool>(
+            key: const ValueKey("vectorBindAxis"),
+            label: "Grows",
+            value: bind.vertical,
+            width: 80,
+            options: const [(false, "Across"), (true, "Up")],
+            onChanged: (v) => change((s) => s.bind == null
+                ? s
+                : bound(
+                    s,
+                    VectorBind(
+                        sheet: s.bind!.sheet,
+                        cell: s.bind!.cell,
+                        max: s.bind!.max,
+                        vertical: v))),
+          ),
+        ],
+      ],
+      const CanvasHint("Words are set in a font on the shape and scale with the "
+          "drawing. Copies repeats the shape in rows (Across to a row), each "
+          "coming in after the one before. Size from stretches the shape by "
+          "a sheet's cell: the cell's number over Full at, from its left edge "
+          "or its foot."),
+    ],
+  );
 }

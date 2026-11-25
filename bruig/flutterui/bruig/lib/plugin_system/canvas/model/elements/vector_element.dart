@@ -289,6 +289,31 @@ class VectorShape {
   /// null for a hand-drawn one. Nothing sets it yet.
   final String? origin;
 
+  /// cueAt is the frame after the drawing starts arriving that this shape
+  /// starts on, for [VectorCue.at].
+  final int cueAt;
+
+  /// label is words this shape shows as type, in its fill colour, or null.
+  /// A shape with a label and no points is just the words.
+  final VectorLabel? label;
+
+  /// dash is the line's dashes and gaps, in the drawing's units, or null for
+  /// an unbroken line.
+  final List<double>? dash;
+
+  /// headStart and headEnd are what an open line ends in; headSize is how
+  /// big, times the line's width.
+  final VectorHead headStart;
+  final VectorHead headEnd;
+  final double headSize;
+
+  /// repeat draws copies of this shape in rows and columns, each coming in
+  /// after the one before, or null for one. See vectorShown.
+  final VectorRepeat? repeat;
+
+  /// bind stretches this shape by a sheet's value, or null. See VectorBind.
+  final VectorBind? bind;
+
   const VectorShape({
     required this.paths,
     this.fill,
@@ -311,6 +336,14 @@ class VectorShape {
     this.hidden = false,
     this.locked = false,
     this.origin,
+    this.cueAt = 0,
+    this.label,
+    this.dash,
+    this.headStart = VectorHead.none,
+    this.headEnd = VectorHead.none,
+    this.headSize = 4,
+    this.repeat,
+    this.bind,
   });
 
   VectorShape copyWith({
@@ -344,6 +377,18 @@ class VectorShape {
     bool? locked,
     String? origin,
     bool clearOrigin = false,
+    int? cueAt,
+    VectorLabel? label,
+    bool clearLabel = false,
+    List<double>? dash,
+    bool clearDash = false,
+    VectorHead? headStart,
+    VectorHead? headEnd,
+    double? headSize,
+    VectorRepeat? repeat,
+    bool clearRepeat = false,
+    VectorBind? bind,
+    bool clearBind = false,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -368,6 +413,14 @@ class VectorShape {
         hidden: hidden ?? this.hidden,
         locked: locked ?? this.locked,
         origin: clearOrigin ? null : origin ?? this.origin,
+        cueAt: cueAt ?? this.cueAt,
+        label: clearLabel ? null : label ?? this.label,
+        dash: clearDash ? null : dash ?? this.dash,
+        headStart: headStart ?? this.headStart,
+        headEnd: headEnd ?? this.headEnd,
+        headSize: headSize ?? this.headSize,
+        repeat: clearRepeat ? null : repeat ?? this.repeat,
+        bind: clearBind ? null : bind ?? this.bind,
       );
 
   /// mapColours maps the shape's fill and line (none stays none; the line
@@ -453,6 +506,14 @@ class VectorShape {
         if (hidden) "hid": true,
         if (locked) "lock": true,
         if (origin != null) "from": origin,
+        if (cue == VectorCue.at) "cueAt": cueAt,
+        if (label != null) "label": label!.toJson(),
+        if (dash != null) "dash": dash,
+        if (headStart != VectorHead.none) "head0": headStart.name,
+        if (headEnd != VectorHead.none) "head1": headEnd.name,
+        if (headSize != 4) "headSize": headSize,
+        if (repeat != null) "repeat": repeat!.toJson(),
+        if (bind != null) "bind": bind!.toJson(),
       };
 
   /// liveText is [text] while the shape is still its letters as laid out
@@ -512,6 +573,19 @@ class VectorShape {
       hidden: json["hid"] == true,
       locked: json["lock"] == true,
       origin: jsonStr(json["from"]),
+      cueAt: json["cueAt"] is int ? json["cueAt"] as int : 0,
+      label: VectorLabel.fromJson(json["label"]),
+      dash: json["dash"] is List
+          ? [
+              for (var d in json["dash"] as List)
+                if (d is num && d > 0) d.toDouble(),
+            ].take(8).toList()
+          : null,
+      headStart: VectorHead.fromName(jsonStr(json["head0"])),
+      headEnd: VectorHead.fromName(jsonStr(json["head1"])),
+      headSize: jsonDouble(json["headSize"], 4),
+      repeat: VectorRepeat.fromJson(json["repeat"]),
+      bind: VectorBind.fromJson(json["bind"]),
       owns: json["animOwn"] is List
           ? {
               for (var n in json["animOwn"] as List)
@@ -528,12 +602,250 @@ class VectorShape {
 enum VectorCue {
   together("With previous"),
   after("After previous"),
-  gap("After a gap");
+  gap("After a gap"),
+
+  /// at starts the shape a set number of frames (VectorShape.cueAt) after
+  /// the drawing starts arriving. Once any shape is set so, every shape's
+  /// times are real frames: the arrival's length no longer stretches them.
+  at("At a set time");
 
   final String label;
   const VectorCue(this.label);
 
-  VectorCue get next => values[(index + 1) % values.length];
+  /// next is the next of the cues that follow the one before -- together,
+  /// after, after a gap -- round again; a set time isn't one of them.
+  VectorCue get next => switch (this) {
+        together => after,
+        after => gap,
+        gap || at => together,
+      };
+}
+
+/// VectorHead is what an open line ends in.
+enum VectorHead {
+  none("None"),
+  arrow("Arrow"),
+  dot("Dot"),
+  bar("Bar");
+
+  final String label;
+  const VectorHead(this.label);
+
+  static VectorHead fromName(String? name) =>
+      values.where((h) => h.name == name).firstOrNull ?? VectorHead.none;
+}
+
+/// VectorLabel is words a shape shows as type -- set in a font, not traced
+/// into points, so they stay words: editable, and the same in every export.
+/// They sit in a box [width] wide from [at] (its top left), in the
+/// drawing's units, so they scale and move with the drawing.
+class VectorLabel {
+  final String text;
+  final String family;
+  final double size;
+  final int weight;
+  final TextAlign align;
+  final Offset at;
+  final double width;
+  final double spacing;
+  final double leading;
+
+  /// color is the words' own colour, or null for the shape's fill: a pale
+  /// box can carry dark words.
+  final Color? color;
+
+  const VectorLabel({
+    this.text = "",
+    this.family = "Inter",
+    this.size = 24,
+    this.weight = 600,
+    this.align = TextAlign.left,
+    this.at = Offset.zero,
+    this.width = 200,
+    this.spacing = 0,
+    this.leading = 1.2,
+    this.color,
+  });
+
+  VectorLabel copyWith(
+          {String? text,
+          String? family,
+          double? size,
+          int? weight,
+          TextAlign? align,
+          Offset? at,
+          double? width,
+          double? spacing,
+          double? leading,
+          Color? color,
+          bool clearColor = false}) =>
+      VectorLabel(
+          text: text ?? this.text,
+          family: family ?? this.family,
+          size: size ?? this.size,
+          weight: weight ?? this.weight,
+          align: align ?? this.align,
+          at: at ?? this.at,
+          width: width ?? this.width,
+          spacing: spacing ?? this.spacing,
+          leading: leading ?? this.leading,
+          color: clearColor ? null : color ?? this.color);
+
+  /// box is where the words sit: [width] across, a line's height for each
+  /// line down.
+  Rect get box => Rect.fromLTWH(at.dx, at.dy, width,
+      size * leading * (text.split("\n").length.clamp(1, 1000)));
+
+  VectorLabel moved(Offset by) => copyWith(at: at + by);
+
+  Map<String, dynamic> toJson() => {
+        "t": text,
+        if (family != "Inter") "font": family,
+        "size": size,
+        if (weight != 600) "weight": weight,
+        if (align != TextAlign.left) "align": align.name,
+        "at": [at.dx, at.dy],
+        "w": width,
+        if (spacing != 0) "ls": spacing,
+        if (leading != 1.2) "lh": leading,
+        if (color != null) "c": colorToJson(color!),
+      };
+
+  static VectorLabel? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    var at = json["at"];
+    return VectorLabel(
+      text: jsonStr(json["t"]) ?? "",
+      family: jsonStr(json["font"]) ?? "Inter",
+      size: jsonDouble(json["size"], 24).clamp(1, 1000).toDouble(),
+      weight:
+          json["weight"] is int ? (json["weight"] as int).clamp(100, 900) : 600,
+      align:
+          TextAlign.values.where((a) => a.name == json["align"]).firstOrNull ??
+              TextAlign.left,
+      at: at is List && at.length == 2 && at.every((v) => v is num)
+          ? Offset((at[0] as num).toDouble(), (at[1] as num).toDouble())
+          : Offset.zero,
+      width: jsonDouble(json["w"], 200).clamp(1, 1e5).toDouble(),
+      spacing: jsonDouble(json["ls"], 0),
+      leading: jsonDouble(json["lh"], 1.2).clamp(0.5, 5).toDouble(),
+      color: json["c"] is num ? colorFromJson(json["c"]) : null,
+    );
+  }
+}
+
+/// VectorRepeat draws a shape [count] times, [columns] to a row, each copy
+/// [step] on from the last along the row and [rowStep] down per row. Each
+/// copy comes in after the one before, taking [each] frames (or the shape's
+/// own cue length). [colours], if any, colour the copies in turn (fill, and
+/// line where the shape has one).
+class VectorRepeat {
+  final int count;
+  final int columns;
+  final Offset step;
+  final double rowStep;
+  final List<Color> colours;
+  final int? each;
+
+  const VectorRepeat({
+    this.count = 1,
+    this.columns = 1,
+    this.step = Offset.zero,
+    this.rowStep = 0,
+    this.colours = const [],
+    this.each,
+  });
+
+  /// maxCount bounds a repeat read from a file.
+  static const maxCount = 2000;
+
+  /// offsetOf is where copy [i] sits from the first.
+  Offset offsetOf(int i) {
+    var cols = columns < 1 ? 1 : columns;
+    return Offset(
+        step.dx * (i % cols), step.dy * (i % cols) + rowStep * (i ~/ cols));
+  }
+
+  Map<String, dynamic> toJson() => {
+        "n": count,
+        if (columns != 1) "cols": columns,
+        "dx": step.dx,
+        if (step.dy != 0) "dy": step.dy,
+        if (rowStep != 0) "row": rowStep,
+        if (colours.isNotEmpty)
+          "colors": [for (var c in colours) colorToJson(c)],
+        if (each != null) "each": each,
+      };
+
+  static VectorRepeat? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    var n = json["n"];
+    if (n is! int || n < 1) return null;
+    return VectorRepeat(
+      count: n.clamp(1, maxCount),
+      columns:
+          json["cols"] is int ? (json["cols"] as int).clamp(1, maxCount) : 1,
+      step: Offset(jsonDouble(json["dx"], 0), jsonDouble(json["dy"], 0)),
+      rowStep: jsonDouble(json["row"], 0),
+      colours: json["colors"] is List
+          ? [
+              for (var c in json["colors"] as List)
+                if (c is num) colorFromJson(c),
+            ]
+          : const [],
+      each: json["each"] is int ? (json["each"] as int).clamp(1, 100000) : null,
+    );
+  }
+}
+
+/// VectorBind stretches a shape by a number in one of the canvas's sheets:
+/// [value] / [max] of its size, from its left edge (axis x) or its foot
+/// (axis y) -- a bar that is its data. [value] is the sheet's number as last
+/// read (see bindVectors), kept so the drawing draws without the sheets.
+class VectorBind {
+  final String sheet;
+  final String cell;
+  final double max;
+  final bool vertical;
+  final double? value;
+
+  const VectorBind({
+    this.sheet = "",
+    this.cell = "",
+    this.max = 100,
+    this.vertical = false,
+    this.value,
+  });
+
+  VectorBind withValue(double? v) => VectorBind(
+      sheet: sheet, cell: cell, max: max, vertical: vertical, value: v);
+
+  /// share is how much of its drawn size the shape keeps, 0 to 1, or null
+  /// with nothing read yet.
+  double? get share {
+    var v = value;
+    if (v == null || max <= 0 || !v.isFinite) return null;
+    return (v / max).clamp(0.0, 1.0);
+  }
+
+  Map<String, dynamic> toJson() => {
+        "sheet": sheet,
+        "cell": cell,
+        "max": max,
+        if (vertical) "axis": "y",
+        if (value != null) "v": value,
+      };
+
+  static VectorBind? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    return VectorBind(
+      sheet: jsonStr(json["sheet"]) ?? "",
+      cell: jsonStr(json["cell"]) ?? "",
+      max: jsonDouble(json["max"], 100),
+      vertical: json["axis"] == "y",
+      value: json["v"] is num ? (json["v"] as num).toDouble() : null,
+    );
+  }
 }
 
 /// VectorCombine is the Boolean tool's operators. Kept live rather than
@@ -816,8 +1128,8 @@ class VectorElement extends CanvasElement {
     var w = v.width * p.sx, h = v.height * p.sy;
     // Never so small it cannot be grabbed again.
     if (w < 8 || h < 8) return copyWith(crop: next);
-    return copyWith(crop: next)
-        .withBase(x: left, y: top, width: w, height: h) as VectorElement;
+    return copyWith(crop: next).withBase(x: left, y: top, width: w, height: h)
+        as VectorElement;
   }
 
   @override

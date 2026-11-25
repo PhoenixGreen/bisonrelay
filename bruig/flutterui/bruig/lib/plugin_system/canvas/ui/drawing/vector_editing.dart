@@ -1222,12 +1222,13 @@ VectorElement withGroupMoved(VectorElement e, int from, int to) {
 }
 
 /// withCue is [e] with group [group]'s cue and gap set.
-VectorElement withCue(VectorElement e, int group, {VectorCue? cue, int? gap}) {
+VectorElement withCue(VectorElement e, int group,
+    {VectorCue? cue, int? gap, int? at}) {
   var starts = groupStarts(e);
   if (group < 0 || group >= starts.length) return e;
   var i = starts[group];
   var s = e.shapes![i];
-  return e.withShape(i, s.copyWith(cue: cue, cueGap: gap));
+  return e.withShape(i, s.copyWith(cue: cue, cueGap: gap, cueAt: at));
 }
 
 /// withStagger brings [e]'s shapes in one after another, each starting a third

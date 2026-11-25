@@ -55,6 +55,7 @@ typedef _Part = ({
   String name,
   VectorCue cue,
   int gap,
+  int at,
   bool own,
 });
 
@@ -70,6 +71,7 @@ class _PartsCardState extends State<PartsCard> {
                 name: l.name.isEmpty ? "Layer ${n + 1}" : l.name,
                 cue: l.cue,
                 gap: l.cueGap,
+                at: 0,
                 own: l.loop.on,
               ),
           ],
@@ -79,6 +81,7 @@ class _PartsCardState extends State<PartsCard> {
                 name: "Shape ${n + 1}",
                 cue: d.style.cue,
                 gap: d.style.cueGap,
+                at: d.style.cueAt,
                 own: d.style.animation != null,
               ),
           ],
@@ -92,11 +95,11 @@ class _PartsCardState extends State<PartsCard> {
   }
 
   /// _withCue is the element with part [at] coming in by [cue] after [gap].
-  CanvasElement _withCue(int at, {VectorCue? cue, int? gap}) =>
+  CanvasElement _withCue(int at, {VectorCue? cue, int? gap, int? time}) =>
       switch (widget.element) {
         ImageElement i =>
           i.withLayer(i.stack[at].id, (l) => l.copyWith(cue: cue, cueGap: gap)),
-        VectorElement v => withCue(v, at, cue: cue, gap: gap),
+        VectorElement v => withCue(v, at, cue: cue, gap: gap, at: time),
         var e => e,
       };
 
@@ -168,15 +171,46 @@ class _PartsCardState extends State<PartsCard> {
     List<Widget> controls(DeviceTier tier) => [
           if (part != null)
             DevicePack(key: const ValueKey("partsPack"), children: [
-              // The first comes in as the element arrives: no cue of its own.
-              if (at > 0) ...[
+              // The first comes in as the element arrives: no cue of its own,
+              // unless a drawing's shape is set to a time.
+              if (at > 0 || !image) ...[
                 StudioDrop<VectorCue>(
                   key: const ValueKey("partCue"),
                   label: "Comes in",
                   value: part.cue,
-                  options: [for (var q in VectorCue.values) (q, q.label)],
+                  options: [
+                    for (var q in VectorCue.values)
+                      // A picture's layers have no set times; the first
+                      // shape is with the drawing or at its time.
+                      if ((q != VectorCue.at || !image) &&
+                          (at > 0 ||
+                              q == VectorCue.together ||
+                              q == VectorCue.at))
+                        (
+                          q,
+                          at == 0 && q == VectorCue.together
+                              ? "With the drawing"
+                              : q.label
+                        ),
+                  ],
                   onChanged: (q) => _write(_withCue(at, cue: q)),
                 ),
+                if (part.cue == VectorCue.at)
+                  DeviceKnob(
+                    key: const ValueKey("partAt"),
+                    label: "At",
+                    text: "${(part.at / rate).toStringAsFixed(2)}s",
+                    value: (part.at / rate).clamp(0.0, 60.0),
+                    initial: 0,
+                    min: 0,
+                    max: 60,
+                    accent: accent,
+                    ink: skin.ink,
+                    onChanged: (v, {transient = false}) => _write(
+                        _withCue(at, time: (v * rate).round()),
+                        transient: transient),
+                    onCommit: c.endInteraction,
+                  ),
                 if (part.cue == VectorCue.gap)
                   DeviceKnob(
                     key: const ValueKey("partGap"),

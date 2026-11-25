@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_sheet.dart';
@@ -376,11 +377,12 @@ DataSheet _mappedBack(DataSheet sheet, CanvasElement e, SheetLink link) {
 /// _mapViews is [doc] with [f] applied to every element everywhere (this
 /// scene, the others, the master and the Cast), unchanged lists kept.
 CanvasDocument _mapViews(
-    CanvasDocument doc, CanvasElement Function(CanvasElement e) f) {
+    CanvasDocument doc, CanvasElement Function(CanvasElement e) f,
+    {bool Function(CanvasElement e) which = isDataView}) {
   List<CanvasElement> mapped(List<CanvasElement> list) {
     List<CanvasElement>? out;
     for (var (i, e) in list.indexed) {
-      var n = isDataView(e) ? f(e) : e;
+      var n = which(e) ? f(e) : e;
       if (!identical(n, e)) (out ??= [...list])[i] = n;
     }
     return out ?? list;
@@ -540,6 +542,7 @@ CanvasDocument dataAdopted(CanvasDocument doc) {
 /// remaking what the file doesn't keep (a table's colour-rule looks).
 CanvasDocument dataRefreshed(CanvasDocument doc) {
   if (doc.sheets.isEmpty) return doc;
+  doc = vectorsBound(doc);
   var sheets = {for (var s in doc.sheets) s.id: s};
   return _mapViews(doc, (e) {
     var sheet = sheets[linkOf(e)?.sheet];
@@ -551,9 +554,48 @@ CanvasDocument dataRefreshed(CanvasDocument doc) {
 /// never changed, so one set per list holds.
 final _sheetIds = Expando<Set<String>>("sheetIds");
 
+/// _boundShapes is whether [e] is a drawing with a shape bound to a sheet.
+bool _boundShapes(CanvasElement e) =>
+    e is VectorElement && (e.shapes?.any((s) => s.bind != null) ?? false);
+
+/// boundValue is the number in [bind]'s cell of [sheets], or null.
+double? boundValue(List<DataSheet> sheets, VectorBind bind) {
+  var sheet = sheets
+      .where((s) => s.id == bind.sheet || s.name == bind.sheet)
+      .firstOrNull;
+  var at = cellAt(bind.cell.trim().toUpperCase());
+  if (sheet == null || at == null) return null;
+  var v = sheetValue(sheet, at.$1, at.$2);
+  return v is num && v.isFinite ? v.toDouble() : null;
+}
+
+/// vectorsBound is [doc] with every bound shape (VectorBind) holding its
+/// cell's number as the sheets have it now; [doc] itself when none changed.
+CanvasDocument vectorsBound(CanvasDocument doc) => _mapViews(doc, (e) {
+      var v = e as VectorElement;
+      var shapes = v.shapes!;
+      List<VectorShape>? out;
+      for (var (i, s) in shapes.indexed) {
+        var bind = s.bind;
+        if (bind == null) continue;
+        var value = boundValue(doc.sheets, bind);
+        // No number to read (the sheet gone, the cell empty or text): it
+        // keeps the last it had, and draws as before.
+        if (value == null || value == bind.value) continue;
+        (out ??= [...shapes])[i] = s.copyWith(bind: bind.withValue(value));
+      }
+      return out == null ? e : v.copyWith(shapes: out);
+    }, which: _boundShapes);
+
 /// dataSynced is [next], a change from [was], with its sheets and every
-/// view of them in step; [next] itself when it changed no data.
+/// view of them in step, and every bound shape (see vectorsBound) holding
+/// its number; [next] itself when it changed no data.
 CanvasDocument dataSynced(CanvasDocument was, CanvasDocument next) {
+  var out = _dataSynced(was, next);
+  return identical(was.sheets, out.sheets) ? out : vectorsBound(out);
+}
+
+CanvasDocument _dataSynced(CanvasDocument was, CanvasDocument next) {
   if (identical(was.sheets, next.sheets) &&
       identical(was.elements, next.elements)) {
     return next;

@@ -976,6 +976,15 @@ void paintElement(
         if (_shapeByShape(e, pose)) {
           _paintVectorInTurn(canvas, bounds, e, pose, frame,
               (document?.frames ?? (1 << 30)) - 1);
+        } else if (e.animation.preset == ElementAnimationPreset.drawOn &&
+            (pose.values[KeyframeChannel.close] ?? 0) <= 0) {
+          // Draw on: the lines drawn along, the fills faded in behind.
+          var at = pose.values[KeyframeChannel.reveal] ?? 1;
+          if (at > 0) {
+            withVectorDrawn(
+                at >= 1 ? 1 : e.animation.progressAt(at).clamp(0.0, 1.0),
+                () => paintVector(canvas, bounds, e, images));
+          }
         } else {
           arriving(canvas, bounds, e.animation, pose,
               () => paintVector(canvas, bounds, e, images));
