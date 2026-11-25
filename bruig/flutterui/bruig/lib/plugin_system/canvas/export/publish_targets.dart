@@ -42,6 +42,7 @@ String extensionFor(String mime) => switch (mime) {
       "audio/ogg" => ".opus",
       "application/pdf" => ".pdf",
       epubMime => ".epub",
+      "application/zip" => ".zip",
       "application/json" => ".bcanvas",
       bundleMime => ".bcanvas",
       _ => ".bin",

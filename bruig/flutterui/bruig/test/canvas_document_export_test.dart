@@ -258,6 +258,34 @@ void main() {
       expect(opf, contains('idref="page2" properties="page-spread-right"'));
     });
 
+    testWidgets("as images, a PNG per page in one zip, in order",
+        (tester) async {
+      var made = await tester
+          .runAsync(() => renderDocument(book(), as: DocumentAs.images));
+      expect(made, isNotNull);
+      expect(made!.mime, zipMime);
+      expect(extensionFor(made.mime), ".zip");
+      var files = ZipDecoder().decodeBytes(made.data).files;
+      expect(files, hasLength(3), reason: "three leaves, three pictures");
+      expect([for (var f in files) f.name.substring(0, 3)],
+          ["01 ", "02 ", "03 "]);
+      for (var f in files) {
+        var bytes = f.content as List<int>;
+        expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47],
+            reason: "${f.name} is a PNG");
+      }
+    });
+
+    test("a page picture's name sorts in order and is safe", () {
+      expect(pageFileName(0, 9, "Cover"), "01 Cover.png");
+      expect(pageFileName(11, 120, "a/b: c"), "012 a-b- c.png");
+      expect(pageFileName(2, 3, ""), "03.png");
+      expect(pageFileName(4, 13, "#3731 4×64-bit"), "05 3731 4-64-bit.png",
+          reason: "a PR's number without its #");
+      expect(DocumentAs.images.book, isFalse);
+      expect(DocumentAs.epub.book, isTrue);
+    });
+
     testWidgets("and a plain one has no links on it", (tester) async {
       var made = await tester
           .runAsync(() => renderDocument(book(), as: DocumentAs.epub));

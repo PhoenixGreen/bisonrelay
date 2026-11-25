@@ -384,7 +384,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     // stores that read pictures, an interactive one sold directly.
     _profile = pick(StoreProfile.values, "profile",
         _documentAs == DocumentAs.epub ? StoreProfile.plain : _profile);
-    if (_documentAs != DocumentAs.pdf) _documentAs = _profile.document;
+    if (_documentAs.book) _documentAs = _profile.document;
     _to = pick(PublishTo.values, "to", _to);
     _format = pick(EmbedFormat.values, "format", _format);
     _quality = number("quality", _quality).toInt().clamp(1, 100);
@@ -560,7 +560,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         return renderDocument(
           document,
           as: _documentAs,
-          profile: _documentAs == DocumentAs.pdf ? null : _profile,
+          profile: _documentAs.book ? _profile : null,
           soundKbps: _sound.kbps,
           spreads: widget.document.isPages ? _spreads : null,
           scale: _scale,
@@ -637,7 +637,7 @@ class _PublishSheetState extends State<_PublishSheet> {
 
       // A book is checked before it goes anywhere: Apple refuses one that
       // fails EPUBCheck, and our own check catches what it finds first.
-      if (_as == PublishAs.document && _documentAs != DocumentAs.pdf) {
+      if (_as == PublishAs.document && _documentAs.book) {
         setState(() => _progress = "Checking the book…");
         var report = await checkEpub(export.data);
         if (!mounted) return;
@@ -1252,14 +1252,17 @@ class _PublishSheetState extends State<_PublishSheet> {
               child: _dropdown<String>(
                 theme,
                 "Format",
-                _documentAs == DocumentAs.pdf ? "pdf" : _profile.name,
+                _documentAs.book ? _profile.name : _documentAs.name,
                 [
                   ("pdf", DocumentAs.pdf.label),
+                  ("images", "Images (a PNG per page)"),
                   for (var p in StoreProfile.values) (p.name, "EPUB for ${p.label}"),
                 ],
                 (v) => setState(() {
                   if (v == "pdf") {
                     _documentAs = DocumentAs.pdf;
+                  } else if (v == "images") {
+                    _documentAs = DocumentAs.images;
                   } else {
                     _profile = StoreProfile.fromName(v);
                     _documentAs = _profile.document;
@@ -1268,7 +1271,7 @@ class _PublishSheetState extends State<_PublishSheet> {
               ),
             ),
           ]),
-          if (_documentAs != DocumentAs.pdf)
+          if (_documentAs.book)
             for (var r in [
               ...storeReadiness(widget.document, _profile,
                   scale: _scale, ffmpeg: _ffmpeg),
@@ -1321,7 +1324,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 [for (var o in PdfOrientation.values) (o, o.label)],
                 (v) => setState(() => _orientation = v)),
           ],
-          if (_documentAs != DocumentAs.pdf && widget.document.isPages)
+          if (_documentAs.book && widget.document.isPages)
             CheckboxListTile(
               key: const ValueKey("publishSpreads"),
               value: _spreads,
@@ -1351,7 +1354,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 (v) => setState(() => _sound = _sound.copyWith(kbps: v))),
           ],
           const SizedBox(height: 10),
-          Txt.S("${_documentAs == DocumentAs.pdf ? _documentAs.description : _profile.description}. "
+          Txt.S("${_documentAs.book ? _profile.description : _documentAs.description}. "
               "${widget.document.allScenes.length} "
               "page${widget.document.allScenes.length == 1 ? "" : "s"}, "
               "each at the size this canvas is."

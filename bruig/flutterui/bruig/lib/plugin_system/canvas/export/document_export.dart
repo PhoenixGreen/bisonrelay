@@ -24,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
@@ -38,14 +39,46 @@ enum DocumentAs {
   interactiveEpub(
       "Interactive EPUB",
       "The same, with its buttons, animation, sounds and videos working — "
-          "sound and video need ffmpeg to be put into the book");
+          "sound and video need ffmpeg to be put into the book"),
+
+  /// images is every page as a picture of its own, as the PDF draws it
+  /// (settled, everything arrived), the PNGs in one zip: for a post, a
+  /// carousel or a site.
+  images("Images", "Every page as a PNG of its own, in one zip file");
 
   final String label;
   final String description;
   const DocumentAs(this.label, this.description);
 
-  String get extension => this == pdf ? "pdf" : "epub";
-  String get mime => this == pdf ? "application/pdf" : epubMime;
+  /// book is whether it is an EPUB, of either kind.
+  bool get book => this == epub || this == interactiveEpub;
+
+  String get extension => switch (this) {
+        pdf => "pdf",
+        images => "zip",
+        _ => "epub",
+      };
+  String get mime => switch (this) {
+        pdf => "application/pdf",
+        images => zipMime,
+        _ => epubMime,
+      };
+}
+
+/// zipMime is the pages-as-pictures export's type: a zip of PNGs.
+const String zipMime = "application/zip";
+
+/// pageFileName is page [i] of [count]'s picture's name in the zip: its
+/// number, padded so they sort in order, then its scene's name.
+String pageFileName(int i, int count, String name) {
+  var width = math.max(2, "$count".length);
+  var safe = name
+      .replaceAll("#", "")
+      .replaceAll(RegExp(r"[^A-Za-z0-9 _()-]"), "-")
+      .replaceAll(RegExp(r"-{2,}"), "-")
+      .trim();
+  var n = "${i + 1}".padLeft(width, "0");
+  return safe.isEmpty ? "$n.png" : "$n $safe.png";
 }
 
 /// StoreProfile is which store an EPUB is made for: what it carries and what
@@ -300,7 +333,7 @@ Future<CanvasExport?> renderDocument(
     // The book's cover picture: the cover page, opaque and no bigger than a
     // reader takes (see _coverPicture).
     Uint8List? cover;
-    if (as != DocumentAs.pdf) {
+    if (as.book) {
       var front = document.pageCovers.indexOf(PageCover.front);
       cover = await _coverPicture(
           document, document.isPages && front >= 0 ? front : 0, images);
@@ -323,10 +356,11 @@ Future<CanvasExport?> renderDocument(
     // A comic's panels in reading order, for a reader that reads panel by
     // panel (Kindle's Panel View, Bison Relay's; see EpubPanel). Listed in
     // either book; only a plain one has places to tap (epub_writer).
-    var panels = as != DocumentAs.pdf
+    var panels = as.book
         ? panelSteps(document).where((p) => !p.whole).toList()
         : const <PanelStep>[];
     var sheets = <PdfPicture>[];
+    var pictures = Archive();
 
     // An interactive book's sound and video: converted once for the book,
     // placed page by page (see epub_media.dart).
@@ -354,6 +388,16 @@ Future<CanvasExport?> renderDocument(
         }
         var png = await image.toByteData(format: ui.ImageByteFormat.png);
         if (png == null) return null;
+        if (as == DocumentAs.images) {
+          var bytes = png.buffer.asUint8List();
+          // Stored, not deflated: a PNG is compressed already.
+          pictures.addFile(ArchiveFile(
+              pageFileName(i, scenes.length, document.nameOf(i)),
+              bytes.length,
+              bytes)
+            ..compression = CompressionType.none);
+          continue;
+        }
         // A Kindle page as a JPEG, where ffmpeg can make one: Amazon charges
         // for every megabyte of every sale.
         var picture = png.buffer.asUint8List();
@@ -404,6 +448,15 @@ Future<CanvasExport?> renderDocument(
       }
     }
     onProgress?.call(scenes.length, scenes.length);
+
+    if (as == DocumentAs.images) {
+      if (pictures.isEmpty) return null;
+      var size = document.size.exportSize;
+      return CanvasExport(
+          Uint8List.fromList(ZipEncoder().encode(pictures)), zipMime,
+          width: (size.width * scale).round(),
+          height: (size.height * scale).round());
+    }
 
     if (as == DocumentAs.pdf) {
       if (sheets.isEmpty) return null;
