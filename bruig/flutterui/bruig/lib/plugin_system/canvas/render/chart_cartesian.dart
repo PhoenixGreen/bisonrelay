@@ -211,6 +211,25 @@ _ValueRange _niceRange(double lo, double hi,
   return _ValueRange(min, max, ticks);
 }
 
+/// ticksWithin is the lines of an axis set to run [lo] to [hi]: at a
+/// round step, about [want] of them (five when unset), none outside it.
+List<double> _ticksWithin(double lo, double hi, int want) {
+  if (!(hi > lo) || !lo.isFinite || !hi.isFinite) return [lo];
+  var step = _stepFor(lo, hi, want > 0 ? want : 5);
+  var first = (lo / step - 1e-9).ceil();
+  var last = (hi / step + 1e-9).floor();
+  if (last - first > 200) return [lo, hi];
+  return [
+    for (var i = first; i <= last; i++)
+      (i * step).abs() < step * 1e-9 ? 0.0 : i * step,
+  ];
+}
+
+/// ticksWithinForTest exposes [_ticksWithin] to the tests.
+@visibleForTesting
+List<double> ticksWithinForTest(double lo, double hi, int want) =>
+    _ticksWithin(lo, hi, want);
+
 void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     [List<double>? seriesReveal]) {
   var data = e.data;
@@ -254,8 +273,20 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
       ? _logRange(lo, hi, want: e.axisSteps)
       : _niceRange(lo, hi, fromZero: fromZero, want: e.axisSteps);
   if (!e.yMin.isNaN || !e.yMax.isNaN) {
-    range = _ValueRange(e.yMin.isNaN ? range.min : e.yMin,
-        e.yMax.isNaN ? range.max : e.yMax, range.ticks,
+    var min = e.yMin.isNaN ? range.min : e.yMin;
+    var max = e.yMax.isNaN ? range.max : e.yMax;
+    // The lines and numbers within the range set, not the one worked out:
+    // an area chart's own starts from zero, so set to 50..70 it kept lines
+    // at 0, 40 and 80, the 80 drawn over the chart above (Ken, 2026-11-25).
+    range = _ValueRange(
+        min,
+        max,
+        range.log
+            ? [
+                for (var t in range.ticks)
+                  if (t >= min - 1e-9 && t <= max + 1e-9) t
+              ]
+            : _ticksWithin(min, max, e.axisSteps),
         log: range.log);
   }
 
