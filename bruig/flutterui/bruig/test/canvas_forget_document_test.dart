@@ -134,8 +134,6 @@ final _outlivesACanvas = <String, String>{
       "kind (clip, roll, pitch, instrument), not by any element",
   "_effectsFocusCount": "counts those requests: only goes up",
   "_gameState.tabOpen": "whether the Game tab shows: a view setting",
-  "_keyframes.keyClipboard": "keyframes copied: a clipboard, which pastes "
-      "into another canvas as the element clipboard does",
   "_laneState.cuesShown": "a view setting of the timeline",
   "_laneState.followPlayhead": "whether the timeline follows the playhead: "
       "a preference",

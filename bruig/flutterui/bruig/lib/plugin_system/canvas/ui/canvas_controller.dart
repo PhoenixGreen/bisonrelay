@@ -41,6 +41,7 @@ import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/track_marks.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -1648,6 +1649,14 @@ class CanvasController extends ChangeNotifier {
 
   /// _keysHeight is the Keys strip's dragged height, or null for its own.
   static double? _keysHeight;
+
+  /// _keysOnly is whether the Chain shows the Keys strip alone, filling it
+  /// (its Keys tab), rather than over the cards: for the session.
+  static bool _keysOnly = false;
+
+  /// _keyInspectorShut is whether the Keys strip's and the Curves'
+  /// inspectors are shut to their edge: for the session.
+  static bool _keyInspectorShut = false;
 
   /// _chainPhase is the Chain's filter: only what plays in one phase -- its
   /// cards and its keys -- or null for all of it.

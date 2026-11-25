@@ -56,13 +56,19 @@ extension CanvasMovement on CanvasController {
       return element.withBase(x: topLeft.dx, y: topLeft.dy);
     }
     var track = (element.track ?? ElementTrack.empty).seededFor(_frame);
-    var pose = track.at(_frame);
+    var dx = topLeft.dx - element.x, dy = topLeft.dy - element.y;
+    // Location keys picked on the Keys strip: the keyed path moved whole,
+    // by however far it is from where it is drawn now.
+    if (pickedLocationFrames(element.id) case var frames?) {
+      var pose = track.at(_frame);
+      return element.withBase(
+          track: track.shiftLocations(frames, dx - pose.dx, dy - pose.dy));
+    }
+    // Its location keyed here, and nothing else: a scale or rotation keyed
+    // elsewhere keeps its own timing.
     return element.withBase(
-      track: track.withKey(pose.copyWith(
-        frame: _frame,
-        dx: topLeft.dx - element.x,
-        dy: topLeft.dy - element.y,
-      )),
+      track: track.posed(_frame, const [KeyProp.location],
+          (pose) => pose.copyWith(dx: dx, dy: dy)),
     );
   }
 
@@ -261,10 +267,11 @@ extension CanvasMovement on CanvasController {
     var track = seed
         ? (element.track ?? ElementTrack.empty).seededFor(_frame)
         : (element.track ?? ElementTrack.empty);
-    var at = track.at(_frame);
-    replaceElement(element.withBase(
-        track: track
-            .withKey(at.copyWith(frame: _frame).withValue(channel, value))));
+    // The channel pinned here, beside what the frame's keyframe holds: a
+    // new keyframe pins nothing else.
+    var into = track.keyAt(_frame) ?? Keyframe(frame: _frame, pins: 0);
+    replaceElement(
+        element.withBase(track: track.withKey(into.withValue(channel, value))));
   }
 
   /// clearValueKey unpins [channel] here, and the key if that was all of it.
@@ -273,7 +280,7 @@ extension CanvasMovement on CanvasController {
     var at = track?.keyAt(_frame);
     if (track == null || at == null) return;
     var without = at.withoutValue(channel);
-    var next = without.isRest && without.frame != 0
+    var next = (without.isRest || without.holdsNothing) && without.frame != 0
         ? track.withoutFrame(_frame)
         : track.withKey(without);
     replaceElement(withTrackOrNone(element, next));

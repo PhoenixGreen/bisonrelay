@@ -121,7 +121,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       await tester.pump();
-      expect([for (var k in c.keyframeTarget!.track.keys) k.frame], [0, 48]);
+      // Its location: the keyframe's other properties stay.
+      var t = c.keyframeTarget!.track;
+      expect(t.keyAt(24)?.pinsProp(KeyProp.location) ?? false, isFalse);
     });
 
     testWidgets("the playhead is dragged by its cap, and by its line",

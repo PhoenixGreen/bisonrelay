@@ -98,14 +98,14 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   /// _withKeys is [cards] under the Keys strip of [e], where it is open.
   Widget _withKeys(CanvasElement e, Widget cards) {
-    if (!controller.keysShown) return cards;
+    if (!controller.keysShown && !controller.keysOnly) return cards;
     var strip = KeysStrip(
         key: ValueKey("keysStrip-${e.id}"),
         controller: controller,
         element: e,
         height: _strip);
-    // Too short for both: the strip alone, until Keys is shut.
-    if (_strip >= widget.height) return strip;
+    // Its Keys tab, or too short for both: the strip alone.
+    if (controller.keysOnly || _strip >= widget.height) return strip;
     var most = widget.height - AnimationPanel.cardsLeast;
     return Column(children: [
       Stack(children: [
@@ -138,8 +138,12 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   /// _stripFor sets [_strip] for [e]: as tall as its rows, leaving cards room.
   void _stripFor(CanvasElement? e) {
-    if (e == null || !controller.keysShown) {
+    if (e == null || !(controller.keysShown || controller.keysOnly)) {
       _strip = 0;
+      return;
+    }
+    if (controller.keysOnly) {
+      _strip = widget.height;
       return;
     }
     var room = widget.height - AnimationPanel.cardsLeast;

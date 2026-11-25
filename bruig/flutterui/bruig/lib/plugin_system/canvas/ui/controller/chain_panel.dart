@@ -121,6 +121,26 @@ extension CanvasChainPanel on CanvasController {
     notifyListeners();
   }
 
+  /// keysOnly is the Chain's Keys tab: the Keys strip filling the Chain,
+  /// with no cards, for working on keys alone.
+  bool get keysOnly => CanvasController._keysOnly;
+
+  set keysOnly(bool only) {
+    if (only == CanvasController._keysOnly) return;
+    CanvasController._keysOnly = only;
+    notifyListeners();
+  }
+
+  /// keyInspectorShut is whether the Keys strip's and the Curves' inspectors
+  /// are shut to their edge, leaving the room to the keys and lines.
+  bool get keyInspectorShut => CanvasController._keyInspectorShut;
+
+  set keyInspectorShut(bool shut) {
+    if (shut == CanvasController._keyInspectorShut) return;
+    CanvasController._keyInspectorShut = shut;
+    notifyListeners();
+  }
+
   MotionPhase? get chainPhase => _chainPhase;
 
   set chainPhase(MotionPhase? phase) {

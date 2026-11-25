@@ -275,12 +275,26 @@ extension on _ChainPanelState {
           id: "chainTabMotionChain",
           label: "Chain",
           icon: Icons.call_split,
-          on: !curvesOn,
+          on: !curvesOn && !(c.keysOnly && e != null),
           look: look,
           onTap: () {
             c.closeMotionCurves();
             c.closeTrackCurves();
+            c.keysOnly = false;
           }),
+      // The Keys strip alone, filling the Chain: keys without the cards.
+      if (e != null)
+        _ChainTab(
+            id: "chainTabKeys",
+            label: "Keys",
+            icon: Icons.linear_scale,
+            on: c.keysOnly && !curvesOn,
+            look: look,
+            onTap: () {
+              c.closeMotionCurves();
+              c.closeTrackCurves();
+              c.keysOnly = true;
+            }),
       if (e != null && (clip != null || keyed))
         _ChainTab(
             id: "chainTabCurves",
@@ -289,10 +303,11 @@ extension on _ChainPanelState {
             on: curvesOn,
             look: look,
             onTap: curves),
-      // The Keys strip, opened over the cards and shut again, always beside
+      // The Keys strip over the cards, shown and hidden, always beside
       // Curves: from the Curves it goes back to the chain with the keys
-      // showing; on the chain it shows and hides them.
-      if (e != null) ...[
+      // showing; on the chain it shows and hides them. Not on the Keys tab,
+      // which is the strip already.
+      if (e != null && !(c.keysOnly && !curvesOn)) ...[
         const SizedBox(width: 6),
         _KeysToggle(
             look: look,
@@ -301,6 +316,7 @@ extension on _ChainPanelState {
               if (curvesOn) {
                 c.closeMotionCurves();
                 c.closeTrackCurves();
+                c.keysOnly = false;
                 c.keysShown = true;
               } else {
                 c.keysShown = !c.keysShown;
@@ -1012,7 +1028,7 @@ class _KeysToggle extends StatelessWidget {
               ChainIcon("diamond",
                   size: 14, color: on ? look.studio.text : look.studio.muted),
               const SizedBox(width: 5),
-              Text("Keys",
+              Text("Keys above",
                   style: TextStyle(
                       fontSize: 11.5,
                       color: on ? look.studio.text : look.studio.muted)),

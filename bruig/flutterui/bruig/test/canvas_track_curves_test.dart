@@ -74,7 +74,7 @@ void main() {
 
   testWidgets("opened on a keyframe: its first value picked", (tester) async {
     await show(tester, frame: 24);
-    expect(find.text("Across at frame 24"), findsOneWidget);
+    expect(find.text("Location across at frame 24"), findsOneWidget);
     expect(find.byKey(const ValueKey("trackCurvesValue-dx")), findsOneWidget);
     expect(
         find.byKey(const ValueKey("trackCurvesValue-rotate")), findsOneWidget);
@@ -89,7 +89,7 @@ void main() {
     expect(find.byKey(const ValueKey("trackCurvesHint")), findsOneWidget);
     await tester.tapAt(across(tester, 48, 100));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text("Across at frame 48"), findsOneWidget);
+    expect(find.text("Location across at frame 48"), findsOneWidget);
   });
 
   testWidgets("a key dragged down lowers that value, at the same frame",
@@ -111,7 +111,7 @@ void main() {
     expect(c.canUndo, isTrue);
   });
 
-  testWidgets("a key dragged sideways moves its whole keyframe",
+  testWidgets("a key dragged sideways moves that property's key alone",
       (tester) async {
     var c = await show(tester);
     var from = across(tester, 24, 100);
@@ -124,8 +124,11 @@ void main() {
     await tester.pump();
     await g.up();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(framesOf(c), [0, 36, 48]);
+    expect(framesOf(c), [0, 24, 36, 48]);
     expect(keyAt(c, 36).dx, closeTo(100, 1));
+    expect(keyAt(c, 36).pins, KeyProp.location.bit);
+    expect(keyAt(c, 24).pinsProp(KeyProp.location), isFalse,
+        reason: "its rotation, held to 24, stays");
   });
 
   testWidgets("right-clicked, a value goes back to rest", (tester) async {
@@ -144,17 +147,19 @@ void main() {
     expect(keyAt(c, 48).dx, 0);
   });
 
-  testWidgets("a double-click adds a keyframe holding the pose there",
+  testWidgets("a double-click on a line keys its property there",
       (tester) async {
     var c = await show(tester);
-    var p = across(tester, 12, 20);
+    // On the across line, half way to 100 by frame 12.
+    var p = across(tester, 12, 50);
     await tester.tapAt(p);
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tapAt(p);
     await tester.pump(const Duration(milliseconds: 400));
     expect(framesOf(c), [0, 12, 24, 48]);
-    expect(keyAt(c, 12).dx, greaterThan(0));
-    expect(find.text("Across at frame 12"), findsOneWidget);
+    expect(keyAt(c, 12).dx, closeTo(50, 1e-9));
+    expect(keyAt(c, 12).pins, KeyProp.location.bit);
+    expect(find.text("Location across at frame 12"), findsOneWidget);
   });
 
   testWidgets("the toolbar eases the picked keyframe", (tester) async {

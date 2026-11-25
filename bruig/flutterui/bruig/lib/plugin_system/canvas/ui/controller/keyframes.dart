@@ -580,53 +580,173 @@ extension CanvasKeyframes on CanvasController {
     }
   }
 
-  /// copyTargetKeys keeps the keyframes at [frames], relative to the first,
-  /// to paste at the playhead, and returns how many.
-  int copyTargetKeys(Iterable<int> frames) {
-    var t = keyframeTarget;
-    if (t == null || t.points) return 0;
-    var sorted = frames.toList()..sort();
-    if (sorted.isEmpty) return 0;
-    _keyframes.keyClipboard = [
-      for (var f in sorted)
-        if (t.track.keyAt(f) case var k?) (f - sorted.first, k)
-    ];
-    return _keyframes.keyClipboard.length;
+  // ---- marks: a key on one row of the Keys strip, or in the Curves -------
+
+  /// _markOwner is whose keys the marks picked are: the element the Keys
+  /// strip edits, or the team's player.
+  String? get _markOwner {
+    var team = focusedTeam;
+    var index = focusedPlayer;
+    if (team != null && index != null) return "${team.id}#$index";
+    return selected?.id;
   }
 
-  bool get hasCopiedKeys => _keyframes.keyClipboard.isNotEmpty;
-
-  /// pasteTargetKeys lays the copied keyframes down from the playhead,
-  /// keeping their spacing: the frames they landed on, or why not (no room
-  /// before the scene ends, or a keyframe already there).
-  (List<int>, String?) pasteTargetKeys() {
-    var t = keyframeTarget;
-    if (t == null || t.points || _keyframes.keyClipboard.isEmpty) {
-      return (const [], null);
+  /// pickedMarks are the keys picked on the Keys strip or in the Curves, of
+  /// what they edit now: none once another element is picked. Kept here, not
+  /// in either, so a drag on the canvas can move them (see
+  /// pickedLocationFrames) and they outlive the strip being rebuilt.
+  Set<KeyMark> get pickedMarks {
+    var owner = _markOwner;
+    if (owner != _keyframes.marksOf) {
+      _keyframes.marksOf = owner;
+      _keyframes.marks.clear();
     }
+    return _keyframes.marks;
+  }
+
+  set pickedMarks(Iterable<KeyMark> marks) {
+    var now = {...marks};
+    pickedMarks
+      ..clear()
+      ..addAll(now);
+  }
+
+  /// pickedLocationFrames are the frames of the Location keys picked on
+  /// [id], where there are two or more: a drag of it on the canvas moves them
+  /// all, so a keyed path is moved whole rather than given a key more.
+  List<int>? pickedLocationFrames(String id) {
+    if (_markOwner != id || _keyframes.marksOf != id) return null;
+    var frames = [
+      for (var m in _keyframes.marks)
+        if (m.row == KeyProp.location.name || m.row == allRow) m.frame
+    ];
+    var track = _document.elementById(id)?.track;
+    if (track == null) return null;
+    frames = [
+      for (var f in frames)
+        if (track.keyAt(f)?.pinsProp(KeyProp.location) ?? false) f
+    ];
+    return frames.length >= 2 ? frames : null;
+  }
+
+  /// targetRows are the Keys strip's rows for what it edits: a path's points
+  /// are one row.
+  List<String> get targetRows {
+    var t = keyframeTarget;
+    if (t == null) return const [];
+    if (t.points) return t.track.isEmpty ? const [] : const [allRow];
+    return t.track.rows;
+  }
+
+  /// moveTargetMarks moves [marks] [by] frames, keeping their spacing: all
+  /// of them, or none (false) where one would land on a key of its own row
+  /// or off the scene.
+  bool moveTargetMarks(Iterable<KeyMark> marks, int by) {
+    var t = keyframeTarget;
+    if (t == null) return false;
+    if (t.points) {
+      return moveTargetKeyframes({for (var m in marks) m.frame}.toList(), by);
+    }
+    var next = t.track.moveMarks(marks, by, last: _document.frames - 1);
+    if (next == null) return false;
+    if (!identical(next, t.track)) writeTargetTrack(next);
+    return true;
+  }
+
+  /// removeTargetMarks takes [marks] away; a keyframe left holding nothing
+  /// goes with them.
+  void removeTargetMarks(Iterable<KeyMark> marks) {
+    var t = keyframeTarget;
+    if (t == null) return;
+    if (t.points) {
+      removeTargetKeyframes({for (var m in marks) m.frame});
+      return;
+    }
+    writeTargetTrack(t.track.withoutMarks(marks));
+  }
+
+  /// toggleTargetRow is a double-click on [row]: its key at the playhead
+  /// taken away, or laid there holding what the row has on that frame.
+  void toggleTargetRow(String row) {
+    var t = keyframeTarget;
+    if (t == null) return;
+    if (t.points || row == allRow && t.track.isEmpty) {
+      toggleTargetKeyframe();
+      return;
+    }
+    writeTargetTrack(t.track.toggled(row, _frame));
+  }
+
+  /// copyTargetMarks keeps [marks], relative to the first, to paste at the
+  /// playhead -- on this element or another -- and returns how many.
+  int copyTargetMarks(Iterable<KeyMark> marks) {
+    var t = keyframeTarget;
+    if (t == null || t.points) return 0;
+    var copied = t.track.copyMarks(marks);
+    if (copied.isEmpty) return 0;
+    _KeyframeState.copied = copied;
+    _KeyframeState.copiedLast = true;
+    return {
+      for (var m in marks)
+        if (t.track.keyAt(m.frame) case var k?
+            when TrackMarks.pinsRow(k, m.row))
+          m
+    }.length;
+  }
+
+  /// hasCopiedKeys is whether there are keys to paste.
+  bool get hasCopiedKeys => _KeyframeState.copied.isNotEmpty;
+
+  /// pastesKeys is whether a paste (⌘V anywhere on the page) lays keys
+  /// rather than elements: keys were copied after any element was, and
+  /// something is picked to have them.
+  bool get pastesKeys =>
+      _KeyframeState.copiedLast &&
+      hasCopiedKeys &&
+      (keyframeTarget?.points == false || _keyedSelection.isNotEmpty);
+
+  /// _keyedSelection are the elements picked that keys can be pasted onto:
+  /// a path's are its points, and an element a path drives has its points.
+  List<CanvasElement> get _keyedSelection => [
+        for (var e in selectedElements)
+          if (e is! PathElement && pathDriving(e.id) == null) e
+      ];
+
+  /// pasteTargetMarks lays the copied keys from the playhead, keeping their
+  /// spacing, over whatever is there (the same properties replaced, the rest
+  /// kept), on what the Keys strip edits -- or, with several elements
+  /// picked, on each. The marks laid on the first, or why not.
+  (List<KeyMark>, String?) pasteTargetMarks() {
+    var copied = _KeyframeState.copied;
+    if (copied.isEmpty) return (const [], null);
     var at = _frame;
-    var wanted = [for (var (offset, _) in _keyframes.keyClipboard) at + offset];
-    if (wanted.last > _document.frames - 1) {
+    if (at + copied.last.$1 > _document.frames - 1) {
       return (const [], "There is not room for that before the scene ends.");
     }
-    var taken = [
-      for (var f in wanted)
-        if (t.track.keyAt(f) != null) f
-    ];
-    if (taken.isNotEmpty) {
-      return (
-        const [],
-        "Frame${taken.length == 1 ? "" : "s"} ${taken.join(", ")} already "
-            "${taken.length == 1 ? "has a keyframe" : "have keyframes"}: move "
-            "the playhead clear of them."
-      );
+    var frames = {for (var (offset, _) in copied) at + offset};
+    List<KeyMark> landedOn(ElementTrack track) => [
+          for (var r in track.rows)
+            for (var f in frames)
+              if (track.keyAt(f) case var k? when TrackMarks.pinsRow(k, r))
+                (row: r, frame: f)
+        ];
+    var t = keyframeTarget;
+    if (t != null && !t.points) {
+      var next = t.track.pasted(copied, at);
+      writeTargetTrack(next);
+      return (landedOn(next), null);
     }
-    var next = t.track;
-    for (var (offset, k) in _keyframes.keyClipboard) {
-      next = next.withKey(k.copyWith(frame: at + offset));
+    var many = _keyedSelection;
+    if (many.isEmpty) {
+      return (const [], "Pick an element to paste the keys onto.");
     }
-    writeTargetTrack(next);
-    return (wanted, null);
+    var doc = _document;
+    for (var e in many) {
+      doc = doc.withElement(e.withBase(
+          track: (e.track ?? ElementTrack.empty).pasted(copied, at)));
+    }
+    apply(doc);
+    return (const [], null);
   }
 
   /// easeTargetKeyframes sets how each keyframe at [frames] eases to the
@@ -713,9 +833,19 @@ const double exitHoldSeconds = 2;
 /// uses it. The controller holds one, as _keyframes; most fields are read and
 /// set through CanvasKeyframes's getters and setters above, which say what each is.
 class _KeyframeState {
-  /// keyClipboard is the keyframes copied in the Chain's Keyframes card,
-  /// each relative to the first: see copyTargetKeys.
-  List<(int, Keyframe)> keyClipboard = const [];
+  /// copied are the keys last copied on the Keys strip or in the Curves,
+  /// each holding only what was copied and relative to the first: see
+  /// copyTargetMarks. The app's, as the element clipboard is, so they paste
+  /// into another canvas too.
+  static List<(int, Keyframe)> copied = const [];
+
+  /// copiedLast is whether keys were copied after any element was: what a
+  /// paste anywhere on the page lays (see pastesKeys).
+  static bool copiedLast = false;
+
+  /// marks are the keys picked, of [marksOf]: see pickedMarks.
+  final Set<KeyMark> marks = {};
+  String? marksOf;
 
   final Set<String> anchorsShown = {};
 }

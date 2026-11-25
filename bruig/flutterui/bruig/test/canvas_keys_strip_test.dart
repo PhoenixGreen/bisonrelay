@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/track_marks.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/keys_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:flutter/gestures.dart';
@@ -84,20 +85,24 @@ void main() {
       expect(framesOf(c), [0, 24, 48], reason: "and takes it away");
     });
 
-    test("copied and pasted at the playhead, never over another", () {
+    test("copied and pasted at the playhead, over what is there", () {
       var c = make();
       addTearDown(c.dispose);
-      expect(c.copyTargetKeys([24, 48]), 2);
+      List<KeyMark> both(int f) =>
+          [(row: "location", frame: f), (row: "rotation", frame: f)];
+      expect(c.copyTargetMarks([...both(24), ...both(48)]), 4);
       c.frame = 60;
-      var (landed, why) = c.pasteTargetKeys();
+      var (landed, why) = c.pasteTargetMarks();
       expect(why, isNull);
-      expect(landed, [60, 84]);
+      expect({for (var m in landed) m.frame}, {60, 84});
       expect(c.keyframeTarget!.track.keyAt(84)!.rotate, 90);
+      // Onto a keyframe already there: the same properties replaced.
       c.frame = 0;
-      var (_, refused) = c.pasteTargetKeys();
-      expect(refused, contains("already"));
+      var (_, over) = c.pasteTargetMarks();
+      expect(over, isNull);
+      expect(c.keyframeTarget!.track.keyAt(0)!.dx, 100);
       c.frame = 90;
-      var (_, noRoom) = c.pasteTargetKeys();
+      var (_, noRoom) = c.pasteTargetMarks();
       expect(noRoom, contains("not room"));
     });
 
@@ -251,7 +256,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await drag(tester, Offset(at(tester, 48).dx, at(tester, 24).dy),
           Offset(at(tester, 72).dx, at(tester, 24).dy));
-      expect(framesOf(c), [0, 36, 48]);
+      expect(c.keyframeTarget!.track.marksOn("location"), [0, 36, 48]);
 
       var ruler = Offset(lanes.left + 300, lanes.top + 10);
       await tester.tapAt(ruler);
@@ -314,7 +319,13 @@ void main() {
         (tester) async {
       var c = await show(tester);
       expect(find.byKey(const ValueKey("keysHint")), findsOneWidget);
-      expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsOneWidget);
+      // A row for each property its keys change: here, where it is and
+      // how it is turned.
+      expect(find.byKey(const ValueKey("keysLabel-track-location")),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey("keysLabel-track-rotation")),
+          findsOneWidget);
+      expect(find.text("Location"), findsOneWidget);
       await tester.tapAt(at(tester, 24));
       await tester.pump();
       expect(c.frame, 24);
@@ -323,11 +334,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("dragged, a keyframe is retimed, as one change",
+    testWidgets("dragged, a location key is retimed alone, as one change",
         (tester) async {
       var c = await show(tester);
       await drag(tester, at(tester, 24), at(tester, 36));
-      expect(framesOf(c), [0, 36, 48]);
+      var t = c.keyframeTarget!.track;
+      expect(t.marksOn("location"), [0, 36, 48]);
+      expect(t.marksOn("rotation"), [0, 24, 48],
+          reason: "the rotation held to 24 stays held to 24");
       expect(c.canUndo, isTrue);
       c.undo();
       expect(framesOf(c), [0, 24, 48], reason: "one undo puts it back");
@@ -340,15 +354,19 @@ void main() {
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       await tester.pump();
-      expect(framesOf(c), [0, 24]);
+      var t = c.keyframeTarget!.track;
+      expect(t.marksOn("location"), [0, 24]);
+      expect(t.marksOn("rotation"), [0, 24, 48], reason: "only the location");
       expect(c.document.elementById("logo"), isNotNull,
-          reason: "the keyframe, not the element");
+          reason: "the key, not the element");
       expect(find.byKey(const ValueKey("keysSaid")), findsOneWidget);
       await tester.tapAt(at(tester, 70));
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tapAt(at(tester, 70));
       await tester.pump();
-      expect(framesOf(c), [0, 24, 70]);
+      t = c.keyframeTarget!.track;
+      expect(t.marksOn("location"), [0, 24, 70]);
+      expect(t.keyAt(70)!.pins, KeyProp.location.bit);
     });
 
     testWidgets("a path's points: dragged, a point is retimed", (tester) async {
@@ -365,7 +383,8 @@ void main() {
         return c;
       });
       expect(c.keyframeTarget!.points, isTrue);
-      expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsOneWidget);
+      expect(find.byKey(const ValueKey("keysLabel-track-all")), findsOneWidget);
+      expect(find.text("Points"), findsOneWidget);
       await drag(tester, at(tester, 30), at(tester, 40));
       var path = c.document.elementById("p") as PathElement;
       expect([for (var n in path.nodes) n.frame], [0, 40, 60]);
@@ -404,10 +423,11 @@ void main() {
       await tester.tapAt(at(tester, 48));
       await tester.pump();
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
-      expect(find.text("3 keyframes"), findsOneWidget);
+      expect(find.text("3 Location keys"), findsOneWidget);
+      expect(find.byKey(const ValueKey("keysMoveTogether")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("keysSpread")));
       await tester.pump();
-      expect(framesOf(c), [0, 24, 36, 48]);
+      expect(c.keyframeTarget!.track.marksOn("location"), [0, 24, 36, 48]);
     });
 
     testWidgets("a keyed setting has a row; its key dragged, picked, deleted",
@@ -424,7 +444,8 @@ void main() {
       expect(
           find.byKey(const ValueKey("keysLabel-m0-strength")), findsOneWidget);
       // 0.5 s is frame 12 of 100 at 24 a second.
-      await drag(tester, at(tester, 12, row: 1), at(tester, 24, row: 1));
+      // Under its location and rotation rows.
+      await drag(tester, at(tester, 12, row: 2), at(tester, 24, row: 2));
       var d = c.motionDevicesOf("logo").single;
       expect(d.keys["strength"]!.first.t, closeTo(1, 1e-9));
       expect(find.byKey(const ValueKey("keysInspector-key")), findsOneWidget);
@@ -457,7 +478,8 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey("keysLabel-m0-radius")), findsNothing,
           reason: "only what plays in the leaving");
-      expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsNothing);
+      expect(
+          find.byKey(const ValueKey("keysLabel-track-location")), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });
@@ -655,6 +677,8 @@ void main() {
     await tester.pump();
     c.frame = 24;
     await tester.pump();
+    // Under its location and rotation rows.
+    await tester.ensureVisible(find.byKey(const ValueKey("keysAddRow")));
     await tester.tap(find.byKey(const ValueKey("keysAddRow")));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("keysAdd-m0-radius")));

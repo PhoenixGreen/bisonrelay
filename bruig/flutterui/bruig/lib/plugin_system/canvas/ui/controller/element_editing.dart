@@ -284,6 +284,8 @@ extension CanvasElementEditing on CanvasController {
     }
     if (chosen.isEmpty) return;
     CanvasController._clipboard = List.unmodifiable(chosen);
+    // Elements copied after keys: a paste lays the elements.
+    _KeyframeState.copiedLast = false;
     notifyListeners();
   }
 
@@ -309,6 +311,14 @@ extension CanvasElementEditing on CanvasController {
   /// paste drops the clipboard onto the canvas and selects what it added:
   /// with new ids, in their order relative to each other, on top.
   void paste() {
+    // Keys copied last, on the Keys strip or in the Curves: onto what is
+    // picked, at the playhead, however the keyboard got here.
+    if (pastesKeys) {
+      beginInteraction();
+      pasteTargetMarks();
+      endInteraction();
+      return;
+    }
     if (CanvasController._clipboard.isEmpty) return;
     var next = _document;
     var made = <String>{};
@@ -515,10 +525,13 @@ extension CanvasElementEditing on CanvasController {
       return element.withBase(x: element.x + dx, y: element.y + dy);
     }
     var track = (element.track ?? ElementTrack.empty).seededFor(_frame);
-    var pose = track.at(_frame);
+    // Location keys picked: the whole keyed path nudged (see movedTo).
+    if (pickedLocationFrames(element.id) case var frames?) {
+      return element.withBase(track: track.shiftLocations(frames, dx, dy));
+    }
     return element.withBase(
-      track: track.withKey(
-          pose.copyWith(frame: _frame, dx: pose.dx + dx, dy: pose.dy + dy)),
+      track: track.posed(_frame, const [KeyProp.location],
+          (pose) => pose.copyWith(dx: pose.dx + dx, dy: pose.dy + dy)),
     );
   }
 }

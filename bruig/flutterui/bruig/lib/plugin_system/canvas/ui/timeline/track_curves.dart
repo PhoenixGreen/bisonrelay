@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/track_marks.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/curve_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/inspector_fold.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -10,11 +12,17 @@ import 'package:flutter/services.dart';
 
 // track_curves.dart is the Curves of an element's own keyframes, the same
 // design as a clip's Curves (motion_curves.dart), across the Motion view.
-// The Keyframes card says when each keyframe is; this says how much, and how
-// it eases to the next. A keyframe holds all its values at one frame, so a
-// key dragged sideways moves its whole keyframe; up or down, that one value.
-// Double-click a line for a keyframe there; right-click a key to put that
-// value back to rest (a channel's, taken out of the keyframe).
+// The Keys strip says when each key is; this says how much, and how it
+// eases to the next. A line has a point wherever its property is keyed (see
+// track_marks.dart): dragged sideways, that property's key moves and the
+// rest of its keyframe stays (across and down are one location, so move
+// together); up or down, that one value. Double-click a line for a key of
+// its property there; right-click a point to put that value back to rest (a
+// channel's, taken out of the keyframe); ⌘C and ⌘V copy a key to the
+// playhead, on this element or another.
+
+/// _pinned is whether [k] keys the property of the line [id].
+bool _pinned(Keyframe k, String id) => TrackMarks.pinsRow(k, rowOfValue(id));
 
 /// _laneColours are each value's line, as the clip Curves' are.
 const _laneColours = {
@@ -67,6 +75,9 @@ class _TrackCurvesState extends State<TrackCurves>
 
   /// _pick is the key picked: its value's id and its keyframe's frame.
   (String, int)? _pick;
+
+  /// _said is what the last copy or paste said, under the inspector.
+  String? _said;
 
   // A drag: the keyframe's frame then, where it was pressed, and each
   // value's scale then, so the lines do not rescale under the pointer.
@@ -257,14 +268,14 @@ class _TrackCurvesState extends State<TrackCurves>
       }
 
       // Each ease's handles, on each line it moves, where shown.
+      // Between the keys that key each line: another property's keyframe
+      // between them is no part of its ease.
       var handles = <CurveHandles>[
         if (curvesShowHandles && !_speed)
           for (var (id, _, read) in shown)
-            for (var i = 0; i < t.track.keys.length - 1; i++)
-              if (_handlesOn(t.track.keys[i], t.track.keys[i + 1], read)
-                  case (var va, var vb))
+            for (var (a, b) in _pairsOf(t.track, id))
+              if (_handlesOn(a, b, read) case (var va, var vb))
                 () {
-                  var a = t.track.keys[i], b = t.track.keys[i + 1];
                   var p0 = Offset(xOf(a.frame), yOf(id, va));
                   var p1 = Offset(xOf(b.frame), yOf(id, vb));
                   var (h1, h2) = handlesOf(_curveOf(a), p0, p1);
@@ -279,12 +290,29 @@ class _TrackCurvesState extends State<TrackCurves>
         for (var (id, _, read) in shown) {
           for (var k in t.track.keys) {
             var v = read(k);
-            if (v == null) continue;
+            if (v == null || !_pinned(k, id)) continue;
             var d = (Offset(xOf(k.frame), yOf(id, v)) - at).distance;
             if (d < bestD) {
               bestD = d;
               best = (id, k.frame);
             }
+          }
+        }
+        return best;
+      }
+
+      // The line nearest [y] at frame [f]: what a double-click keys.
+      String? lineAt(int f, double y) {
+        String? best;
+        var bestD = double.infinity;
+        var pose = t.track.at(f);
+        for (var (id, _, read) in shown) {
+          var v = read(pose);
+          if (v == null) continue;
+          var d = (yOf(id, v) - y).abs();
+          if (d < bestD) {
+            bestD = d;
+            best = id;
           }
         }
         return best;
@@ -311,12 +339,15 @@ class _TrackCurvesState extends State<TrackCurves>
                 c.frame = fOf(d.localPosition.dx);
                 return;
               }
+              _said = null;
               setState(() => _pick = keyAt(d.localPosition));
             },
             // On the ruler, the whole of it again; on the lines, a keyframe.
-            onDoubleTapDown: (d) => d.localPosition.dy < top
-                ? setState(view.fit)
-                : _add(t, fOf(d.localPosition.dx)),
+            onDoubleTapDown: (d) {
+              if (d.localPosition.dy < top) return setState(view.fit);
+              var f = fOf(d.localPosition.dx);
+              _add(t, f, lineAt(f, d.localPosition.dy));
+            },
             onDoubleTap: () {},
             onPanStart: (d) {
               var at = d.localPosition;
@@ -383,9 +414,12 @@ class _TrackCurvesState extends State<TrackCurves>
               var next = now
                   .withKey(_withValue(k, p.$1, vOf(p.$1, d.localPosition.dy)));
               c.writeTargetTrack(next);
-              // Sideways: the whole keyframe, where nothing else is.
+              // Sideways: that property's key, where it has none already;
+              // the rest of its keyframe stays.
               var to = fOf(d.localPosition.dx - _dragX);
-              if (to != at && c.moveTargetKeyframes([at], to - at)) {
+              if (to != at &&
+                  c.moveTargetMarks(
+                      [(row: rowOfValue(p.$1), frame: at)], to - at)) {
                 _dragFrame = to;
                 _pick = (p.$1, to);
               }
@@ -406,6 +440,7 @@ class _TrackCurvesState extends State<TrackCurves>
                 size: Size.infinite,
                 painter: _CurvesPainter(
                   track: t.track,
+                  pinned: _pinned,
                   shown: shown,
                   speed: _speed,
                   last: _last,
@@ -426,29 +461,36 @@ class _TrackCurvesState extends State<TrackCurves>
       );
     });
 
-    var inspector = Container(
-      width: 210,
+    var said = _said;
+    var inspector = Padding(
       padding: const EdgeInsets.all(10),
-      decoration:
-          BoxDecoration(border: Border(left: BorderSide(color: s.edge))),
       // Scrolled where the panel is short (or the app's text large): its
       // lines stacked past the bottom of a low Curves.
       child: SingleChildScrollView(
-          child: picked == null || pick == null
-              ? Text(
-                  "The Keyframes card says when each keyframe is; here is how "
-                  "much, and how it eases to the next. Drag a key sideways to "
-                  "move its keyframe, up or down to change that value. "
-                  "Double-click a line for a keyframe there; right-click a key "
-                  "to put that value back to rest, or Delete to take its "
-                  "keyframe away.\n\nPinch or ⌘-scroll to zoom in on time, "
-                  "with ⌥ on the values; swipe or drag the background to move; "
-                  "double-click the ruler to see it all. Drag the playhead by "
-                  "its cap. Handles shapes an ease by hand.",
-                  key: const ValueKey("trackCurvesHint"),
-                  style:
-                      TextStyle(fontSize: 11.5, height: 1.45, color: s.muted))
-              : _inspector(t, pick, picked, lanes, s)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        picked == null || pick == null
+            ? Text(
+                "The Keys strip says when each key is; here is how much, and "
+                "how it eases to the next. Drag a point sideways to move that "
+                "property's key, up or down to change its value. Double-click "
+                "a line for a key there; right-click a point to put that "
+                "value back to rest, or Delete to take the key away; ⌘C and "
+                "⌘V copy it to the playhead, here or on another element."
+                "\n\nPinch or ⌘-scroll to zoom in on time, with ⌥ on the "
+                "values; swipe or drag the background to move; double-click "
+                "the ruler to see it all. Drag the playhead by its cap. "
+                "Handles shapes an ease by hand.",
+                key: const ValueKey("trackCurvesHint"),
+                style: TextStyle(fontSize: 11.5, height: 1.45, color: s.muted))
+            : _inspector(t, pick, picked, lanes, s),
+        if (said != null) ...[
+          const SizedBox(height: 10),
+          Text(said,
+              key: const ValueKey("trackCurvesSaid"),
+              style: TextStyle(fontSize: 11.5, height: 1.35, color: s.muted)),
+        ],
+      ])),
     );
 
     return Container(
@@ -468,7 +510,12 @@ class _TrackCurvesState extends State<TrackCurves>
                 children: [
                   SizedBox(width: math.min(170.0, w * 0.26), child: list),
                   Expanded(child: graph),
-                  SizedBox(width: math.min(210.0, w * 0.3), child: inspector),
+                  InspectorFold(
+                      id: "trackCurvesInspector",
+                      shut: c.keyInspectorShut,
+                      onToggle: () => c.keyInspectorShut = !c.keyInspectorShut,
+                      width: math.min(210.0, w * 0.3),
+                      child: inspector),
                 ]);
           }),
         ),
@@ -535,20 +582,52 @@ class _TrackCurvesState extends State<TrackCurves>
     return (va, vb);
   }
 
-  /// _key takes the picked keyframe away on Delete or Backspace.
+  /// _key takes the picked key away on Delete or Backspace, and copies it
+  /// (⌘C) or pastes what was copied at the playhead (⌘V).
   KeyEventResult _key(KeyframeTarget t, KeyEvent ev) {
     if (ev is! KeyDownEvent) return KeyEventResult.ignored;
     var k = ev.logicalKey;
+    var meta = HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed;
+    var p = _pick;
+    if (meta && k == LogicalKeyboardKey.keyC && p != null) {
+      if (c.copyTargetMarks([(row: rowOfValue(p.$1), frame: p.$2)]) > 0) {
+        setState(() => _said = "Key copied. Paste it at the playhead with "
+            "⌘V, here or on another element.");
+      }
+      return KeyEventResult.handled;
+    }
+    if (meta && k == LogicalKeyboardKey.keyV && c.hasCopiedKeys) {
+      c.beginInteraction();
+      var (landed, why) = c.pasteTargetMarks();
+      c.endInteraction();
+      setState(() {
+        _said = why;
+        // The pasted key on the line picked before, where it has one.
+        var row = p == null ? null : rowOfValue(p.$1);
+        var on = landed.where((m) => m.row == row).firstOrNull;
+        if (on != null) _pick = (p!.$1, on.frame);
+      });
+      return KeyEventResult.handled;
+    }
     if (k != LogicalKeyboardKey.delete && k != LogicalKeyboardKey.backspace) {
       return KeyEventResult.ignored;
     }
-    var p = _pick;
     if (p == null) return KeyEventResult.ignored;
     c.beginInteraction();
-    c.removeTargetKeyframes([p.$2]);
+    c.removeTargetMarks([(row: rowOfValue(p.$1), frame: p.$2)]);
     c.endInteraction();
     setState(() => _pick = null);
     return KeyEventResult.handled;
+  }
+
+  /// _pairsOf are the keys of the line [id] next to each other.
+  static List<(Keyframe, Keyframe)> _pairsOf(ElementTrack track, String id) {
+    var on = [
+      for (var k in track.keys)
+        if (_pinned(k, id)) k
+    ];
+    return [for (var i = 1; i < on.length; i++) (on[i - 1], on[i])];
   }
 
   Map<String, (double, double)> _ranges(ElementTrack track,
@@ -592,14 +671,23 @@ class _TrackCurvesState extends State<TrackCurves>
     setState(() {});
   }
 
-  void _add(KeyframeTarget t, int f) {
-    if (t.track.keyAt(f) != null) return;
+  /// _add keys the property of the line [id] at [f], holding the value it
+  /// has there; with no line, a whole keyframe.
+  void _add(KeyframeTarget t, int f, String? id) {
+    var k = t.track.keyAt(f);
+    if (id != null && k != null && _pinned(k, id)) {
+      setState(() => _pick = (id, f));
+      return;
+    }
+    if (id == null && k != null) return;
     c.beginInteraction();
-    c.writeTargetTrack(t.track.withKey(t.track.isEmpty
-        ? Keyframe(frame: f)
-        : t.track.at(f).copyWith(frame: f)));
+    c.writeTargetTrack(id == null
+        ? t.track.withKey(t.track.isEmpty
+            ? Keyframe(frame: f)
+            : t.track.at(f).copyWith(frame: f))
+        : t.track.toggled(rowOfValue(id), f));
     c.endInteraction();
-    var first =
+    var first = id ??
         keyframeLanesOf(c.keyframeTarget?.track ?? t.track).firstOrNull?.$1;
     setState(() => _pick = first == null ? null : (first, f));
   }
@@ -618,6 +706,9 @@ class _TrackCurvesState extends State<TrackCurves>
 /// with a key wherever a keyframe holds it, through the graph's [view].
 class _CurvesPainter extends CustomPainter {
   final ElementTrack track;
+
+  /// pinned is whether a keyframe keys a line's property: its point drawn.
+  final bool Function(Keyframe, String) pinned;
   final List<(String, String, double? Function(Keyframe))> shown;
   final bool speed;
   final int last;
@@ -632,6 +723,7 @@ class _CurvesPainter extends CustomPainter {
   final List<CurveHandles> handles;
   _CurvesPainter(
       {required this.track,
+      required this.pinned,
       required this.shown,
       required this.speed,
       required this.last,
@@ -694,7 +786,7 @@ class _CurvesPainter extends CustomPainter {
       if (speed) continue;
       for (var k in track.keys) {
         var v = read(k);
-        if (v == null) continue;
+        if (v == null || !pinned(k, id)) continue;
         var at = Offset(xOf(k.frame), yOf(id, v));
         var on = pick == (id, k.frame);
         var r = on ? 5.5 : 4.5;
@@ -746,10 +838,10 @@ class _CurvesPainter extends CustomPainter {
 List<(String, String, double? Function(Keyframe))> keyframeLanesOf(
     ElementTrack track) {
   var lanes = <(String, String, double? Function(Keyframe))>[
-    ("dx", "Across", (k) => k.dx),
-    ("dy", "Down", (k) => k.dy),
-    ("scale", "Size", (k) => k.scale),
-    ("rotate", "Angle", (k) => k.rotate),
+    ("dx", "Location across", (k) => k.dx),
+    ("dy", "Location down", (k) => k.dy),
+    ("scale", "Scale", (k) => k.scale),
+    ("rotate", "Rotation", (k) => k.rotate),
     ("opacity", "Opacity", (k) => k.opacity),
   ];
   var channels = <String>{
@@ -760,16 +852,20 @@ List<(String, String, double? Function(Keyframe))> keyframeLanesOf(
   }
   return [
     for (var l in lanes)
-      if (_changes(track, l.$3)) l
+      if (_changes(track, l.$1, l.$3)) l
   ];
 }
 
 String _channelName(String c) =>
     c.isEmpty ? c : c[0].toUpperCase() + c.substring(1);
 
-/// _changes is whether [read] differs between any two keyframes in a row.
-bool _changes(ElementTrack track, double? Function(Keyframe) read) {
-  var k = track.keys;
+/// _changes is whether [read] differs between any two keyframes in a row
+/// of those that key the line [id].
+bool _changes(ElementTrack track, String id, double? Function(Keyframe) read) {
+  var k = [
+    for (var key in track.keys)
+      if (_pinned(key, id)) key
+  ];
   for (var i = 1; i < k.length; i++) {
     if (read(k[i]) != read(k[i - 1])) return true;
   }

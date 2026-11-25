@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart'
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart'
     show ownClipOf;
+import 'package:bruig/plugin_system/canvas/model/track_marks.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show elementPhaseSpans;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -16,19 +17,23 @@ import 'package:bruig/plugin_system/canvas/model/design_device.dart'
 import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart'
     show chainMenuItem, chainMenuStyle;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/inspector_fold.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // keys_strip.dart is the Chain's Keys strip, opened from the Chain's header
-// and laid over its cards. A ruler of the scene with what the voice says;
-// the element's arrival, loop and leaving; its own keyframes; and a row for
-// each keyed setting of its chain, each key coloured by where it plays.
-// Pick a key to change it in the inspector; drag to retime; double-click a
-// row to add one; Delete removes it. Pinch or ⌘-scroll zooms, a sideways
-// swipe pans, double-clicking the ruler fits the scene. Clips move by their
-// body and stretch by an end, as on the timeline.
+// over its cards, or alone (its Keys tab). A ruler of the scene with what
+// the voice says; the element's arrival, loop and leaving; its own keys, a
+// row for each property they animate (Location, Scale, Rotation, Opacity,
+// then any channel; see track_marks.dart); and a row for each keyed setting
+// of its chain, each key coloured by where it plays. Pick a key to change it
+// in the inspector; drag to retime; double-click a row to add one; Delete
+// removes it; ⌘C and ⌘V copy keys to the playhead, on this element or
+// another; ⌘A picks them all. Pinch or ⌘-scroll zooms, a sideways swipe
+// pans, double-clicking the ruler fits the scene. Clips move by their body
+// and stretch by an end, as on the timeline.
 
 /// phaseColour is what a key, a clip or a card's button is drawn in for
 /// where it plays.
@@ -41,6 +46,17 @@ Color phaseColour(MotionPhase ph) => switch (ph) {
 
 /// trackKeyColour is the element's own keyframes' marks.
 const trackKeyColour = Color(0xFF9FB3C8);
+
+/// rowColour is the marks of one row of its own keys: each property in the
+/// colour of its line in the Curves.
+Color rowColour(String row) => switch (row) {
+      "location" => const Color(0xFF5CC6B8),
+      "scale" => const Color(0xFF9A92EA),
+      "rotation" => const Color(0xFFE0A84F),
+      "opacity" => const Color(0xFFCFCBDF),
+      allRow => trackKeyColour,
+      _ => const Color(0xFFF08BD0),
+    };
 
 /// KeysLane is one row of the strip: a setting of a device with keys.
 class KeysLane {
@@ -102,15 +118,21 @@ class KeysStrip extends StatefulWidget {
   static const clipsMost = 140.0;
 
   /// rowsFor are how many rows [e]'s strip has under its ruler: its
-  /// clips, its own keyframes where it has a track to show, and a row a
-  /// keyed setting.
+  /// clips, a row a property its own keys animate, and a row a keyed
+  /// setting.
   static int rowsFor(CanvasController c, CanvasElement e) {
     var f = c.chainPhase;
-    var track =
-        (f == null || f == MotionPhase.free) && c.keyframeTarget != null;
+    var track = (f == null || f == MotionPhase.free)
+        ? _trackRows(c.keyframeTarget, c.targetRows).length
+        : 0;
     // And the "+ Row" under them.
-    return 2 + (track ? 1 : 0) + keysLanesOf(c.motionDevicesOf(e.id), f).length;
+    return 2 + track + keysLanesOf(c.motionDevicesOf(e.id), f).length;
   }
+
+  /// _trackRows are the rows of [target]'s own keys: one, empty, where it
+  /// has none yet, to double-click a first onto.
+  static List<String> _trackRows(KeyframeTarget? target, List<String> rows) =>
+      target == null ? const [] : (rows.isEmpty ? const [allRow] : rows);
 
   /// heightFor is the strip's height with [rows] rows under its ruler,
   /// within [most].
@@ -138,8 +160,13 @@ class _KeysStripState extends State<KeysStrip> {
 
   _Pick? _pick;
 
-  /// _frames are the element's own keyframes picked, by frame.
-  final Set<int> _frames = {};
+  /// _marks are its own keys picked, a row and a frame each: kept by the
+  /// controller (CanvasController.pickedMarks), so a drag on the canvas
+  /// can move the Location keys picked.
+  Set<KeyMark> get _marks => c.pickedMarks;
+
+  /// _rows are its own keys' rows, as drawn.
+  List<String> get _rows => KeysStrip._trackRows(_track, c.targetRows);
 
   String? _said;
 
@@ -194,7 +221,8 @@ class _KeysStripState extends State<KeysStrip> {
   (DateTime, int, double)? _lastDown;
 
   /// _rowAt is the row under [y] in the lanes: -2 the ruler, -1 the clips,
-  /// 0 the keyframes where shown, then the lanes; null below them all.
+  /// then its own keys' rows where shown, then the lanes; null below them
+  /// all.
   int? _rowAt(double y) {
     if (y < KeysStrip.rulerHeight) return -2;
     var below = y - KeysStrip.rulerHeight - KeysStrip.clipsHeight;
@@ -363,40 +391,42 @@ class _KeysStripState extends State<KeysStrip> {
       }
     }
     var lanes = _lanes;
-    // The element's own keyframes.
-    if (hasTrack && row == 0) {
+    var rows = hasTrack ? _rows : const <String>[];
+    // The element's own keys, a row a property.
+    if (row != null && row >= 0 && row < rows.length) {
       var t = _track!;
-      var hit =
-          _nearest([for (var k in t.track.keys) k.frame / _rate], x, g)?.$1;
+      var name = rows[row];
+      var frames = _marksOn(t, name);
+      var hit = _nearest([for (var f in frames) f / _rate], x, g)?.$1;
       if (hit != null) {
-        var f = t.track.keys[hit].frame;
+        KeyMark m = (row: name, frame: frames[hit]);
         setState(() {
           _pick = null;
           if (shift) {
-            _frames.contains(f) ? _frames.remove(f) : _frames.add(f);
-          } else if (!_frames.contains(f)) {
-            _frames
-              ..clear()
-              ..add(f);
+            _marks.contains(m) ? _marks.remove(m) : _marks.add(m);
+          } else if (!_marks.contains(m)) {
+            c.pickedMarks = [m];
           }
           _said = null;
         });
-        c.frame = f;
-        _drag = _Drag.track(x, [..._frames]);
+        c.frame = m.frame;
+        _drag = _Drag.track(x, [..._marks]);
         return;
       }
       if (twice) {
         c.frame = g.frameAt(x, c.document.frames);
         c.beginInteraction();
-        c.toggleTargetKeyframe();
+        c.toggleTargetRow(name);
         c.endInteraction();
-        setState(() => _frames
-          ..clear()
-          ..add(c.frame));
+        var now = c.keyframeTarget?.track.keyAt(c.frame);
+        setState(() => c.pickedMarks = [
+              if (now != null && TrackMarks.pinsRow(now, name))
+                (row: name, frame: c.frame)
+            ]);
         return;
       }
     }
-    var laneRow = (row ?? -3) - (hasTrack ? 1 : 0);
+    var laneRow = (row ?? -3) - rows.length;
     if (row != null && row >= 0 && laneRow >= 0 && laneRow < lanes.length) {
       var lane = lanes[laneRow];
       var spans = elementPhaseSpans(e, c.document);
@@ -406,7 +436,7 @@ class _KeysStripState extends State<KeysStrip> {
         var m = marks[hit];
         setState(() {
           _pick = (device: lane.device.id, param: lane.param, ph: m.ph, i: m.i);
-          _frames.clear();
+          _marks.clear();
           _said = null;
         });
         c.frame = (m.t * _rate).round().clamp(0, c.document.frames - 1);
@@ -490,17 +520,16 @@ class _KeysStripState extends State<KeysStrip> {
     if (!d.moved && (x - d.x).abs() < 3) return;
     if (!d.moved) c.beginInteraction();
     d.moved = true;
-    if (d.frames != null) {
-      // Keyframes keep their spacing: moved a frame at a time, all or none.
+    if (d.marks case var marks?) {
+      // Keys keep their spacing: moved a frame at a time, all or none.
       var want = (dt * _rate).round();
       var step = want - d.applied;
-      if (step != 0 && c.moveTargetKeyframes(d.frames!, step)) {
-        d.frames = [for (var f in d.frames!) f + step];
+      if (step != 0 && c.moveTargetMarks(marks, step)) {
+        var moved = [for (var m in marks) (row: m.row, frame: m.frame + step)];
+        d.marks = moved;
         d.applied = want;
-        setState(() => _frames
-          ..clear()
-          ..addAll(d.frames!));
-        c.frame = d.frames!.first.clamp(0, c.document.frames - 1);
+        setState(() => c.pickedMarks = moved);
+        c.frame = moved.first.frame.clamp(0, c.document.frames - 1);
       }
       return;
     }
@@ -581,29 +610,43 @@ class _KeysStripState extends State<KeysStrip> {
         HardwareKeyboard.instance.isControlPressed;
     if (key == LogicalKeyboardKey.delete ||
         key == LogicalKeyboardKey.backspace) {
-      if (_pick == null && _frames.isEmpty) return KeyEventResult.ignored;
+      if (_pick == null && _marks.isEmpty) return KeyEventResult.ignored;
       _delete();
       return KeyEventResult.handled;
     }
-    if (meta && key == LogicalKeyboardKey.keyC && _frames.isNotEmpty) {
-      var n = c.copyTargetKeys(_frames);
+    if (meta && key == LogicalKeyboardKey.keyA && _track != null) {
+      setState(() {
+        _pick = null;
+        c.pickedMarks = [
+          for (var r in _rows)
+            for (var f in _marksOn(_track!, r)) (row: r, frame: f)
+        ];
+        _said = null;
+      });
+      return KeyEventResult.handled;
+    }
+    if (meta && key == LogicalKeyboardKey.keyC && _marks.isNotEmpty) {
+      var n = c.copyTargetMarks(_marks);
       if (n > 0) {
         _say(n == 1
-            ? "Keyframe copied. Move the playhead and paste it."
-            : "$n keyframes copied. Move the playhead and paste them.");
+            ? "Key copied. Paste it at the playhead with ⌘V, here or on "
+                "another element."
+            : "$n keys copied. Paste them at the playhead with ⌘V, here or "
+                "on another element.");
       }
       return KeyEventResult.handled;
     }
     if (meta && key == LogicalKeyboardKey.keyV && c.hasCopiedKeys) {
       c.beginInteraction();
-      var (landed, why) = c.pasteTargetKeys();
+      var (landed, why) = c.pasteTargetMarks();
       c.endInteraction();
       if (why != null) {
         _say(why);
       } else {
-        setState(() => _frames
-          ..clear()
-          ..addAll(landed));
+        setState(() {
+          _pick = null;
+          c.pickedMarks = landed;
+        });
       }
       return KeyEventResult.handled;
     }
@@ -616,13 +659,13 @@ class _KeysStripState extends State<KeysStrip> {
       setState(() => _pick = null);
       return;
     }
-    if (_frames.isNotEmpty) {
-      var n = _frames.length;
+    if (_marks.isNotEmpty) {
+      var n = _marks.length;
       c.beginInteraction();
-      c.removeTargetKeyframes(_frames.toList());
+      c.removeTargetMarks(_marks.toList());
       c.endInteraction();
-      _frames.clear();
-      _say(n == 1 ? "Keyframe deleted" : "$n keyframes deleted");
+      _marks.clear();
+      _say(n == 1 ? "Key deleted" : "$n keys deleted");
     }
   }
 
@@ -646,20 +689,28 @@ class _KeysStripState extends State<KeysStrip> {
     }
     var t = _track;
     if (t == null) return;
-    var fs = [for (var k in t.track.keys) k.frame];
-    var from = _frames.isEmpty ? c.frame : (_frames.toList()..sort()).first;
+    // Along the row of the key picked; with none, across every row.
+    var picked = _marks.toList()..sort((a, b) => a.frame.compareTo(b.frame));
+    var row = picked.firstOrNull?.row;
+    var fs = row == null
+        ? ({for (var r in _rows) ..._marksOn(t, r)}.toList()..sort())
+        : _marksOn(t, row);
+    var from = picked.isEmpty ? c.frame : picked.first.frame;
     var to = dir < 0
         ? fs.reversed.where((f) => f < from).firstOrNull
         : fs.where((f) => f > from).firstOrNull;
     if (to == null) return;
-    setState(() => _frames
-      ..clear()
-      ..add(to));
+    var on = row ?? _rows.firstWhere((r) => _marksOn(t, r).contains(to));
+    setState(() => c.pickedMarks = [(row: on, frame: to)]);
     c.frame = to;
   }
 
+  /// _marksOn are the frames of [row]'s keys: a path's points on its one.
+  List<int> _marksOn(KeyframeTarget t, String row) =>
+      t.points ? [for (var k in t.track.keys) k.frame] : t.track.marksOn(row);
+
   void _spread(KeyframeTarget t) {
-    var picked = _frames.toList()..sort();
+    var picked = {for (var m in _marks) m.frame}.toList()..sort();
     if (picked.length < 3) return;
     var lo = picked.first, hi = picked.last;
     var to = [
@@ -668,27 +719,32 @@ class _KeysStripState extends State<KeysStrip> {
     ];
     var rest = {
       for (var k in t.track.keys)
-        if (!_frames.contains(k.frame)) k.frame
+        if (!picked.contains(k.frame)) k.frame
     };
     if (to.any(rest.contains) || to.toSet().length != to.length) {
       _say("Spread evenly they would land on another keyframe.");
       return;
     }
+    // Each frame's keys moved in turn: those going back from the first,
+    // those going on from the last, so none passes another on the way.
+    var order = [for (var i = 0; i < picked.length; i++) i];
+    var back = order.where((i) => to[i] < picked[i]).toList();
+    var on = order.where((i) => to[i] > picked[i]).toList().reversed;
+    var landed = <KeyMark>[];
     c.beginInteraction();
-    if (t.points) {
-      for (var i = 0; i < picked.length; i++) {
-        c.moveTargetKeyframes([picked[i]], to[i] - picked[i]);
-      }
-    } else {
-      var moved = {for (var i = 0; i < picked.length; i++) picked[i]: to[i]};
-      c.writeTargetTrack(ElementTrack([
-        for (var k in t.track.keys) k.copyWith(frame: moved[k.frame] ?? k.frame)
-      ]..sort((a, b) => a.frame.compareTo(b.frame))));
+    for (var i in [...back, ...on]) {
+      var those = [
+        for (var m in _marks)
+          if (m.frame == picked[i]) m
+      ];
+      c.moveTargetMarks(those, to[i] - picked[i]);
     }
     c.endInteraction();
-    setState(() => _frames
-      ..clear()
-      ..addAll(to));
+    for (var m in _marks) {
+      var i = picked.indexOf(m.frame);
+      landed.add((row: m.row, frame: to[i]));
+    }
+    setState(() => c.pickedMarks = landed);
   }
 
   // ---- drawn ----
@@ -700,12 +756,15 @@ class _KeysStripState extends State<KeysStrip> {
     var track = _track;
     // A pick whose key has gone -- undone, or deleted elsewhere -- is let go.
     if (_pick != null && _picked == null) _pick = null;
+    var trackRows = _rows;
     if (track != null) {
-      _frames.removeWhere((f) => track.track.keyAt(f) == null);
+      _marks.removeWhere((m) =>
+          !trackRows.contains(m.row) ||
+          !_marksOn(track, m.row).contains(m.frame));
     } else {
-      _frames.clear();
+      _marks.clear();
     }
-    var rows = 1 + (track != null ? 1 : 0) + lanes.length;
+    var rows = 1 + trackRows.length + lanes.length;
     var h = widget.height;
     var label = TextStyle(fontSize: 11.5, color: studio.muted);
     var bold = TextStyle(
@@ -742,9 +801,9 @@ class _KeysStripState extends State<KeysStrip> {
                     fontSize: 10.5, letterSpacing: 0.84, color: studio.muted)),
           ),
           _clipsLabel(studio, bold),
-          if (track != null)
-            labelRow("keyframes", track.points ? "Points" : "Keyframes",
-                track.points ? "" : "its own"),
+          for (var r in trackRows)
+            labelRow("track-$r", track!.points ? "Points" : rowLabel(r),
+                r == allRow && !track.points ? "its own" : ""),
           for (var l in lanes)
             labelRow("${l.device.id}-${l.param}", l.label, l.what),
           _addRow(context, studio),
@@ -794,8 +853,11 @@ class _KeysStripState extends State<KeysStrip> {
                     playhead: c.frame / _rate,
                     words: _words(),
                     clipNames: _clipNames(),
-                    track: track,
-                    trackPicked: {..._frames},
+                    trackRows: [
+                      if (track != null)
+                        for (var r in trackRows) (r, _marksOn(track, r)),
+                    ],
+                    trackPicked: {..._marks},
                     lanes: [
                       for (var l in lanes) (l, _marksOf(l, spans)),
                     ],
@@ -816,19 +878,25 @@ class _KeysStripState extends State<KeysStrip> {
           color: studio.strip,
           border: Border(bottom: BorderSide(color: studio.edge)),
         ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: SingleChildScrollView(child: rowsBody)),
-          Container(
-            width: KeysStrip.inspectorWidth,
-            decoration: BoxDecoration(
-                border: Border(left: BorderSide(color: studio.edge))),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-              child: CanvasDense(
-                  height: 28, child: _inspector(context, studio, track)),
+        // The inspector at its width where there is room, else a share,
+        // and shut to its edge when asked: the keys keep the rest.
+        child: LayoutBuilder(
+          builder: (context, box) =>
+              Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: SingleChildScrollView(child: rowsBody)),
+            InspectorFold(
+              id: "keysInspector",
+              shut: c.keyInspectorShut,
+              onToggle: () => c.keyInspectorShut = !c.keyInspectorShut,
+              width: math.min(KeysStrip.inspectorWidth, box.maxWidth * 0.34),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: CanvasDense(
+                    height: 28, child: _inspector(context, studio, track)),
+              ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       ),
     );
   }
@@ -1052,11 +1120,19 @@ class _KeysStripState extends State<KeysStrip> {
             ]);
       }
     }
-    // The element's own keyframes.
-    if (track != null && _frames.isNotEmpty) {
-      var picked = _frames.toList()..sort();
-      var one = picked.length == 1;
-      var key = one ? track.track.keyAt(picked.first) : null;
+    // The element's own keys.
+    if (track != null && _marks.isNotEmpty) {
+      var marks = _marks.toList()..sort((a, b) => a.frame.compareTo(b.frame));
+      var picked = {for (var m in marks) m.frame}.toList()..sort();
+      var one = marks.length == 1;
+      var key = track.track.keyAt(picked.first);
+      var what = track.points ? "Point" : rowLabel(marks.first.row);
+      if (what == "Keyframes") what = "Keyframe";
+      var rows = {for (var m in marks) m.row};
+      // Location keys picked together: a drag on the canvas moves them.
+      var places = marks
+          .where((m) => m.row == KeyProp.location.name || m.row == allRow)
+          .length;
       return Column(
           key: const ValueKey("keysInspector-track"),
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1064,10 +1140,12 @@ class _KeysStripState extends State<KeysStrip> {
             head(
                 Text(
                     one
-                        ? "${track.points ? "Point" : "Keyframe"} at "
+                        ? "$what at "
                             "${(picked.first / _rate).toStringAsFixed(2)} s"
-                        : "${picked.length} "
-                            "${track.points ? "points" : "keyframes"}",
+                        : rows.length == 1 && !track.points
+                            ? "${marks.length} $what keys"
+                            : "${marks.length} "
+                                "${track.points ? "points" : "keys"}",
                     key: const ValueKey("keysPicked"),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1113,6 +1191,13 @@ class _KeysStripState extends State<KeysStrip> {
             if (said != null) ...[
               gap,
               Text(said, key: const ValueKey("keysSaid"), style: note),
+            ] else if (places >= 2 && !track.points) ...[
+              gap,
+              Text(
+                  "Drag it on the canvas to move these $places location "
+                  "keys together.",
+                  key: const ValueKey("keysMoveTogether"),
+                  style: note),
             ],
           ]);
     }
@@ -1131,9 +1216,12 @@ class _KeysStripState extends State<KeysStrip> {
           const SizedBox(height: 4),
           Text(
               said ??
-                  "Coloured by where each plays: arrival, loop, leaving or "
-                      "independent. Pick a key to change it, drag to move "
-                      "it, double-click a row to add one.",
+                  "Its own keys have a row a property: location, scale, "
+                      "rotation, opacity. The chain's are coloured by where "
+                      "each plays. Pick a key to change it, drag to move it, "
+                      "double-click a row to add one; ⌘C and ⌘V copy keys "
+                      "to the playhead, here or on another element; ⌘A picks "
+                      "them all.",
               key: ValueKey(said == null ? "keysHint" : "keysSaid"),
               style: note),
         ]);
@@ -1225,11 +1313,13 @@ class _Drag {
 
   /// loopEnd is which end of the loop is dragged: its stop (true) or start.
   bool? loopEnd;
-  List<int>? frames;
+
+  /// marks are its own keys being dragged, where they are now.
+  List<KeyMark>? marks;
   int applied = 0;
   bool moved = false;
   _Drag.key(this.x, this.from) : scrub = false;
-  _Drag.track(this.x, List<int> this.frames)
+  _Drag.track(this.x, List<KeyMark> this.marks)
       : from = 0,
         scrub = false;
   _Drag.scrub()
@@ -1276,8 +1366,10 @@ class _LanesPainter extends CustomPainter {
   final double playhead;
   final List<(double, String)> words;
   final Map<MotionPhase, String> clipNames;
-  final KeyframeTarget? track;
-  final Set<int> trackPicked;
+
+  /// trackRows are its own keys: each row and the frames of its keys.
+  final List<(String, List<int>)> trackRows;
+  final Set<KeyMark> trackPicked;
   final List<(KeysLane, List<_Mark>)> lanes;
   final _Pick? pick;
 
@@ -1309,7 +1401,7 @@ class _LanesPainter extends CustomPainter {
     required this.playhead,
     required this.words,
     required this.clipNames,
-    required this.track,
+    required this.trackRows,
     required this.trackPicked,
     required this.lanes,
     required this.pick,
@@ -1483,20 +1575,20 @@ class _LanesPainter extends CustomPainter {
     }
     divider(0);
     var row = 1;
-    // The element's own keyframes.
-    if (track case var t?) {
+    // The element's own keys, a row a property.
+    for (var (name, frames) in trackRows) {
       var y = rowTop(row) + _row / 2;
-      var keys = t.track.keys;
+      var colour = rowColour(name);
       var span = Paint()
-        ..color = trackKeyColour.withValues(alpha: 0.45)
+        ..color = colour.withValues(alpha: 0.45)
         ..strokeWidth = 2;
-      for (var i = 1; i < keys.length; i++) {
-        canvas.drawLine(Offset(g.xOf(keys[i - 1].frame / _rateOf(t)), y),
-            Offset(g.xOf(keys[i].frame / _rateOf(t)), y), span);
+      for (var i = 1; i < frames.length; i++) {
+        canvas.drawLine(Offset(g.xOf(frames[i - 1] / frameRate), y),
+            Offset(g.xOf(frames[i] / frameRate), y), span);
       }
-      for (var k in keys) {
-        _diamond(canvas, Offset(g.xOf(k.frame / _rateOf(t)), y), trackKeyColour,
-            picked: trackPicked.contains(k.frame));
+      for (var f in frames) {
+        _diamond(canvas, Offset(g.xOf(f / frameRate), y), colour,
+            picked: trackPicked.contains((row: name, frame: f)));
       }
       divider(row);
       row++;
@@ -1551,8 +1643,6 @@ class _LanesPainter extends CustomPainter {
         Rect.fromLTWH(x - 1, 0, 2, size.height), Paint()..color = studio.text);
     canvas.restore();
   }
-
-  double _rateOf(KeyframeTarget t) => frameRate;
 
   @override
   bool shouldRepaint(covariant _LanesPainter old) => true;

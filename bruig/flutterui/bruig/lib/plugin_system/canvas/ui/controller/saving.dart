@@ -163,6 +163,8 @@ extension CanvasSaving on CanvasController {
     _sessionState.motionPreview = null;
     _texts = _TextState();
     _keyframes.anchorsShown.clear();
+    _keyframes.marks.clear();
+    _keyframes.marksOf = null;
     _playTasks = _PlayTaskState();
     _layouts = _LayoutState();
     if (_spritePaint != null) paintSprite(null);

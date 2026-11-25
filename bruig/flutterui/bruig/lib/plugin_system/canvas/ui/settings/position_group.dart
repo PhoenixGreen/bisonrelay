@@ -83,14 +83,15 @@ class _Placing {
       write(e.withBase(x: x, y: y));
       return;
     }
-    var track = this.track;
-    var at = track.at(frame);
+    // The location keyed here, and nothing else (see ElementTrack.posed).
     write(e.withBase(
-      track: track.withKey(at.copyWith(
-        frame: frame,
-        dx: x == null ? at.dx : x - e.x,
-        dy: y == null ? at.dy : y - e.y,
-      )),
+      track: track.posed(
+          frame,
+          const [KeyProp.location],
+          (at) => at.copyWith(
+                dx: x == null ? at.dx : x - e.x,
+                dy: y == null ? at.dy : y - e.y,
+              )),
     ));
   }
 
@@ -129,10 +130,9 @@ class _Placing {
       write(e.turnedTo(v));
       return;
     }
-    var track = this.track;
     write(e.withBase(
-        track: track.withKey(
-            track.at(frame).copyWith(frame: frame, rotate: v - e.rotation))));
+        track: track.posed(frame, const [KeyProp.rotation],
+            (at) => at.copyWith(rotate: v - e.rotation))));
   }
 
   /// fadeTo writes the opacity, 0 to 1, as a pose while animating.
@@ -142,11 +142,13 @@ class _Placing {
       write(e.withBase(opacity: v));
       return;
     }
-    var track = this.track;
     write(e.withBase(
-        track: track.withKey(track.at(frame).copyWith(
-            frame: frame,
-            opacity: e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
+        track: track.posed(
+            frame,
+            const [KeyProp.opacity],
+            (at) => at.copyWith(
+                opacity:
+                    e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
   }
 }
 
