@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/drawing/vector_editing.dart';
 import 'package:flutter/material.dart' hide Path;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -162,6 +163,48 @@ void main() {
         VectorShape(paths: [box(0, 0, 10, 10)])
       ];
       expect(identical(vectorShown(shapes), shapes), isTrue);
+    });
+  });
+
+  group("fitted to what is drawn", () {
+    // Opening a canvas, or leaving a drawing, fits its box round what it
+    // draws (boxedToDrawing). It once measured only a shape's own points,
+    // so a repeated grid and the words beside it were cut down to one cell.
+    test("a repeat's copies and a shape's words stay in the box", () {
+      var e = drawingOf([
+        VectorShape(
+            paths: [box(10, 10, 20, 20)],
+            fill: const Color(0xFFFFFFFF),
+            repeat: const VectorRepeat(
+                count: 8, columns: 4, step: Offset(30, 0), rowStep: 30)),
+        const VectorShape(
+            paths: [],
+            fill: Color(0xFFFFFFFF),
+            label: VectorLabel(
+                text: "2.3×", size: 30, at: Offset(150, 60), width: 40)),
+      ]);
+      var fitted = boxedToDrawing(e);
+      var view = fitted.viewBox;
+      expect(view.left, 10);
+      expect(view.top, 10);
+      expect(view.right, 190, reason: "out to the words' box");
+      expect(view.bottom, 96, reason: "the words' line, 30 x 1.2");
+      // The drawing stays where it was on the page: one unit, one pixel.
+      expect(fitted.x, 10);
+      expect(fitted.width, 180);
+    });
+
+    test("an arrowhead's width is room the box keeps", () {
+      var e = drawingOf([
+        VectorShape(
+            paths: [lineRun(const Offset(20, 50), const Offset(180, 50))],
+            stroke: const Color(0xFFFFFFFF),
+            strokeWidth: 4,
+            headEnd: VectorHead.arrow),
+      ]);
+      var view = boxedToDrawing(e).viewBox;
+      expect(view.top, lessThan(50 - 4 * 4 * 0.5),
+          reason: "the head is wider than the line");
     });
   });
 

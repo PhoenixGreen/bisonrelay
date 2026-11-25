@@ -1724,6 +1724,21 @@ VectorPick? anyPointAt(VectorElement e, Offset canvasPoint, double reach) {
   return best;
 }
 
+/// drawnExtent is how far [shape] reaches as drawn: its outline, its
+/// words' box, and the heads its line ends in.
+Rect? drawnExtent(VectorShape shape) {
+  var b = shapeExtent(shape);
+  if (b != null &&
+      (shape.headStart != VectorHead.none ||
+          shape.headEnd != VectorHead.none)) {
+    b = b.inflate(shape.headSize * shape.strokeWidth * 0.6);
+  }
+  if (shape.label case var label? when label.text.isNotEmpty) {
+    b = b == null ? label.box : b.expandToInclude(label.box);
+  }
+  return b;
+}
+
 /// shapeExtent is how far [shape]'s outline actually reaches, in drawing
 /// units: through its curves, not out to their handles as a path's bounds go.
 Rect? shapeExtent(VectorShape shape) {
@@ -1780,14 +1795,15 @@ VectorElement boxedToDrawing(VectorElement e) {
   var view = e.viewBox;
   if (view.width <= 0 || view.height <= 0) return e;
   Rect? reach;
-  for (var shape in shapes) {
+  // What is drawn: a repeat's copies and a bound shape's size too.
+  for (var shape in vectorShown(shapes)) {
     // A shape cutting another, or keeping only its overlap, draws nothing
     // outside the shape it is combined into.
     if (shape.combine == VectorCombine.subtract ||
         shape.combine == VectorCombine.intersect) {
       continue;
     }
-    var b = shapeExtent(shape);
+    var b = drawnExtent(shape);
     if (b == null) continue;
     reach = reach == null ? b : reach.expandToInclude(b);
   }
