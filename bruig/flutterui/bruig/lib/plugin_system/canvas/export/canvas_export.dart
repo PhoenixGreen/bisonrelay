@@ -18,6 +18,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart'
+    show atExportDetail;
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
@@ -110,10 +112,11 @@ class ExportBackdrop {
     var width = math.max(1, (document.size.exportSize.width * asked).round());
     var height = math.max(1, (document.size.exportSize.height * asked).round());
 
-    void draw(ui.Canvas canvas) {
-      canvas.scale(s);
-      paintDocumentBackdrop(canvas, drawn, images: images);
-    }
+    // The lit surfaces worked out at these pixels, not the editor's.
+    void draw(ui.Canvas canvas) => atExportDetail(s, () {
+          canvas.scale(s);
+          paintDocumentBackdrop(canvas, drawn, images: images);
+        });
 
     await drawWhenLoaded(images, draw);
     var recorder = ui.PictureRecorder();
@@ -183,8 +186,9 @@ Future<ui.Image> renderFrame(
   }
 
   // In a scene on a 3D stage, its Camera is the stage's: see camera_3d.
-  void draw(ui.Canvas canvas) =>
-      directedBy(document, null, () => drawNow(canvas));
+  // The lit surfaces at the export's own pixels (see atExportDetail).
+  void draw(ui.Canvas canvas) => atExportDetail(
+      s, () => directedBy(document, null, () => drawNow(canvas)));
 
   // Its pictures read, not their placeholders: see drawWhenLoaded.
   await drawWhenLoaded(images, draw);

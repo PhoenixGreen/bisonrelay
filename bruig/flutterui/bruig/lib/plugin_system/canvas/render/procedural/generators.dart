@@ -76,9 +76,41 @@ double pausedFrame(double frame, ProceduralSpec spec) {
   return frame - hold - ease;
 }
 
-/// latticeDetail is lattice points per pixel for the lit surfaces (metal,
-/// materials): 1 for canvas and export, less for a thumbnail drawn shrunk.
+/// latticeDetail is lattice points per design unit for the lit surfaces
+/// (metal, materials): 1 on the canvas, less for a thumbnail drawn shrunk,
+/// the export's pixels per unit while one draws (see atExportDetail).
 double latticeDetail = 1;
+
+/// latticeMost is the most lattice points a side: [editorLatticeMost] where
+/// the page is drawn often and seen at screen size; an export's own pixels
+/// while one draws.
+int latticeMost = editorLatticeMost;
+const editorLatticeMost = 448;
+
+/// atExportDetail runs [draw] with the lit surfaces worked out at
+/// [pixelsPerUnit] points per design unit, up to [most] a side: an
+/// export's own pixels. With the editor's 448, a 1920-wide export blew
+/// each point up to four pixels, and the metal came out blotchy and grainy.
+/// [draw] must not wait: the setting is the app's while it runs.
+T atExportDetail<T>(double pixelsPerUnit, T Function() draw,
+    {int most = 4096}) {
+  var detail = latticeDetail, cap = latticeMost, was = exportDrawing;
+  latticeDetail = pixelsPerUnit;
+  latticeMost = most;
+  exportDrawing = true;
+  try {
+    return draw();
+  } finally {
+    latticeDetail = detail;
+    latticeMost = cap;
+    exportDrawing = was;
+  }
+}
+
+/// exportDrawing is whether an export is drawing (see atExportDetail): it
+/// knows its pixels exactly, so a slow move can be drawn as a picture of
+/// that size (paintCanvasDocument). The editor draws through the zoom.
+bool exportDrawing = false;
 
 /// paintProcedural draws [spec] into [rect] at [time] seconds; 0 is a still.
 void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
@@ -609,15 +641,20 @@ typedef _LatticeKey = (
 
 final _designs = Expando<String>("latticeDesign");
 
+/// latticeSize is how many lattice points the lit surfaces take across and
+/// down [rect]: a point per pixel (see latticeDetail), at most latticeMost
+/// a side, and no coarser: a feature under two cells across cannot be shown.
+(int, int) latticeSize(Rect rect) => (
+      (rect.width * latticeDetail).round().clamp(8, latticeMost),
+      (rect.height * latticeDetail).round().clamp(8, latticeMost),
+    );
+
 /// _lattice draws [spec]'s lit surface over [rect], its colours from [make]
 /// or from the last time the same design was drawn at the same size.
 void _lattice(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     Int32List Function(Rect, ProceduralSpec, int cols, int rows) make) {
   if (math.min(rect.width, rect.height) <= 0) return;
-  // A lattice point per pixel (see latticeDetail), at most 448 a side, and
-  // no coarser: a feature under two cells across cannot be shown.
-  var cols = (rect.width * latticeDetail).round().clamp(8, 448);
-  var rows = (rect.height * latticeDetail).round().clamp(8, 448);
+  var (cols, rows) = latticeSize(rect);
   (double, double, double) rgb(Color c) => (c.r, c.g, c.b);
   var key = (
     _designs[spec] ??= "${spec.toJson()}",
@@ -626,7 +663,7 @@ void _lattice(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     rgb(spec.accent),
     rect.width,
     rect.height,
-    latticeDetail,
+    cols * 10000.0 + rows,
   );
   var colours = _lattices.remove(key) ?? make(rect, spec, cols, rows);
   _lattices[key] = colours;

@@ -91,6 +91,7 @@ import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
+import 'package:bruig/plugin_system/canvas/model/scene_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
@@ -234,7 +235,7 @@ void paintCanvasDocument(
     cv.translate(-focus.dx, -focus.dy);
   }
 
-  void framed(void Function(ui.Canvas cv) paint) {
+  void framed(void Function(ui.Canvas cv) paint, {bool smooth = false}) {
     if (camera == null) {
       paint(canvas);
       return;
@@ -252,7 +253,38 @@ void paintCanvasDocument(
           look != null && look.motionBlur > 0 && frame > 0 && cam != null
               ? _cameraMove(cam, frame, doc, liveMotion, zoom, focus, roll)
               : null;
-      if (smear == null) {
+      var slow = smear == null && smooth && cam == null && smoothMove(zoom)
+          ? _slowMovePicture(canvas, rect, slowMoveMost(doc.scene.camera, zoom))
+          : null;
+      if (slow != null) {
+        // A slow move (SceneCamera), playing or exported: the scene drawn
+        // once into a picture at the pixels it is shown at times the move's
+        // closest zoom, and that picture laid down through the zoom. Drawn
+        // through a zoom that changes a little each frame, words are put on
+        // whole or quarter pixels, so they held still for frames and then
+        // jumped while everything else drifted (Ken, 2026-11-25). In the
+        // picture they never move against its pixels; the picture moves by
+        // any fraction of one, and is only ever shrunk, so stays sharp. Its
+        // size is set here (_slowMovePicture), not left to the renderer: a
+        // layer zoomed by a filter came out soft, ringed in dark, in the app.
+        var (k, w, h) = slow;
+        var recorder = ui.PictureRecorder();
+        var inner = ui.Canvas(recorder);
+        inner.scale(k);
+        inner.translate(-rect.left, -rect.top);
+        paint(inner);
+        var picture = recorder.endRecording();
+        var image = picture.toImageSync(w, h);
+        picture.dispose();
+        through(canvas, zoom, focus, roll);
+        canvas.drawImageRect(
+            image,
+            Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+            Rect.fromLTWH(rect.left, rect.top, w / k, h / k),
+            Paint()..filterQuality = FilterQuality.medium);
+        // The drawing keeps the picture: this handle is not needed.
+        image.dispose();
+      } else if (smear == null) {
         through(canvas, zoom, focus, roll);
         paint(canvas);
       } else {
@@ -324,8 +356,10 @@ void paintCanvasDocument(
     var shared = master != null && !doc.editingMaster;
     if (shared && !doc.masterOver) scene(master.elements);
     var (zoom, focus) = camera;
-    framed((cv) => scene(doc.elements,
-        on: cv, lens: look == null ? null : _Lens(look, zoom, focus, rect)));
+    framed(
+        (cv) => scene(doc.elements,
+            on: cv, lens: look == null ? null : _Lens(look, zoom, focus, rect)),
+        smooth: true);
     if (look != null && look.vignette > 0) {
       _paintVignette(canvas, rect, look.vignette, look.vignetteSoft);
     }
@@ -1302,3 +1336,49 @@ CanvasDocument withoutGuides(CanvasDocument doc) {
   }
   return out;
 }
+
+/// smoothMove is whether a slow move's [zoom] is drawn as one picture
+/// zoomed, in an export (see paintCanvasDocument): near enough the page's
+/// own size that the picture, drawn at the move's closest, is not too big
+/// to make every frame. Further in, the scene is drawn through the zoom,
+/// sharp, and words may step a little.
+bool smoothMove(double zoom) => zoom >= 0.8 && zoom <= 1.25;
+
+/// slowMoveMost is the closest [camera] comes over its scene, at least
+/// [now] and the page's own size: the picture of a slow move is drawn that
+/// big, so it is never magnified.
+double slowMoveMost(SceneCamera? camera, double now) => [
+      1.0,
+      now,
+      if (camera != null) ...[camera.fromZoom, camera.toZoom],
+    ].reduce(math.max).clamp(1.0, 1.25);
+
+/// _slowMovePicture is the scale, width and height of the picture a slow
+/// move draws its scene into, at its closest [most], on [canvas] over
+/// [rect]; or null where it would be too big to make every frame (a page
+/// zoomed far in on the stage), which draws through the zoom instead.
+///
+/// An export knows its pixels exactly and draws twice over: a picture laid
+/// down by a fraction of a pixel is smoothed, and at its own size that took
+/// a quarter off the words' edges; drawn double and halved, they are as
+/// sharp as words drawn straight onto the frame. On the screen the canvas
+/// is in points, so the display's pixels a point are added, and once is
+/// enough: a high-density display is already twice over.
+(double, int, int)? _slowMovePicture(ui.Canvas canvas, Rect rect, double most) {
+  var m = canvas.getTransform();
+  var px = math.sqrt(m[0] * m[0] + m[1] * m[1]);
+  var k = exportDrawing
+      ? px * most * 2
+      : px *
+          most *
+          (ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ??
+              1.0);
+  var w = math.max(1, (rect.width * k).ceil());
+  var h = math.max(1, (rect.height * k).ceil());
+  if (w * h > _slowMoveMostPixels) return null;
+  return (k, w, h);
+}
+
+/// _slowMoveMostPixels is the biggest picture a slow move draws a frame:
+/// a 4K frame twice over.
+const _slowMoveMostPixels = 3840 * 2160 * 4;
