@@ -54,7 +54,7 @@ extension CanvasLayouts on CanvasController {
     _layouts.ordering = null;
     _layouts.clicked.clear();
     if (keep && e is LayoutElement && clicked.isNotEmpty) {
-      setLayout(e.copyWith(order: clicked, unread: [
+      replaceElement(e.copyWith(order: clicked, unread: [
         for (var c in e.shownCells)
           if (!clicked.contains(c.id)) c.id
       ]));
@@ -72,13 +72,13 @@ extension CanvasLayouts on CanvasController {
     ids
       ..removeAt(i)
       ..insert(to, cell);
-    setLayout(e.copyWith(order: ids));
+    replaceElement(e.copyWith(order: ids));
   }
 
   /// setCellRead puts [cell] in [e]'s reading, at the end, or leaves it out.
   void setCellRead(LayoutElement e, String cell, bool read) {
     var ids = [for (var c in e.reading) c.id];
-    setLayout(read
+    replaceElement(read
         ? e.copyWith(order: [
             ...ids,
             cell
@@ -97,17 +97,13 @@ extension CanvasLayouts on CanvasController {
 
   /// resetReadingOrder reads [e]'s cells in their own order, none left out.
   void resetReadingOrder(LayoutElement e) =>
-      setLayout(e.copyWith(order: const [], unread: const []));
-
-  /// setLayout writes layout [e].
-  void setLayout(LayoutElement e, {bool transient = false}) =>
-      replaceElement(e, transient: transient);
+      replaceElement(e.copyWith(order: const [], unread: const []));
 
   /// splitLayoutCell cuts Panels cell [cell] of [e] in two and picks the new
   /// half; [vertical] cuts top to bottom.
   void splitLayoutCell(LayoutElement e, String cell, {required bool vertical}) {
-    var (next, fresh) = e.split(cell, vertical: vertical);
-    setLayout(next);
+    var (layout: next, cell: fresh) = e.split(cell, vertical: vertical);
+    replaceElement(next);
     pickLayoutCell(e.id, fresh);
   }
 
@@ -117,7 +113,7 @@ extension CanvasLayouts on CanvasController {
   /// cell that met it; elsewhere the cell goes, and what was docked in it is
   /// let go where it is (layoutsSynced, as for any cell that goes).
   void removeLayoutCell(LayoutElement e, String cell) {
-    var (next, into) = e.removeCell(cell);
+    var (layout: next, :into) = e.removeCell(cell);
     if (identical(next, e)) return;
     var doc = _document.withElement(next);
     if (into != null) {
@@ -137,77 +133,9 @@ extension CanvasLayouts on CanvasController {
   /// Picks it.
   void addLayoutCell(LayoutElement e,
       {LayoutCellShape shape = LayoutCellShape.rectangle}) {
-    if (e.addCell(shape: shape) case (var next, var id)?) {
-      setLayout(next);
+    if (e.addCell(shape: shape) case (layout: var next, cell: var id)?) {
+      replaceElement(next);
       pickLayoutCell(e.id, id);
-    }
-  }
-
-  /// setLayoutTracks gives a Grid [columns] and [rows]: cells past the end
-  /// are brought inside, so none is lost.
-  void setLayoutTracks(LayoutElement e,
-      {List<double>? columns, List<double>? rows}) {
-    var cols = columns ?? e.columns, rs = rows ?? e.rows;
-    if (cols.isEmpty || rs.isEmpty) return;
-    setLayout(e.copyWith(columns: cols, rows: rs, cells: [
-      for (var c in e.cells)
-        c.copyWith(
-            col: c.col.clamp(0, cols.length - 1),
-            row: c.row.clamp(0, rs.length - 1),
-            colSpan: c.colSpan
-                .clamp(1, cols.length - c.col.clamp(0, cols.length - 1)),
-            rowSpan:
-                c.rowSpan.clamp(1, rs.length - c.row.clamp(0, rs.length - 1))),
-    ]));
-  }
-
-  /// setLayoutMode makes [e] a layout of [mode], starting from the cells it
-  /// has: their names and styles kept, placed afresh.
-  void setLayoutMode(LayoutElement e, LayoutMode mode) {
-    if (e.mode == mode) return;
-    var cells = e.shownCells;
-    switch (mode) {
-      case LayoutMode.panels:
-        // The cells side by side, then cut in rows of two.
-        LayoutNode build(List<LayoutCell> list) {
-          if (list.length == 1) return LayoutNode.leaf(list.single.id);
-          var half = list.length ~/ 2;
-          return LayoutNode.cut(
-              vertical: list.length <= 2,
-              at: half / list.length,
-              a: build(list.sublist(0, half)),
-              b: build(list.sublist(half)));
-        }
-        setLayout(e.copyWith(
-            mode: mode,
-            root: build(cells.isEmpty ? [const LayoutCell(id: "c1")] : cells),
-            cells: cells.isEmpty ? [const LayoutCell(id: "c1")] : cells));
-      case LayoutMode.grid:
-        var n = cells.length.clamp(1, 1000);
-        var cols = n <= 2 ? n : (n <= 4 ? 2 : 3);
-        var rows = (n / cols).ceil();
-        setLayout(e.copyWith(
-            mode: mode,
-            columns: List.filled(cols, 1.0),
-            rows: List.filled(rows, 1.0),
-            cells: [
-              for (var (i, c) in cells.indexed)
-                c.copyWith(
-                    col: i % cols, row: i ~/ cols, colSpan: 1, rowSpan: 1)
-            ]));
-      case LayoutMode.free:
-        // Each where it was drawn, as a share of the box.
-        var box = layoutInner(e, e.bounds);
-        var places = layoutPlaces(e, e.bounds);
-        setLayout(e.copyWith(mode: mode, cells: [
-          for (var p in places)
-            p.cell.copyWith(
-                x: (p.bounds.left - box.left) / box.width,
-                y: (p.bounds.top - box.top) / box.height,
-                width: p.bounds.width / box.width,
-                height: p.bounds.height / box.height,
-                turn: 0),
-        ]));
     }
   }
 
@@ -237,11 +165,8 @@ extension CanvasLayouts on CanvasController {
   List<({LayoutDock dock, String name})> dockableCells(CanvasElement e) => [
         for (var l in _document.elements)
           if (l is LayoutElement && l.id != e.id)
-            for (var (i, c) in l.shownCells.indexed)
-              (
-                dock: LayoutDock(l.id, c.id),
-                name: "${l.name} · ${c.name.isEmpty ? "Cell ${i + 1}" : c.name}"
-              )
+            for (var c in l.shownCells)
+              (dock: LayoutDock(l.id, c.id), name: "${l.name} · ${l.nameOf(c)}")
       ];
 }
 

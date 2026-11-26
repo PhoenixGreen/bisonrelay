@@ -255,6 +255,8 @@ class CounterElement extends CanvasElement {
   /// buttons are the controls drawn under the number, in this order.
   final List<CounterButton> buttons;
 
+  /// buttonSpec and buttonBox are how each button's label and box are
+  /// drawn.
   final TextSpec buttonSpec;
   final BoxSpec buttonBox;
 
@@ -267,6 +269,7 @@ class CounterElement extends CanvasElement {
   /// row, buttons share the width and size to their labels.
   final Size buttonSize;
 
+  /// animation is how it arrives and leaves.
   final ElementAnimation animation;
 
   const CounterElement(
@@ -329,22 +332,23 @@ class CounterElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.counter;
 
+  /// span is how far the count goes from From to To: below nought for one
+  /// counting down.
   double get span => to - from;
 
-  /// valueAtFraction is the number [t] of the way through the count.
-  double valueAtFraction(double t) => from + span * t.clamp(0.0, 1.0);
-
+  /// format is [value] written as this counter writes its number.
   String format(double value) => formatCounter(value, decimals, separator);
 
   /// textFor is the whole line: words before, the number, words after.
   String textFor(double value) => "$before${format(value)}$after";
 
   /// placedButton is where loose button [i] sits, as a fraction of the box
-  /// from its middle; unplaced ones spread down the middle, not stacked.
+  /// from its middle; unplaced ones spread up the middle from near its foot,
+  /// a new button's height apart so none is stacked on another.
   Offset placedButton(int i) {
     if (i < buttonAt.length) return buttonAt[i];
     var count = buttons.isEmpty ? 1 : buttons.length;
-    return Offset(0, 0.3 - (count - 1 - i) * 0.18);
+    return Offset(0, 0.3 - (count - 1 - i) * _defaults.buttonSize.height);
   }
 
   /// mode is which of its five things this is (see CounterMode). A page
@@ -384,8 +388,8 @@ class CounterElement extends CanvasElement {
               box.width, box.height)
           : box;
 
-  /// countKeys are the keys on its track that hold a count, in frame order.
-  List<Keyframe> get countKeys => [
+  /// _countKeys are the keys on its track that hold a count, in frame order.
+  List<Keyframe> get _countKeys => [
         for (var k in track?.keys ?? const <Keyframe>[])
           if (k.values.containsKey(KeyframeChannel.count)) k,
       ];
@@ -394,7 +398,7 @@ class CounterElement extends CanvasElement {
   /// for none: what a keyed counter counts between, which From and To are
   /// only while the keys follow them (see withEnds).
   (double, double)? get keyedEnds {
-    var keys = countKeys;
+    var keys = _countKeys;
     if (keys.isEmpty) return null;
     return (
       keys.first.values[KeyframeChannel.count]!,
@@ -410,7 +414,7 @@ class CounterElement extends CanvasElement {
   /// it is the first.
   CounterElement withEnds({double? from, double? to}) {
     var next = copyWith(from: from, to: to);
-    var keys = countKeys;
+    var keys = _countKeys;
     if (keys.isEmpty) return next;
     var track = this.track!;
     Keyframe moved(Keyframe k, double was, double? now) =>
@@ -627,6 +631,8 @@ class CounterElement extends CanvasElement {
             json["numberSpec"], TextSpec.fromJson, _defaults.numberSpec),
         affixSpec:
             jsonSpec(json["affixSpec"], TextSpec.fromJson, _defaults.affixSpec),
+        // Read as the document's style names are (NamedTextStyle.fromJson),
+        // so a counter finds every style a text can.
         numberStyle: jsonString(json["numberStyle"], _defaults.numberStyle),
         wordStyle: jsonString(json["wordStyle"], _defaults.wordStyle),
         box: jsonSpec(json["box"], BoxSpec.fromJson, _defaults.box),

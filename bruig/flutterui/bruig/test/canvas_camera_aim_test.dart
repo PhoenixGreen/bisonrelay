@@ -8,8 +8,8 @@ import 'package:bruig/plugin_system/canvas/render/camera_aim.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// canvas_camera_aim_test.dart is a Camera that frames part of a chart (Ken,
-// 2026-11-17, the improvements report's sixth item).
+// canvas_camera_aim_test.dart is a Camera that frames part of a chart: one
+// bar, the top few, whoever leads, followed through a race.
 
 void main() {
   CanvasDocument docWith(CameraElement cam) {

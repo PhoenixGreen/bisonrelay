@@ -22,6 +22,8 @@ import 'package:flutter/painting.dart';
 // on the page as the layout is drawn on the frame, which the scene clips it
 // to.
 
+/// paintLayout draws [e] in [box]: its gutters, where they have a colour,
+/// then each cell.
 void paintLayout(ui.Canvas canvas, Rect box, LayoutElement e,
     {CanvasImageSource? images}) {
   var places = layoutPlaces(e, box);
@@ -38,13 +40,13 @@ void paintLayout(ui.Canvas canvas, Rect box, LayoutElement e,
   }
 
   for (var p in places) {
-    paintLayoutCell(canvas, p, e.styleOf(p.cell), images);
+    _paintLayoutCell(canvas, p, e.styleOf(p.cell), images);
   }
 }
 
-/// paintLayoutCell draws one cell in [style]: as a BoxSpec draws a box, but
+/// _paintLayoutCell draws one cell in [style]: as a BoxSpec draws a box, but
 /// cut to the cell's outline, whatever its shape.
-void paintLayoutCell(
+void _paintLayoutCell(
     ui.Canvas canvas, LayoutPlace p, BoxSpec style, CanvasImageSource? images) {
   var bounds = p.bounds;
   if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -54,8 +56,10 @@ void paintLayoutCell(
     paintThroughText(canvas, bounds, style.painted, images,
         () => canvas.drawPath(p.path, Paint()));
   }
-  // The border inside the edge: twice as wide, clipped to the cell.
-  var width = style.evenBorder ?? style.borderWidth;
+  // The border inside the edge: twice as wide, clipped to the cell. One
+  // width all round, as the panel sets it: sides saved apart are drawn at
+  // the widest of them.
+  var width = style.borders.widest;
   if (style.hasBorder && width > 0) {
     canvas.save();
     canvas.clipPath(p.path);
@@ -109,9 +113,9 @@ LayoutFrame layoutFrameAt(LayoutElement layout, int frame, CanvasDocument? doc,
         {LiveMotion? live}) =>
     LayoutFrame(layout, layout.placeAt(frame, doc, live: live));
 
-/// layoutPreviewPage is the page a preset's preview is drawn on: dark, so
+/// _previewPage is the page a preset's preview is drawn on: dark, so
 /// white gutters and light cards both show.
-const layoutPreviewPage = Color(0xFF454C5C);
+const _previewPage = Color(0xFF454C5C);
 
 /// paintLayoutPreview draws preset [p] fitted in [size], laid out in a box
 /// of [boxSize] (the layout it would replace) so its gutters and lines are
@@ -128,7 +132,7 @@ void paintLayoutPreview(ui.Canvas canvas, Size size, LayoutPreset p,
   canvas.translate((size.width - w * fit) / 2, (size.height - h * fit) / 2);
   canvas.scale(fit);
   var box = Rect.fromLTWH(0, 0, w, h);
-  canvas.drawRect(box, Paint()..color = layoutPreviewPage);
+  canvas.drawRect(box, Paint()..color = _previewPage);
   paintLayout(canvas, box, e);
   canvas.restore();
 }

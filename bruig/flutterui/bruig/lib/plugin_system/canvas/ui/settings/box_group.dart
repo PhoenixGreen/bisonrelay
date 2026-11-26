@@ -9,15 +9,45 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 // the room inside it, for every element drawn in a box, and the corner and
 // side fields a shape's or a text piece's own box uses alone.
 
+/// BoxParts is which of a box's parts its group offers: every one for a box
+/// drawn as a BoxSpec draws one, fewer for one drawn with fewer, so a panel
+/// never offers what is not drawn.
+class BoxParts {
+  /// splitSides and splitCorners offer the border's four sides and the four
+  /// corners one by one; without them each is one number, the border drawn
+  /// at its widest side and the corners at their shared radius.
+  final bool splitSides, splitCorners;
+
+  /// padding is the room inside the box; inset the border drawn inside its
+  /// edge.
+  final bool padding, inset;
+
+  const BoxParts(
+      {this.splitSides = true,
+      this.splitCorners = true,
+      this.padding = true,
+      this.inset = true});
+
+  /// whole is every part.
+  static const whole = BoxParts();
+
+  /// outline is a box drawn as an outline cut to a shape, as a Layout's
+  /// cell is: one border width all round, one radius, nothing inside it.
+  static const outline = BoxParts(
+      splitSides: false, splitCorners: false, padding: false, inset: false);
+}
+
 /// boxGroup is the shared frame controls: background, border, corners and
-/// padding. [fillLabel] names the background swatch; [onPadding] takes
-/// padding for an element that does more than store it (a picture grows).
+/// padding, or those of them [parts] names. [fillLabel] names the
+/// background swatch; [onPadding] takes padding for an element that does
+/// more than store it (a picture grows).
 Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         VoidCallback begin, VoidCallback commit,
         {String label = "Box",
         String fillLabel = "Fill",
         String remember = "box",
         bool rule = true,
+        BoxParts parts = BoxParts.whole,
         ValueChanged<BoxSpec>? onPadding,
 
         /// fillPickedIn offers a picture or pattern behind the box, as for
@@ -33,17 +63,26 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         label: label,
         rule: rule,
         remember: "${remember}Box",
-        tooltip: fillPickedIn != null
-            ? "What the box is painted with, and its border's inset"
-            : "The border's inset",
+        tooltip: switch ((fillPickedIn != null, parts.inset)) {
+          (true, true) =>
+            "What the box is painted with, and its border's inset",
+          (true, false) => "What the box is painted with",
+          _ => "The border's inset",
+        },
         row: [
           ..._boxColours(box, onChanged, begin, commit,
               fillLabel: fillLabel, compact: compact),
           ..._boxSides(box, onChanged, commit,
-              remember: remember, onPadding: onPadding, compact: compact),
+              remember: remember,
+              parts: parts,
+              onPadding: onPadding,
+              compact: compact),
         ],
         more: _boxMore(box, onChanged, begin, commit,
-            remember: remember, compact: compact, fillPickedIn: fillPickedIn));
+            remember: remember,
+            parts: parts,
+            compact: compact,
+            fillPickedIn: fillPickedIn));
 
 /// _boxColours are the box's fill, where it is painted a colour (a picture
 /// or pattern covers it), and its border's colour: side by side with their
@@ -87,30 +126,42 @@ List<Widget> _boxColours(BoxSpec box, ValueChanged<BoxSpec> onChanged,
 }
 
 /// _boxSides are one number each for the border, the corners and the room
-/// inside, each splitting into four by its link. They are named by the box
-/// ([remember]), so that two boxes in one panel are split apart and found
-/// apart.
+/// inside, each splitting into four by its link where [parts] offers it.
+/// They are named by the box ([remember]), so that two boxes in one panel
+/// are split apart and found apart.
 List<Widget> _boxSides(
         BoxSpec box, ValueChanged<BoxSpec> onChanged, VoidCallback commit,
         {required String remember,
+        required BoxParts parts,
         required ValueChanged<BoxSpec>? onPadding,
         required bool compact}) =>
     [
-      ...roomFields(box.borders, (r) => onChanged(box.withBorders(r)), commit,
+      ...roomFields(
+          parts.splitSides ? box.borders : Room(all: box.borders.widest),
+          (r) => onChanged(box.withBorders(r)),
+          commit,
           label: "Border",
           prefix: "${remember}Box",
           allKey: "Border",
-          sideKey: "Border"),
-      ...cornerFields(box.corners, (c) => onChanged(box.withCorners(c)), commit,
-          label: compact ? "Corners" : "Radius", prefix: "${remember}Box"),
-      ...roomFields(
-          box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit,
-          prefix: "${remember}Box"),
-      const CanvasHint(
-          "Border, Radius and Padding set all four sides or corners at once; "
-          "the link beside each splits it into one each. Sides of different "
-          "weights are drawn square where they meet, since two weights "
-          "cannot round the same corner."),
+          sideKey: "Border",
+          splits: parts.splitSides),
+      ...cornerFields(
+          parts.splitCorners ? box.corners : Corners(all: box.corners.all),
+          (c) => onChanged(box.withCorners(c)),
+          commit,
+          label: compact ? "Corners" : "Radius",
+          prefix: "${remember}Box",
+          splits: parts.splitCorners),
+      if (parts.padding)
+        ...roomFields(
+            box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit,
+            prefix: "${remember}Box"),
+      if (parts.splitSides || parts.splitCorners)
+        const CanvasHint(
+            "Border, Radius and Padding set all four sides or corners at "
+            "once; the link beside each splits it into one each. Sides of "
+            "different weights are drawn square where they meet, since two "
+            "weights cannot round the same corner."),
     ];
 
 /// _boxMore is what is set once: the box's paint where it is offered (see
@@ -118,6 +169,7 @@ List<Widget> _boxSides(
 List<Widget> _boxMore(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         VoidCallback begin, VoidCallback commit,
         {required String remember,
+        required BoxParts parts,
         required bool compact,
         required BuildContext? fillPickedIn}) =>
     [
@@ -145,9 +197,10 @@ List<Widget> _boxMore(BoxSpec box, ValueChanged<BoxSpec> onChanged,
       ],
       // A break only between the two, never after them: with nothing to set
       // once the list is empty, and the group shows no button for it.
-      if (fillPickedIn != null && box.hasBorder) const CanvasLineBreak(),
+      if (fillPickedIn != null && parts.inset && box.hasBorder)
+        const CanvasLineBreak(),
       // The border drawn inside the edge, a frame within the frame.
-      if (box.hasBorder)
+      if (parts.inset && box.hasBorder)
         CanvasNumberField(
           key: ValueKey("${remember}BorderInset"),
           label: "Inset",
@@ -165,10 +218,13 @@ List<Widget> _boxMore(BoxSpec box, ValueChanged<BoxSpec> onChanged,
 
 /// cornerFields is the corners as one control (a number for all four and a
 /// splitting link), shared by an element's box, a piece of a text's box and
-/// a shape whose corners can be rounded (ShapeElement.hasCorners).
+/// a shape whose corners can be rounded (ShapeElement.hasCorners). Without
+/// [splits] it is one number only.
 List<Widget> cornerFields(
         Corners corners, ValueChanged<Corners> onChanged, VoidCallback commit,
-        {String label = "Radius", required String prefix}) =>
+        {String label = "Radius",
+        required String prefix,
+        bool splits = true}) =>
     // One control for the four (see CanvasSidesField).
     [
       CanvasSidesField(
@@ -182,6 +238,7 @@ List<Widget> cornerFields(
           corners.bottomLeft
         ],
         parts: const ["↖", "↗", "↘", "↙"],
+        splits: splits,
         partKeys: [
           for (var g in const ["↖", "↗", "↘", "↙"]) "${prefix}Radius$g"
         ],
@@ -205,7 +262,8 @@ List<Widget> roomFields(
         // The keys' name, so a second set in one panel (border beside
         // padding) is findable by what it is.
         String allKey = "Padding",
-        String sideKey = "Pad"}) =>
+        String sideKey = "Pad",
+        bool splits = true}) =>
     [
       CanvasSidesField(
         name: "$prefix$allKey",
@@ -213,6 +271,7 @@ List<Widget> roomFields(
         max: 400,
         values: [room.top, room.right, room.bottom, room.left],
         parts: const ["Top", "Right", "Bottom", "Left"],
+        splits: splits,
         partKeys: [
           for (var n in const ["Top", "Right", "Bottom", "Left"])
             "$prefix$sideKey$n"

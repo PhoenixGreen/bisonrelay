@@ -498,6 +498,17 @@ docked element itself is placed by its own box, not its layout's motion:
 `layoutsSynced` moves it when the layout's resting box moves, so under a
 keyed or clipped move the cell is drawn moved and the element stays.
 
+How far a Layout's numbers go is said once, in `LayoutRange`
+(`model/elements/layout_element.dart`): its gutters, margin and a cut's own
+gutter, and where a cut crosses its box and how far it tilts; the panel and
+the stage's drags offer that range, and what is read or kept is held to ten
+times it, as a stroke's is. A cell is drawn with one border width all round
+(the widest of its sides, where a saved one holds them apart), one radius,
+its fill, picture and fade, cut to its outline; its panel offers no more
+(`BoxParts.outline`). The edits that make a layout's cells afresh in
+another mode or on other tracks are the model's (`layoutInMode`,
+`LayoutElement.withTracks`), so the panel writes them as any panel writes.
+
 A dock is a `LayoutDock` (layout id, cell id), saved as it always was, one
 string `"layout:cell"` in `ElementBase.dock`, read on demand by
 `ElementBase.docked` so a base stays `const`. The edits that change which
@@ -506,8 +517,8 @@ cells there are live on `LayoutElement` (`split`, `removeCell`,
 cell puts its neighbour's subtree in its parent's place and docks what was
 in it in the cell that met it. Whatever makes a layout's cells afresh (a
 preset, a cell removed) lets go of what was docked in a cell that is gone,
-where it is: `layoutsSynced` does it on every change (`docksLetGo`), and
-moves only what is docked in a cell the layout has.
+where it is: `layoutsSynced` does it on every change, and moves only what
+is docked in a cell the layout has.
 
 ### A counter's mode
 
@@ -533,6 +544,10 @@ count keys move with them while they still hold the old ends (a new
 counter's count is laid out from From to To by `withCountLaidOut`), and a
 key changed by hand to another number stays. A clock is kept going while
 its canvas is shown (`CounterClock.keepClocks`), whatever `running` says.
+A run set to start running starts as the canvas opens, for the scene
+shown, and for any other scene once it is turned to (`CounterClock.turned`,
+from the controller's one way of turning the scene); one started, stopped
+or set before is left as it was.
 
 Where a counter's pieces are is worked out once, by `counterLaidOut`
 (`render/counter_painter.dart`): the room its number has, the fit, its
@@ -563,6 +578,9 @@ the stage and where its camera stands, which a new Camera starts from. What
 a Camera keys of its lens (focus, blur, vignette and how far it turns to its
 aim) are `KeyframeChannel`s, keyed through `ElementTrack.withValueKey`, the
 one way every panel's ◆ keys a value: a new key there pins nothing else.
+How soft a Camera's blur goes is `CameraElement.maxBlur`, which its panel
+offers; `readBlur`, a little over three times it, is the most one is kept,
+keyed or drawn with, since a blur costs more the wider it is.
 
 Whether a metronome is going is the editor's, not the document's
 (`controller/metronomes.dart`). How it swings is handed to the renderer as

@@ -458,6 +458,10 @@ class CanvasSidesField extends StatefulWidget {
 
   final double max;
 
+  /// splits offers the link that splits the four; without it they are only
+  /// ever one number, the first of [values].
+  final bool splits;
+
   /// onChanged sets one of the four, or all with a null side.
   final void Function(int? side, double value) onChanged;
   final VoidCallback? onCommit;
@@ -471,6 +475,7 @@ class CanvasSidesField extends StatefulWidget {
     required this.onChanged,
     this.onCommit,
     this.max = 400,
+    this.splits = true,
     super.key,
   });
 
@@ -481,7 +486,8 @@ class CanvasSidesField extends StatefulWidget {
 }
 
 class _CanvasSidesFieldState extends State<CanvasSidesField> {
-  bool get _split => _unlinked.contains(widget.name) || !widget.even;
+  bool get _split =>
+      widget.splits && (_unlinked.contains(widget.name) || !widget.even);
 
   void _toggle() {
     if (_split) {
@@ -526,7 +532,7 @@ class _CanvasSidesFieldState extends State<CanvasSidesField> {
     if (!split) {
       body = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: _stepper(null)),
-        link,
+        if (widget.splits) link,
       ]);
     } else {
       Widget pair(int a, int b) => Row(children: [

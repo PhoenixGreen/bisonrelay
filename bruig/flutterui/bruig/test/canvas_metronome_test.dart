@@ -22,11 +22,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/canvas_audio_fake.dart';
 import 'canvas_score_sheet_test.dart' as sheet;
 
-// canvas_metronome_test.dart is the metronome (Ken, 2026-11-15: "a stand
-// alone metronome, that looks like a metronome and has an adjustable bpm
-// ... and a metronome that is built into the sheetmusic playhead ... change
-// the speed of the sheet music and it's metronome and a reset button to go
-// back to real time"). Set METRONOME_PNG to a path for a picture of one.
+// canvas_metronome_test.dart is the metronome: one standing alone, drawn as
+// a clockwork one with a tempo to set, and the one in sheet music's
+// playhead, whose speed changes with the music's and goes back to real
+// time. Set METRONOME_PNG to a path for a picture of one.
 
 Future<void> _font(String family, List<String> files) async {
   var loader = FontLoader(family);

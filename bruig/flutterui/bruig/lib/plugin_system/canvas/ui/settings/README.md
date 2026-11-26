@@ -127,6 +127,8 @@ All from `ui/controls.dart`, which says what each is for.
   `CanvasSidesField`, through `roomFields` and `cornerFields`
   (`box_group.dart`): one stepper and a link that splits it. Give each set
   a `prefix` of its own: it names the keys and what is remembered split.
+  Where what is drawn has one number only, pass `splits: false`, and the
+  link is not offered.
 - **A section's tools**: `CanvasToolTiles`, with the settings of the one in
   hand under them.
 - **Something to do**: `CanvasTextButton` for an action said in words;
@@ -153,8 +155,11 @@ Do not build any of this again for an element:
   second, whole set, used by a team and a counter's buttons; new panels
   build from the pieces.
 - **A box** (fill, border, corners, padding): `boxGroup`
-  (`box_group.dart`); **a fill** of a picture or a pattern: `fillBits`
-  (`fill_controls.dart`).
+  (`box_group.dart`). A box drawn with fewer parts says which it has with
+  `parts:` (`BoxParts`), so the panel never offers what is not drawn: a
+  Layout's cell is `BoxParts.outline`, one border width all round and one
+  radius, with no padding or inset. **A fill** of a picture or a pattern:
+  `fillBits` (`fill_controls.dart`).
 
 ## Where the shared pieces are
 
@@ -237,6 +242,12 @@ line of controls.
   control of a shape's, a line's and a path's panels in the real sidebar,
   one row of a table each, and holds each to changing what it says in one
   undo step: the pattern for a panel's every control.
+  `test/canvas_button_counter_layout_camera_metronome_panels_test.dart`
+  does the same for those five. The table's machinery is
+  `test/support/panel_rows.dart` (`ControlRow`, `everyControl`, and the
+  finders and presses a row is made of); a row can set the editor up first
+  (`ready`: a cell picked, a reading order begun) and say that a control
+  changes only what the editor shows (`step: false`).
 - `test/canvas_panel_keys_test.dart` keeps every key and word each panel
   shows, so a change to how a panel is built can be shown to change nothing
   else.

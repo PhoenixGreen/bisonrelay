@@ -149,6 +149,9 @@ class Room {
   double? get even =>
       left == top && top == right && right == bottom ? left : null;
 
+  /// widest is the largest of the four.
+  double get widest => math.max(math.max(left, top), math.max(right, bottom));
+
   Room withEven(double pad) => Room(all: pad);
 
   Room scaledBy(double by) => Room(

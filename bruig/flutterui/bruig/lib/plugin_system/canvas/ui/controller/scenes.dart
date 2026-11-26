@@ -534,7 +534,8 @@ extension CanvasScenes on CanvasController {
   ///   playing and a join going back are not edits.
   ///
   /// The Code panels' picks on the scene left go, whichever way it turned
-  /// (see _forgetCodePicksOffScene). The caller then settles the frame and
+  /// (see _forgetCodePicksOffScene), and the counters of the scene turned
+  /// to start (CounterClock.turned). The caller then settles the frame and
   /// tells, once it has (goToScene holds the frame to the scene; _stepRun
   /// puts it on the run's frame and tells as a frame of play does;
   /// stopPreview holds it to the scene, or the master, gone back to).
@@ -563,6 +564,8 @@ extension CanvasScenes on CanvasController {
     }
     _forgetCodePicksOffScene();
     _audioFollowsPage(turned: true);
+    // Its counters start as the scene shown as the canvas opened did.
+    _counters.turned();
   }
 
   /// frameOn is the frame scene [index] is at: the playhead for the scene

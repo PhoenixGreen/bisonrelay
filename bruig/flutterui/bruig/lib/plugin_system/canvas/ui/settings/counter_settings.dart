@@ -556,6 +556,7 @@ List<Widget> _keyedControls(_Counter c) {
       ),
     ],
     CanvasKeyframeDot(
+      key: const ValueKey("counterKeyDot"),
       on: controller.hasValueKey(e, KeyframeChannel.count),
       enabled: frames > 1,
       tooltip: controller.hasValueKey(e, KeyframeChannel.count)

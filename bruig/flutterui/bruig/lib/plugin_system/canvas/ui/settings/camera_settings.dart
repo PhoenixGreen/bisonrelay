@@ -323,7 +323,7 @@ Widget _depthGroup(_Lens l) {
             channel: KeyframeChannel.blur,
             shown: l.look.blur,
             min: 0,
-            max: 60,
+            max: CameraElement.maxBlur,
             step: 2,
             dragStep: 0.5,
             decimals: 1,

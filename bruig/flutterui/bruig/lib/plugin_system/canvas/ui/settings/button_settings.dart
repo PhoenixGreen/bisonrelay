@@ -36,6 +36,7 @@ class _Button {
   }
 }
 
+/// buttonPanel is [e]'s panel (see element_panel.dart).
 Widget buttonPanel(
         BuildContext context,
         CanvasController controller,
@@ -152,11 +153,13 @@ Widget _hoverGroup(_Button b) {
     rule: false,
     children: [
       CanvasColorButton(
+        key: const ValueKey("buttonHoverFill"),
         label: "Hover fill",
         color: e.hoverFill,
         onChanged: (c) => b.now(e.copyWith(hoverFill: c)),
       ),
       CanvasColorButton(
+        key: const ValueKey("buttonHoverText"),
         label: "Hover text",
         color: e.hoverTextColor,
         onChanged: (c) => b.now(e.copyWith(hoverTextColor: c)),

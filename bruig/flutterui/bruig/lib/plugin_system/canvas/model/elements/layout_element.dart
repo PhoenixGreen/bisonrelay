@@ -51,6 +51,32 @@ enum LayoutCellShape {
       values.firstWhere((m) => m.name == name, orElse: () => rectangle);
 }
 
+/// comicInk is a comic panel's line: how a new layout's cells are drawn.
+const comicInk =
+    BoxSpec(borderWidth: 4, borderColor: Color(0xFF111111), padding: 0);
+
+/// LayoutRange is how far a Layout's numbers can be set: the range its
+/// panel and the stage's drags offer, and what a received layout is read
+/// within.
+abstract final class LayoutRange {
+  /// maxGutter is the widest a gutter, a cut's own gutter or the margin is
+  /// set.
+  static const double maxGutter = 400;
+
+  /// readGutter is the widest one is read or kept: ten times what can be
+  /// set, so nothing made before the range was held is changed, while a
+  /// received layout cannot push its cells off the page a million times
+  /// over.
+  static const double readGutter = maxGutter * 10;
+
+  /// minCutAt and maxCutAt are where a cut can cross its box, as a share of
+  /// it: never at its very edge, where a cell would be nothing.
+  static const double minCutAt = 0.02, maxCutAt = 0.98;
+
+  /// maxTilt is how far a cut turns either way, in degrees.
+  static const double maxTilt = 60;
+}
+
 /// LayoutNode is a node of a Panels layout's tree of cuts: a cell, or a cut
 /// across the box it is given into two more nodes.
 class LayoutNode {
@@ -90,21 +116,23 @@ class LayoutNode {
       required LayoutNode this.b})
       : cell = "";
 
+  /// isLeaf is whether this is a cell rather than a cut.
   bool get isLeaf => a == null || b == null;
 
+  /// withCut is this cut moved, tilted, given its own gutter or turned the
+  /// other way, held within LayoutRange; a cell is left as it is.
   LayoutNode withCut(
-          {double? at,
-          double? tilt,
-          double? gutter,
-          bool? vertical,
-          bool clearGutter = false}) =>
+          {double? at, double? tilt, double? gutter, bool? vertical}) =>
       isLeaf
           ? this
           : LayoutNode.cut(
               vertical: vertical ?? this.vertical,
-              at: (at ?? this.at).clamp(0.02, 0.98),
-              tilt: (tilt ?? this.tilt).clamp(-60.0, 60.0),
-              gutter: clearGutter ? null : (gutter ?? this.gutter),
+              at: (at ?? this.at)
+                  .clamp(LayoutRange.minCutAt, LayoutRange.maxCutAt),
+              tilt: (tilt ?? this.tilt)
+                  .clamp(-LayoutRange.maxTilt, LayoutRange.maxTilt),
+              gutter:
+                  (gutter ?? this.gutter)?.clamp(0.0, LayoutRange.readGutter),
               a: a!,
               b: b!);
 
@@ -178,10 +206,12 @@ class LayoutNode {
     return (
       LayoutNode.cut(
         vertical: jsonBool(j["v"], false),
-        at: jsonDouble(j["at"], 0.5).clamp(0.02, 0.98),
-        tilt: jsonDouble(j["tilt"], 0).clamp(-60.0, 60.0),
+        at: jsonDouble(j["at"], 0.5)
+            .clamp(LayoutRange.minCutAt, LayoutRange.maxCutAt),
+        tilt: jsonDouble(j["tilt"], 0)
+            .clamp(-LayoutRange.maxTilt, LayoutRange.maxTilt),
         gutter: j["gutter"] is num
-            ? jsonDouble(j["gutter"], 0).clamp(0.0, 2000.0)
+            ? jsonDouble(j["gutter"], 0).clamp(0.0, LayoutRange.readGutter)
             : null,
         a: first,
         b: second,
@@ -306,6 +336,7 @@ class LayoutCell {
 
 /// LayoutElement is a Layout; see the top of this file.
 class LayoutElement extends CanvasElement {
+  /// mode is how its cells are made: cut, on a grid, or set out freely.
   final LayoutMode mode;
 
   /// root is a Panels layout's tree of cuts.
@@ -348,8 +379,7 @@ class LayoutElement extends CanvasElement {
     this.rowGutter = 24,
     this.margin = 0,
     this.gutterColor = const Color(0x00000000),
-    this.cellStyle = const BoxSpec(
-        borderWidth: 4, borderColor: Color(0xFF111111), padding: 0),
+    this.cellStyle = comicInk,
     this.order = const [],
     this.unread = const [],
   });
@@ -405,9 +435,10 @@ class LayoutElement extends CanvasElement {
           columns: columns ?? this.columns,
           rows: rows ?? this.rows,
           cells: cells ?? this.cells,
-          gutter: (gutter ?? this.gutter).clamp(0.0, 2000.0),
-          rowGutter: (rowGutter ?? this.rowGutter).clamp(0.0, 2000.0),
-          margin: (margin ?? this.margin).clamp(0.0, 2000.0),
+          gutter: (gutter ?? this.gutter).clamp(0.0, LayoutRange.readGutter),
+          rowGutter:
+              (rowGutter ?? this.rowGutter).clamp(0.0, LayoutRange.readGutter),
+          margin: (margin ?? this.margin).clamp(0.0, LayoutRange.readGutter),
           gutterColor: gutterColor ?? this.gutterColor,
           cellStyle: cellStyle ?? this.cellStyle,
           order: order ?? this.order,
@@ -426,6 +457,7 @@ class LayoutElement extends CanvasElement {
         gutterColor: gutterColor, cellStyle: cellStyle, cells: cells);
   }
 
+  /// cellById is its cell [id], or null.
   LayoutCell? cellById(String id) {
     for (var c in cells) {
       if (c.id == id) return c;
@@ -435,6 +467,11 @@ class LayoutElement extends CanvasElement {
 
   /// styleOf is how cell [c] is drawn.
   BoxSpec styleOf(LayoutCell c) => c.style ?? cellStyle;
+
+  /// nameOf is what cell [c] is called: its own name, or "Cell" and where it
+  /// comes among [shownCells].
+  String nameOf(LayoutCell c) =>
+      c.name.isNotEmpty ? c.name : "Cell ${shownCells.indexOf(c) + 1}";
 
   /// shownCells are the cells this mode draws: a Panels layout's leaves in
   /// order, every other mode's list.
@@ -479,12 +516,32 @@ class LayoutElement extends CanvasElement {
         if (cellById(cell.id) == null) cell,
       ]);
 
+  /// withTracks gives a Grid [columns] and [rows], those not given kept:
+  /// cells past the end are brought inside, so none is lost. With none
+  /// left of either it is as it was.
+  LayoutElement withTracks({List<double>? columns, List<double>? rows}) {
+    var cols = columns ?? this.columns, rs = rows ?? this.rows;
+    if (cols.isEmpty || rs.isEmpty) return this;
+    return copyWith(columns: cols, rows: rs, cells: [
+      for (var c in cells)
+        c.copyWith(
+            col: c.col.clamp(0, cols.length - 1),
+            row: c.row.clamp(0, rs.length - 1),
+            colSpan: c.colSpan
+                .clamp(1, cols.length - c.col.clamp(0, cols.length - 1)),
+            rowSpan:
+                c.rowSpan.clamp(1, rs.length - c.row.clamp(0, rs.length - 1))),
+    ]);
+  }
+
   /// split cuts Panels cell [id] in two, the new cell after it ([b]),
-  /// styled as it was. Answers the layout and the new cell's id.
-  (LayoutElement, String) split(String id, {required bool vertical}) {
+  /// styled as it was. Answers the layout and the new cell's id ([id] where
+  /// it is not one of the layout's).
+  ({LayoutElement layout, String cell}) split(String id,
+      {required bool vertical}) {
     var path = root.pathTo(id);
     var cell = cellById(id) ?? LayoutCell(id: id);
-    if (path == null) return (this, id);
+    if (path == null) return (layout: this, cell: id);
     var fresh = newElementId();
     var next = copyWith(
       root: root.replaced(
@@ -504,7 +561,7 @@ class LayoutElement extends CanvasElement {
       ],
       unread: [...unread, if (unread.contains(id)) fresh],
     );
-    return (next, fresh);
+    return (layout: next, cell: fresh);
   }
 
   /// removeCell takes cell [id] out. In Panels the cut beside it goes and
@@ -515,7 +572,7 @@ class LayoutElement extends CanvasElement {
   /// goes, and what was docked in it is let go (no cell answered). One the
   /// layout does not have, or a Panels layout's only cell, leaves it as it
   /// is (the same layout answered).
-  (LayoutElement, String?) removeCell(String id) {
+  ({LayoutElement layout, String? into}) removeCell(String id) {
     List<String> without(List<String> ids) => [
           for (var o in ids)
             if (o != id) o
@@ -525,31 +582,32 @@ class LayoutElement extends CanvasElement {
         if (c.id != id) c
     ];
     if (mode != LayoutMode.panels) {
-      if (rest.length == cells.length) return (this, null);
+      if (rest.length == cells.length) return (layout: this, into: null);
       return (
-        copyWith(cells: rest, order: without(order), unread: without(unread)),
-        null
+        layout: copyWith(
+            cells: rest, order: without(order), unread: without(unread)),
+        into: null
       );
     }
     var path = root.pathTo(id);
-    if (path == null || path.isEmpty) return (this, null);
+    if (path == null || path.isEmpty) return (layout: this, into: null);
     var parentPath = path.sublist(0, path.length - 1);
     var parent = root.nodeAt(parentPath)!;
     var other = path.last ? parent.a! : parent.b!;
     return (
-      copyWith(
+      layout: copyWith(
           root: root.replaced(parentPath, other),
           cells: rest,
           order: without(order),
           unread: without(unread)),
-      path.last ? other.cells.last : other.cells.first,
+      into: path.last ? other.cells.last : other.cells.first,
     );
   }
 
   /// addCell puts a new cell in: a Grid's in the first slot no cell covers
   /// (a row added if none is free), otherwise a Free [shape] in the middle.
   /// Answers the layout and the new cell's id, or null where it is full.
-  (LayoutElement, String)? addCell(
+  ({LayoutElement layout, String cell})? addCell(
       {LayoutCellShape shape = LayoutCellShape.rectangle}) {
     if (cells.length >= maxCells) return null;
     var id = newElementId();
@@ -572,7 +630,7 @@ class LayoutElement extends CanvasElement {
         free = (0, more.length - 1);
       }
       return (
-        copyWith(rows: more, cells: [
+        layout: copyWith(rows: more, cells: [
           ...cells,
           LayoutCell(
               id: id,
@@ -580,11 +638,11 @@ class LayoutElement extends CanvasElement {
               col: free.$1,
               row: free.$2),
         ]),
-        id
+        cell: id
       );
     }
     return (
-      copyWith(cells: [
+      layout: copyWith(cells: [
         ...cells,
         LayoutCell(
             id: id,
@@ -595,7 +653,7 @@ class LayoutElement extends CanvasElement {
             height: 0.3,
             shape: shape),
       ]),
-      id
+      cell: id
     );
   }
 
@@ -646,10 +704,12 @@ class LayoutElement extends CanvasElement {
                   if (c is Map<String, dynamic>) LayoutCell.fromJson(c)
               ]
             : const [],
-        gutter: jsonDouble(json["gutter"], _defaults.gutter).clamp(0.0, 2000.0),
+        gutter: jsonDouble(json["gutter"], _defaults.gutter)
+            .clamp(0.0, LayoutRange.readGutter),
         rowGutter: jsonDouble(json["rowGutter"], _defaults.rowGutter)
-            .clamp(0.0, 2000.0),
-        margin: jsonDouble(json["margin"], _defaults.margin).clamp(0.0, 2000.0),
+            .clamp(0.0, LayoutRange.readGutter),
+        margin: jsonDouble(json["margin"], _defaults.margin)
+            .clamp(0.0, LayoutRange.readGutter),
         gutterColor: colorFromJson(json["gutterColor"], _defaults.gutterColor),
         cellStyle:
             jsonSpec(json["cellStyle"], BoxSpec.fromJson, plain.cellStyle));

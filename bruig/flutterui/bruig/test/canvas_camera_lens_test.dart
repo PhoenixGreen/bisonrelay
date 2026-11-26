@@ -22,10 +22,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_panel_helpers.dart';
 
-// canvas_camera_lens_test.dart is the 2D Camera's lens (Ken, 2026-11-14:
-// "useful camera settings like depth of field"): roll, depth of field by
-// each element's Depth, parallax, a vignette and motion blur -- each in the
-// picture as it is drawn through the camera, as a video is.
+// canvas_camera_lens_test.dart is the 2D Camera's lens: roll, depth of
+// field by each element's Depth, parallax, a vignette and motion blur --
+// each in the picture as it is drawn through the camera, as a video is.
 
 ShapeElement square(String id, Rect r,
         {double depth = 0, Color colour = const Color(0xFFFF0000)}) =>

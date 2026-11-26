@@ -28,10 +28,9 @@ enum LayoutPreset {
   const LayoutPreset(this.label, this.mode);
 }
 
-/// comicInk is a comic panel's line; cardStyle a card's rounded fill.
-const comicInk =
-    BoxSpec(borderWidth: 4, borderColor: Color(0xFF111111), padding: 0);
-const cardStyle = BoxSpec(
+/// _cardStyle is a card's rounded fill; a comic page's panels are drawn in
+/// comicInk.
+const _cardStyle = BoxSpec(
     fill: Color(0x22FFFFFF),
     borderRadius: 18,
     borderWidth: 1.5,
@@ -82,7 +81,7 @@ LayoutElement layoutFrom(ElementBase base, LayoutPreset p) {
         ],
         gutter: 32,
         rowGutter: 32,
-        cellStyle: cardStyle);
+        cellStyle: _cardStyle);
   }
 
   LayoutElement free(

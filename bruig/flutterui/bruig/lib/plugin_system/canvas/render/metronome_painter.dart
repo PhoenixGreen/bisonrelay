@@ -11,12 +11,16 @@ import 'package:flutter/painting.dart';
 // the tempo and its buttons. Laid out 200 by 320 (metronomeLayout), fitted
 // to its box; the stage's presses read the same layout.
 
-const metronomeSize = Size(200, 320);
+const _metronomeSize = Size(200, 320);
 
+/// MetronomePart is one of the buttons on a metronome's base.
 enum MetronomePart { slower, faster, play, tap, beats }
 
 /// MetronomeLayout is where everything on a metronome is, in its units.
 class MetronomeLayout {
+  /// body is its case and face the dial behind the arm; the arm swings
+  /// [arm] long from [pivot]; [lamp] is where the beat flashes; [base] and
+  /// its [readout] and [buttons] are the foot with the tempo on it.
   final Path body, face;
   final Offset pivot, lamp;
   final double arm;
@@ -53,11 +57,11 @@ final MetronomeLayout metronomeLayout = () {
 /// metronomeFit is how a metronome sits in [box]: its scale and top left.
 (double, Offset) metronomeFit(Rect box) {
   var s = math.min(
-      box.width / metronomeSize.width, box.height / metronomeSize.height);
+      box.width / _metronomeSize.width, box.height / _metronomeSize.height);
   return (
     s,
     box.center -
-        Offset(metronomeSize.width * s / 2, metronomeSize.height * s / 2)
+        Offset(_metronomeSize.width * s / 2, _metronomeSize.height * s / 2)
   );
 }
 

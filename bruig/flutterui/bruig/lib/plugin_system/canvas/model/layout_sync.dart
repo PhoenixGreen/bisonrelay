@@ -13,7 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 
 /// layoutsSynced is [now] with every element docked in a layout whose box
 /// moved since [was] moved the same way, and every element docked in a cell
-/// a layout has lost since [was] let go (docksLetGo). One moved in the same
+/// a layout has lost since [was] let go (_docksLetGo). One moved in the same
 /// change is left where it was put.
 CanvasDocument layoutsSynced(CanvasDocument was, CanvasDocument now) {
   if (identical(was.elements, now.elements)) return now;
@@ -22,7 +22,7 @@ CanvasDocument layoutsSynced(CanvasDocument was, CanvasDocument now) {
     if (e is! LayoutElement) continue;
     var old = was.elementById(e.id);
     if (old is! LayoutElement || identical(old, e)) continue;
-    next = docksLetGo(next, old, e);
+    next = _docksLetGo(next, old, e);
     // By its top left: moved, or resized from the top or left.
     var dx = e.x - old.x, dy = e.y - old.y;
     if (dx == 0 && dy == 0) continue;
@@ -40,10 +40,10 @@ CanvasDocument layoutsSynced(CanvasDocument was, CanvasDocument now) {
   return next;
 }
 
-/// docksLetGo is [doc] with every element docked in a cell layout [was] had
+/// _docksLetGo is [doc] with every element docked in a cell layout [was] had
 /// and [now] has not (its id gone: a preset chosen, the cell removed)
 /// docked in nothing, left where it is.
-CanvasDocument docksLetGo(
+CanvasDocument _docksLetGo(
     CanvasDocument doc, LayoutElement was, LayoutElement now) {
   var kept = {for (var c in now.shownCells) c.id};
   var gone = {

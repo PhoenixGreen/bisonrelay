@@ -11,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 
 // canvas_parts_reading_test.dart is a counter, a button, a camera, a Layout
@@ -140,6 +142,16 @@ void main() {
     });
   });
 
+  group("a received game count", () {
+    test("is named by an id, and called by a label", () {
+      var g = GameCount.fromJson({"id": "x" * 2000000, "name": "n" * 2000000})!;
+      expect(g.id.length, maxIdLength);
+      expect(g.name.length, maxLabelLength);
+      expect(GameCount.fromJson({"id": "coins", "name": "Coins"}),
+          const GameCount("coins", "Coins"));
+    });
+  });
+
   group("a received button", () {
     test("goes to a frame a scene can have", () {
       for (var kind in ButtonActionKind.values.where((k) => k.needsFrame)) {
@@ -208,7 +220,7 @@ void main() {
         ])) as CameraElement;
         var doc = CanvasDocument(elements: [keyed], frames: 10);
         var look = cameraLookAt(keyed, 0, doc);
-        expect(look.blur, inInclusiveRange(0, CameraElement.maxBlur),
+        expect(look.blur, inInclusiveRange(0, CameraElement.readBlur),
             reason: "$far");
         expect(
             look.focus,
@@ -217,6 +229,21 @@ void main() {
             reason: "$far");
         expect(look.vignette, inInclusiveRange(0, 1), reason: "$far");
       }
+    });
+
+    // A stage camera can be swung round and round by dragging, so its turn
+    // is not one turn's worth; but not without end.
+    test("its view's turn is held to ten turns either way", () {
+      for (var far in [_huge, -_huge]) {
+        var c = _read(_camera, {
+          "view": [far, 0, 8, 35, 0, 0, 0],
+        });
+        expect(c.view!.yaw.abs(), StageCamera.maxYaw, reason: "$far");
+        expect(const StageCamera().copyWith(yaw: far).yaw.abs(),
+            StageCamera.maxYaw);
+      }
+      expect(const StageCamera().copyWith(yaw: 725).yaw, 725,
+          reason: "two turns and a bit, as a drag leaves it");
     });
 
     test("what its keys hold within the panel's range, it is drawn with", () {

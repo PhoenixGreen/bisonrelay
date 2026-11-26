@@ -43,6 +43,10 @@ class CounterClock {
   final Set<String> _running = {};
   final Map<String, DateTime> _since = {};
 
+  /// _begun is every counter started, stopped or set here: one whose scene
+  /// is turned to again is left as it was (see turned).
+  final Set<String> _begun = {};
+
   Timer? _timer;
 
   /// _shown is whether the canvas is on screen: from start, as the page
@@ -104,6 +108,20 @@ class CounterClock {
     if (added) _startTimer();
   }
 
+  /// turned is another scene shown while the canvas is: its clocks are
+  /// kept going, and its runs set to start running start, as start starts
+  /// the scene shown as the canvas opens; one started, stopped or set
+  /// before is left as it is.
+  void turned() {
+    if (!_shown) return;
+    keepClocks();
+    for (var e in _counters()) {
+      if (e.mode == CounterMode.run && e.running && !_begun.contains(e.id)) {
+        run(e, true);
+      }
+    }
+  }
+
   /// press is what one of a counter's own buttons does. Returns true where
   /// the press was handled here; Input returns false, and the caller asks
   /// for a number (see set).
@@ -124,6 +142,7 @@ class CounterClock {
   /// set is the number [e] counts on from. It does not start or stop
   /// anything.
   void set(CounterElement e, double value) {
+    _begun.add(e.id);
     _counts[e.id] = value;
     _since[e.id] = _now();
     _ticks++;
@@ -132,6 +151,7 @@ class CounterClock {
 
   /// run starts [e] counting, from where it was, or stops it there.
   void run(CounterElement e, bool on) {
+    _begun.add(e.id);
     if (on) {
       _counts.putIfAbsent(e.id, () => e.from);
       _since[e.id] = _now();
@@ -229,6 +249,7 @@ class CounterClock {
   /// forget lets go of every count, for another canvas: they are by its
   /// elements' ids.
   void forget() {
+    _begun.clear();
     _counts.clear();
     _running.clear();
     _since.clear();

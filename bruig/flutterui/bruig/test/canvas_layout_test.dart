@@ -29,10 +29,9 @@ import 'support/canvas_sidebar_host.dart';
 
 // canvas_layout_test.dart is the Layout element (layout_element.dart): a
 // box divided into cells as Panels (cuts), a Grid (tracks) or Free shapes,
-// and elements docked in its cells. Ken, 2026-11-18: comic panels "that
-// can be reused and customised to change the panels lines positions,
-// width, angle, stroke", box layouts "fully customised", that "could even
-// act as masks". Set LAYOUT_PNG to a folder to see every preset drawn.
+// each cut's place, tilt and gutter and each cell's line its own to change,
+// and elements docked in its cells, which clip what is drawn in them. Set
+// LAYOUT_PNG to a folder to see every preset drawn.
 
 const _box = ElementBase(id: "L", x: 100, y: 100, width: 1000, height: 1400);
 const _bounds = Rect.fromLTWH(100, 100, 1000, 1400);
@@ -74,17 +73,17 @@ void main() {
 
     test("a cell is split, and the new half removed again", () {
       var e = _two();
-      var (cut, fresh) = e.split("b", vertical: false);
+      var (layout: cut, cell: fresh) = e.split("b", vertical: false);
       expect(cut.root.cells, ["a", "b", fresh]);
       expect(layoutPlaces(cut, _bounds), hasLength(3));
-      var (back, into) = cut.removeCell(fresh);
+      var (layout: back, :into) = cut.removeCell(fresh);
       expect(into, "b");
       expect(back.root.cells, ["a", "b"]);
     });
 
     test("a cut's line can be grabbed, and moved to a point", () {
       var e = _two();
-      var line = layoutCutLines(e, _bounds).single;
+      var line = layoutGeometry(e, _bounds).cuts.single;
       expect(line.from.dx, closeTo(600, 1e-6));
       var at = cutAtPoint(e.root, line.box, const Offset(350, 700));
       expect(at, closeTo(0.25, 1e-6));
@@ -200,10 +199,9 @@ void main() {
   });
 
   group("docking", () {
-    // Ken, 2026-11-18: moving and editing gutters "shouldn't edit the
-    // content in the panel e.g. it shouldn't make the content of a panel
-    // smaller or cropped"; what goes outside is hidden, and shows with the
-    // layout hidden.
+    // Moving a cut or widening a gutter never shrinks or crops what is in
+    // a panel: what goes outside is hidden, and shows with the layout
+    // hidden.
     test("a cut moved, tilted or widened leaves what is docked be", () {
       var layout = _two();
       var a = layoutPlaceOf(layout, layout.bounds, "a")!.bounds;
@@ -303,7 +301,7 @@ void main() {
       expect(s.base.dock, "", reason: "its cell has gone");
       expect(s.bounds.topLeft, const Offset(150, 160), reason: "where it was");
       var l = c.document.elementById("L") as LayoutElement;
-      c.setLayout(l.withBase(x: 400) as LayoutElement);
+      c.replaceElement(l.withBase(x: 400) as LayoutElement);
       expect(c.document.elementById("s")!.x, 150,
           reason: "not carried with the layout");
       c.undo();
@@ -424,6 +422,32 @@ void main() {
     });
   });
 
+  // A cell is drawn with one border all round and one radius: a cell saved
+  // or received with its sides' widths apart is drawn at the widest of
+  // them, all round, not with none.
+  testWidgets("a cell's border on one side only is drawn all round",
+      (tester) async {
+    var layout = LayoutElement(_box,
+        cellStyle:
+            const BoxSpec(bwT: 20, borderColor: Color(0xFF000000), padding: 0));
+    var rec = ui.PictureRecorder();
+    var canvas = ui.Canvas(rec);
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 1200, 1600),
+        ui.Paint()..color = const Color(0xFFFFFFFF));
+    paintLayout(canvas, _bounds, layout);
+    var pic = rec.endRecording();
+    var img = await tester.runAsync(() => pic.toImage(1200, 1600));
+    var bytes = await tester
+        .runAsync(() => img!.toByteData(format: ui.ImageByteFormat.rawRgba));
+    int red(Offset p) =>
+        bytes!.getUint8((p.dy.round() * img!.width + p.dx.round()) * 4);
+    expect(red(const Offset(600, 110)), 0, reason: "the side it was set on");
+    expect(red(const Offset(110, 800)), 0, reason: "and the others alike");
+    expect(red(const Offset(1090, 800)), 0);
+    expect(red(const Offset(600, 1490)), 0);
+    expect(red(const Offset(130, 800)), 255, reason: "20 wide, no wider");
+  });
+
   // Removing a cell takes that cell out and no other: every other cell
   // stays with its id, and with what is docked in it.
   group("removing a cell", () {
@@ -516,8 +540,8 @@ void main() {
 
     test("not the only one", () {
       var l = panels(leaf("a"));
-      expect(identical(l.removeCell("a").$1, l), isTrue);
-      expect(identical(l.removeCell("x").$1, l), isTrue);
+      expect(identical(l.removeCell("a").layout, l), isTrue);
+      expect(identical(l.removeCell("x").layout, l), isTrue);
     });
 
     test("of a Grid or a Free layout: it goes, and what was in it is let go",
@@ -543,9 +567,8 @@ void main() {
     });
   });
 
-  // Ken, 2026-11-18: "customise panel order so that if you build a comic
-  // ebook a user can go into panel mode and use the page back and forward
-  // buttons to move through the panels and pages".
+  // The order a comic's panels are read in, which Panel mode's back and
+  // forward buttons step through, panel by panel and page by page.
   group("reading order", () {
     // Three panels: a over b|c.
     LayoutElement three() => LayoutElement(_box,
@@ -577,9 +600,9 @@ void main() {
       var l = three().copyWith(order: ["c", "a"], unread: ["b"]);
       expect(ids(l), ["c", "a"]);
       expect(l.numberOf("b"), isNull);
-      var (cut, fresh) = l.split("c", vertical: false);
+      var (layout: cut, cell: fresh) = l.split("c", vertical: false);
       expect(ids(cut), ["c", fresh, "a"], reason: "straight after its half");
-      var (back, _) = cut.removeCell(fresh);
+      var (layout: back, into: _) = cut.removeCell(fresh);
       expect(back.order, ["c", "a"]);
     });
 
@@ -824,7 +847,7 @@ void main() {
 
     // A cut's line and the knobs on it, as the stage places them.
     (LayoutCutLine, Offset, Offset) cutOf(LayoutElement l) {
-      var line = layoutCutLines(l, _bounds).single;
+      var line = layoutGeometry(l, _bounds).cuts.single;
       var along = line.to - line.from;
       return (
         line,
@@ -919,7 +942,7 @@ void main() {
       var marks = painted(tester).inputs.elements.layout!;
       var slant = l.boxFrame;
       Offset drawn(Offset p) => slant.place(p, l.bounds.center);
-      var line = layoutCutLines(l, _bounds).single;
+      var line = layoutGeometry(l, _bounds).cuts.single;
       var (from, to) = marks.lines.single;
       expect((from - drawn(line.from)).distance, lessThan(1e-6));
       expect((to - drawn(line.to)).distance, lessThan(1e-6));
@@ -945,7 +968,7 @@ void main() {
       await tester.pumpAndSettle();
       var moved = c.document.elementById("L") as LayoutElement;
       expect(moved.x, 100, reason: "the layout itself did not move");
-      var line = layoutCutLines(moved, _bounds).single;
+      var line = layoutGeometry(moved, _bounds).cuts.single;
       var a = slant.place(line.from, l.bounds.center);
       var b = slant.place(line.to, l.bounds.center);
       var let = on - const Offset(150, 0);
@@ -987,10 +1010,9 @@ void main() {
   });
 
   group("in the settings", () {
-    // Ken, 2026-11-18: "if I lock the layout element the layout changes
-    // e.g. the layout edits get removed". The layer list is rebuilt only
-    // when what it shows changes, and its buttons wrote back the element
-    // it was built with.
+    // Locking it must not undo the edits made to it: the layer list is
+    // rebuilt only when what it shows changes, and its buttons once wrote
+    // back the element it was built with.
     testWidgets("locking it in the layers keeps the edits made since",
         (tester) async {
       var doc = const CanvasDocument()
@@ -1004,7 +1026,7 @@ void main() {
 
       // A cut moved and tilted, as dragging its knobs would.
       var l = c.document.elementById("L") as LayoutElement;
-      c.setLayout(l.copyWith(root: l.root.withCut(at: 0.3, tilt: 8)));
+      c.replaceElement(l.copyWith(root: l.root.withCut(at: 0.3, tilt: 8)));
       // And a shape moved, which the list does not show either.
       c.replaceElement(c.document.elementById("s")!.withBase(x: 400));
       await tester.pumpAndSettle();

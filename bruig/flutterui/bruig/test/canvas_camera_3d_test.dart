@@ -18,7 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// A Camera on a 3D stage lives in the scene (Ken): the stage's camera when
+// A Camera on a 3D stage lives in the scene: the stage's camera when
 // played, exported or looked through, from where it stands -- turned round
 // what it looks at by a turn, brought closer by a size, aimed at whoever it
 // is on -- and the stage's own while editing.

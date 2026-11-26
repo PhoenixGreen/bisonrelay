@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -500,6 +501,53 @@ void main() {
             keyed: false, running: true, to: 1000, rate: 1),
       ]));
       expect(controller.counterRunning(_counterIn(controller)), isTrue);
+    });
+
+    // A scene not open as the page opened is opened later, by turning to
+    // it: its counters start then, as the open scene's did.
+    test("and do on a scene turned to after the page opened", () {
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", elements: []),
+        const CanvasScene(id: "b", elements: [
+          CounterElement(_base, keyed: false, running: true, to: 1000),
+        ]),
+      ]));
+      addTearDown(controller.dispose);
+      controller.startCounters();
+      controller.goToScene(1);
+      expect(controller.counterRunning(_counterIn(controller)), isTrue);
+    });
+
+    test("a clock on a scene turned to is drawn as it moves", () async {
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", elements: []),
+        const CanvasScene(id: "b", elements: [
+          CounterElement(_base, keyed: false, source: CounterSource.clock),
+        ]),
+      ]));
+      addTearDown(controller.dispose);
+      controller.startCounters();
+      controller.goToScene(1);
+      var ticks = controller.counterTicks;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(controller.counterTicks, greaterThan(ticks));
+    });
+
+    test("but one stopped by hand stays stopped when its scene comes back", () {
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        const CanvasScene(id: "a", elements: [
+          CounterElement(_base, keyed: false, running: true, to: 1000),
+        ]),
+        const CanvasScene(id: "b", elements: []),
+      ]));
+      addTearDown(controller.dispose);
+      controller.startCounters();
+      var run = _counterIn(controller);
+      controller.pressCounterButton(run, CounterButton.startStop);
+      expect(controller.counterRunning(run), isFalse);
+      controller.goToScene(1);
+      controller.goToScene(0);
+      expect(controller.counterRunning(run), isFalse);
     });
 
     test("one started by hand ticks on after the page is left and come back to",

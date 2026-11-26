@@ -976,12 +976,12 @@ void _layoutNumbers(
     out.writeln("$id dock outline "
         "${_rect(layoutFrameAt(e, frame, doc).pathOnPage(p.path).getBounds())}");
   }
-  for (var line in layoutCutLines(e, e.bounds)) {
+  for (var line in layoutGeometry(e, e.bounds).cuts) {
     out.writeln("${e.id} cut ${line.path.map((b) => b ? "b" : "a").join()} "
         "${line.vertical ? "down" : "across"} "
         "${_point(line.from)} ${_point(line.to)} in ${_rect(line.box)}");
   }
-  for (var line in layoutTrackLines(e, e.bounds)) {
+  for (var line in layoutGeometry(e, e.bounds).tracks) {
     out.writeln("${e.id} track ${line.column ? "column" : "row"} "
         "${line.index} ${_point(line.from)} ${_point(line.to)}");
   }

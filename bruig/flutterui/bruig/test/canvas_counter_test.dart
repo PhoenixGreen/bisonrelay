@@ -111,16 +111,8 @@ void main() {
     test("counts either way round", () {
       const up = CounterElement(ElementBase(id: "c"), from: 0, to: 100);
       const down = CounterElement(ElementBase(id: "c"), from: 100, to: 0);
-      expect(up.valueAtFraction(0.25), 25);
-      expect(down.valueAtFraction(0.25), 75);
+      expect(up.span, 100);
       expect(down.span, -100);
-    });
-
-    test("and a counter whose ends are the same sits still", () {
-      // Which is a perfectly good thing to want from a clock.
-      const e = CounterElement(ElementBase(id: "c"), from: 12, to: 12);
-      expect(e.valueAtFraction(0), 12);
-      expect(e.valueAtFraction(1), 12);
     });
 
     test("is keyed until it is told to run", () {

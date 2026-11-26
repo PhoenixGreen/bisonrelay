@@ -150,7 +150,7 @@ void main() {
     expect(c.selection, {"c"}, reason: "on its edge");
   });
 
-  // Ken, 2026-11-14: the camera was hard to select, move and zoom.
+  // A camera is taken hold of, moved and zoomed as easily as any element.
   group("taken hold of", () {
     CanvasDocument wide(CameraElement cam) =>
         CanvasDocument(frames: 96, frameRate: 24, elements: [cam]);

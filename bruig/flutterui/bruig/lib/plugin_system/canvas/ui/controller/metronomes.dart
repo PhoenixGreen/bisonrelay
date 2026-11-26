@@ -5,6 +5,7 @@ part of '../canvas_controller.dart';
 // sped up and slowed, tapped, each clicking and swinging on its own.
 
 extension CanvasMetronomes on CanvasController {
+  /// metronomeGoing is whether metronome [id] is going.
   bool metronomeGoing(String id) => _metroStarted.containsKey(id);
 
   /// metronomeShowFor is how metronome [e] is going: how many beats it has
@@ -26,6 +27,7 @@ extension CanvasMetronomes on CanvasController {
     return MetronomeShow(going: true, beats: started.from + seconds / perBeat);
   }
 
+  /// toggleMetronome starts [e] from its first beat, or stops it.
   void toggleMetronome(MetronomeElement e) {
     if (_metroStarted.remove(e.id) != null) {
       audio.metronome(on: false, key: e.id);

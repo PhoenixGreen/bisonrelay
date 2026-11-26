@@ -130,7 +130,7 @@ void main() {
 
   /// cut is the one cut of [l], its direction along and across.
   (LayoutCutLine, Offset, Offset) cutOf(LayoutElement l) {
-    var line = layoutCutLines(l, _bounds).single;
+    var line = layoutGeometry(l, _bounds).cuts.single;
     var along = line.to - line.from;
     return (
       line,
@@ -211,7 +211,7 @@ void main() {
       _grid,
       null,
       (s) {
-        var line = layoutTrackLines(_grid(), _bounds).single;
+        var line = layoutGeometry(_grid(), _bounds).tracks.single;
         return s.toStagePoint(Offset.lerp(line.from, line.to, 0.5)!);
       },
       (s) => Offset(100 * scaleOf(s), 0),
@@ -387,7 +387,7 @@ void main() {
         _grid,
         "x",
         (CanvasStageState s) {
-          var line = layoutTrackLines(_grid(), _bounds).single;
+          var line = layoutGeometry(_grid(), _bounds).tracks.single;
           return s.toStagePoint(Offset.lerp(line.from, line.to, 0.5)!);
         }
       ),

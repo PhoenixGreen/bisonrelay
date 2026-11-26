@@ -39,7 +39,8 @@ class CameraElement extends CanvasElement {
   final double motionBlur;
 
   /// aim is a framed chart's id, or ""; [aimAt] what of it ("" all,
-  /// "item:Arsenal", "top:3", "leader"); [aimFill] how much of the frame,
+  /// "item:Arsenal", "top:3", "leader", "lit": see aimChoices, and
+  /// chartAimRect, the one place it is read); [aimFill] how much of the frame,
   /// 0.2..0.95. How far it turns from its framing (0) to the aim (1) is
   /// keyed, as KeyframeChannel.aimMix.
   final String aim;
@@ -63,11 +64,16 @@ class CameraElement extends CanvasElement {
   /// field out.
   static const _defaults = CameraElement(ElementBase(id: ""));
 
-  /// maxBlur is the most a blur is set to or read with, keyed or not.
+  /// maxBlur is the most a blur is set to in its panel. readBlur is the
+  /// most one is kept or drawn with, keyed or not: more than can be set, so
+  /// nothing made before the panel's range was held is changed, and no
+  /// more, since a blur costs more the wider it is.
+  static const maxBlur = 60.0, readBlur = 200.0;
+
   /// maxKeyedFocus is how far from the page a keyed focus is read: past the
   /// nearest and furthest depth, as an easing that overshoots between two
   /// keys carries it, and no further.
-  static const maxBlur = 200.0, maxKeyedFocus = 2.0;
+  static const maxKeyedFocus = 2.0;
 
   @override
   ElementKind get kind => ElementKind.camera;
@@ -98,7 +104,7 @@ class CameraElement extends CanvasElement {
           view: clearView ? null : view ?? this.view,
           focus: (focus ?? this.focus).clamp(-1.0, 1.0).toDouble(),
           focusOn: focusOn ?? this.focusOn,
-          blur: (blur ?? this.blur).clamp(0.0, maxBlur).toDouble(),
+          blur: (blur ?? this.blur).clamp(0.0, readBlur).toDouble(),
           parallax: (parallax ?? this.parallax).clamp(0.0, 1.0).toDouble(),
           vignette: (vignette ?? this.vignette).clamp(0.0, 1.0).toDouble(),
           vignetteSoft:

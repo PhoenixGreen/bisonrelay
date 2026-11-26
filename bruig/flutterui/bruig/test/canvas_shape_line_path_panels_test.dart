@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -24,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'support/canvas_app.dart';
 import 'support/canvas_panel_helpers.dart';
 import 'support/canvas_sidebar_host.dart';
+import 'support/panel_rows.dart';
 
 // canvas_shape_line_path_panels_test.dart is a shape's, a line's and a
 // path's settings, used in the real sidebar: a stroke's controls in the
@@ -36,79 +36,6 @@ import 'support/canvas_sidebar_host.dart';
 // within the same ranges; and
 // every control of the three, pressed or set, changes what it says in one
 // undo step (_rows: a new control is one row there).
-
-const _doc = CanvasDocument(frames: 96, frameRate: 24);
-
-/// _panel puts [e] up selected in the real sidebar, with [beside] on the
-/// canvas too, every section open, and returns its controller.
-Future<CanvasController> _panel(WidgetTester tester, CanvasElement e,
-    {List<CanvasElement> beside = const []}) async {
-  SharedPreferences.setMockInitialValues({});
-  var doc = _doc;
-  for (var b in beside) {
-    doc = doc.addElement(b);
-  }
-  var c = CanvasController(doc.addElement(e));
-  addTearDown(c.dispose);
-  c.selectOnly(e.id);
-  await pumpCanvasApp(tester, designSidebar(c), size: const Size(320, 9000));
-  await openEverything(tester, find.byType(CanvasSidebarHost));
-  return c;
-}
-
-/// _section is the part of the panel [name] is: "quickStrip" or a
-/// section's "elementSection-look".
-Finder _section(String name) => find.byKey(ValueKey(name));
-
-/// _widget is the one [T] in [section] that [test] takes.
-Finder _widget<T extends Widget>(String section, bool Function(T) test) =>
-    find.descendant(
-        of: _section(section),
-        matching: find.byWidgetPredicate((w) => w is T && test(w)));
-
-Finder _number(String section, String label) =>
-    _widget<CanvasNumberField>(section, (w) => w.label == label);
-
-Finder _stepper(String section, String label) =>
-    _widget<CanvasStepper>(section, (w) => w.label == label);
-
-Finder _dropdown(String section, String label) =>
-    _widget<CanvasDropdown>(section, (w) => w.label == label);
-
-Finder _colour(String section, String label) =>
-    _widget<CanvasColorButton>(section, (w) => w.label == label);
-
-const _look = "elementSection-look", _layout = "elementSection-layout";
-const _quick = "quickStrip";
-
-/// _set gives the number field or stepper [f] the value [v], as a typed
-/// number does, and lets the panel rebuild.
-Future<void> _set(WidgetTester tester, Finder f, double v) async {
-  var w = tester.widget(f);
-  if (w is CanvasNumberField) {
-    w.onChanged(v);
-    w.onCommit?.call();
-  } else if (w is CanvasStepper) {
-    w.onChanged(v);
-    w.onCommit?.call();
-  }
-  await tester.pumpAndSettle();
-}
-
-Future<void> _press(WidgetTester tester, Finder f) async {
-  await tester.ensureVisible(f);
-  await tester.pumpAndSettle();
-  await tester.tap(f);
-  await tester.pumpAndSettle();
-}
-
-/// _range is the least and most a number field or stepper offers.
-(double, double) _range(WidgetTester tester, Finder f) =>
-    switch (tester.widget(f)) {
-      CanvasNumberField w => (w.min, w.max),
-      CanvasStepper w => (w.min, w.max),
-      var w => throw StateError("$w is not a number"),
-    };
 
 /// _drawn is where [line]'s two ends are drawn on the page as it rests.
 (Offset, Offset) _drawn(LineElement line) =>
@@ -140,26 +67,28 @@ void main() {
       var kind = e.kind.label;
       testWidgets("a $kind's two width controls offer the model's range",
           (tester) async {
-        await _panel(tester, e);
+        await showPanel(tester, e);
         const range = (StrokeRange.minWidth, StrokeRange.maxWidth);
-        expect(_range(tester, _stepper(_quick, "Width")), range);
-        expect(_range(tester, _number(_look, "Width")), range);
+        expect(rangeOf(tester, stepperIn(quickStrip, "Width")), range);
+        expect(rangeOf(tester, numberIn(lookSection, "Width")), range);
       });
 
       testWidgets("a $kind's dash and end size offer the model's range",
           (tester) async {
-        await _panel(tester, e);
-        expect(
-            _range(tester, _number(_look, "Dash")), (0.0, StrokeRange.maxDash));
-        expect(_range(tester, _number(_look, "End size")),
+        await showPanel(tester, e);
+        expect(rangeOf(tester, numberIn(lookSection, "Dash")),
+            (0.0, StrokeRange.maxDash));
+        expect(rangeOf(tester, numberIn(lookSection, "End size")),
             (StrokeRange.minEndSize, StrokeRange.maxEndSize));
       });
 
       testWidgets("a $kind's quick colour offers the fade its Look's does",
           (tester) async {
-        await _panel(tester, e);
-        var quick = tester.widget<CanvasColorButton>(_colour(_quick, "Colour"));
-        var look = tester.widget<CanvasColorButton>(_colour(_look, "Colour"));
+        await showPanel(tester, e);
+        var quick =
+            tester.widget<CanvasColorButton>(colourIn(quickStrip, "Colour"));
+        var look =
+            tester.widget<CanvasColorButton>(colourIn(lookSection, "Colour"));
         expect(look.onGradientChanged, isNotNull);
         expect(quick.onGradientChanged, isNotNull);
       });
@@ -167,27 +96,27 @@ void main() {
 
     testWidgets("a line's quick dash offers the model's range too",
         (tester) async {
-      await _panel(tester, line);
-      expect(
-          _range(tester, _stepper(_quick, "Dash")), (0.0, StrokeRange.maxDash));
+      await showPanel(tester, line);
+      expect(rangeOf(tester, stepperIn(quickStrip, "Dash")),
+          (0.0, StrokeRange.maxDash));
     });
 
     testWidgets("a shape's two outline widths go from none to the most",
         (tester) async {
-      await _panel(tester,
+      await showPanel(tester,
           const ShapeElement(ElementBase(id: "s", width: 200, height: 120)));
       const range = (0.0, StrokeRange.maxWidth);
-      expect(_range(tester, _stepper(_quick, "Outline")), range);
-      expect(_range(tester, _number(_look, "Stroke")), range);
+      expect(rangeOf(tester, stepperIn(quickStrip, "Outline")), range);
+      expect(rangeOf(tester, numberIn(lookSection, "Stroke")), range);
     });
 
     testWidgets(
         "a shape's quick outline colour offers the fade its Look's does",
         (tester) async {
-      var c = await _panel(tester,
+      var c = await showPanel(tester,
           const ShapeElement(ElementBase(id: "s", width: 200, height: 120)));
-      var quick =
-          tester.widget<CanvasColorButton>(_colour(_quick, "Outline colour"));
+      var quick = tester
+          .widget<CanvasColorButton>(colourIn(quickStrip, "Outline colour"));
       expect(quick.onGradientChanged, isNotNull);
       // And a fade asked for on a shape with no outline gives it one, as
       // its colour does.
@@ -208,24 +137,24 @@ void main() {
         startEnd: LineEnd.circle);
 
     testWidgets("offers no ends, since it draws none", (tester) async {
-      await _panel(tester, path(closed: true));
-      expect(_dropdown(_look, "Start"), findsNothing);
-      expect(_dropdown(_look, "End"), findsNothing);
-      expect(_number(_look, "End size"), findsNothing);
-      expect(_dropdown(_look, "Stroke end"), findsOneWidget,
+      await showPanel(tester, path(closed: true));
+      expect(dropdownIn(lookSection, "Start"), findsNothing);
+      expect(dropdownIn(lookSection, "End"), findsNothing);
+      expect(numberIn(lookSection, "End size"), findsNothing);
+      expect(dropdownIn(lookSection, "Stroke end"), findsOneWidget,
           reason: "a dash still has a cap on each of its own ends");
     });
 
     testWidgets("and offers them again once it is opened", (tester) async {
-      var c = await _panel(tester, path(closed: true));
-      await _press(
+      var c = await showPanel(tester, path(closed: true));
+      await pressOn(
           tester,
-          _widget<CanvasToggle>(
-              _quick, (w) => w.key == const ValueKey("quickPathClosed")));
+          widgetIn<CanvasToggle>(
+              quickStrip, (w) => w.key == const ValueKey("quickPathClosed")));
       expect((c.document.elementById("p") as PathElement).closed, isFalse);
-      expect(_dropdown(_look, "Start"), findsOneWidget);
-      expect(_dropdown(_look, "End"), findsOneWidget);
-      expect(_number(_look, "End size"), findsOneWidget);
+      expect(dropdownIn(lookSection, "Start"), findsOneWidget);
+      expect(dropdownIn(lookSection, "End"), findsOneWidget);
+      expect(numberIn(lookSection, "End size"), findsOneWidget);
     });
 
     group("followed", () {
@@ -241,10 +170,10 @@ void main() {
       const runner = TextElement(ElementBase(id: "f", name: "Runner"));
 
       testWidgets("its run is said to end back at its start", (tester) async {
-        await _panel(tester, followed, beside: [runner]);
+        await showPanel(tester, followed, beside: [runner]);
         expect(find.textContaining("frames 0–30"), findsOneWidget);
         expect(
-            tester.widget<CanvasNumberField>(_keyed("pathEndFrame")).value, 30);
+            tester.widget<CanvasNumberField>(keyed("pathEndFrame")).value, 30);
       });
 
       testWidgets("a run longer than the scene is said to end with it",
@@ -254,21 +183,21 @@ void main() {
           for (var (i, n) in followed.nodes.indexed)
             n.copyWith(frame: const [0, 48, 95][i]),
         ]);
-        await _panel(tester, late, beside: [runner]);
+        await showPanel(tester, late, beside: [runner]);
         expect(find.textContaining("frames 0–95"), findsOneWidget);
         expect(
-            tester.widget<CanvasNumberField>(_keyed("pathEndFrame")).value, 95);
+            tester.widget<CanvasNumberField>(keyed("pathEndFrame")).value, 95);
       });
 
       testWidgets("its last point is not called the end of the run",
           (tester) async {
-        await _panel(tester, followed, beside: [runner]);
-        expect(tester.widget<CanvasNumberField>(_keyed("node-frame-2-p")).label,
+        await showPanel(tester, followed, beside: [runner]);
+        expect(tester.widget<CanvasNumberField>(keyed("node-frame-2-p")).label,
             "Frame");
       });
 
       testWidgets("its last point offers a point after it", (tester) async {
-        await _panel(tester, followed, beside: [runner]);
+        await showPanel(tester, followed, beside: [runner]);
         expect(
             tester
                 .widget<CanvasIconButton>(_nodeButton(2, Icons.add))
@@ -284,7 +213,7 @@ void main() {
         nodes: PathElement.defaultNodes(frames: 96),
         follow: const PathFollow(elementId: "gone"));
     const runner = TextElement(ElementBase(id: "f", name: "Runner"));
-    Finder whoFollows() => _dropdown("elementSection-more", "Who follows");
+    Finder whoFollows() => dropdownIn("elementSection-more", "Who follows");
     List<PathFollow> offered(WidgetTester tester) => [
           for (var (v, _) in tester
               .widget<CanvasDropdown<PathFollow>>(whoFollows())
@@ -293,22 +222,22 @@ void main() {
         ];
 
     testWidgets("is shown in Who follows as missing", (tester) async {
-      await _panel(tester, path, beside: [runner]);
+      await showPanel(tester, path, beside: [runner]);
       expect(find.descendant(of: whoFollows(), matching: find.text("Missing")),
           findsOneWidget);
     });
 
     testWidgets("and choosing it again changes nothing", (tester) async {
-      var c = await _panel(tester, path, beside: [runner]);
+      var c = await showPanel(tester, path, beside: [runner]);
       var before = c.document;
-      await _chosen(whoFollows(), const PathFollow(elementId: "gone"))(tester);
+      await chosen(whoFollows(), const PathFollow(elementId: "gone"))(tester);
       await tester.pumpAndSettle();
       expect(c.document, same(before));
     });
 
     testWidgets("and is not offered once another is chosen", (tester) async {
-      var c = await _panel(tester, path, beside: [runner]);
-      await _chosen(whoFollows(), const PathFollow(elementId: "f"))(tester);
+      var c = await showPanel(tester, path, beside: [runner]);
+      await chosen(whoFollows(), const PathFollow(elementId: "f"))(tester);
       await tester.pumpAndSettle();
       expect((c.document.elementById("p") as PathElement).follow,
           const PathFollow(elementId: "f"));
@@ -326,9 +255,9 @@ void main() {
 
     testWidgets("Level lays a turned line level where it is drawn",
         (tester) async {
-      var c = await _panel(tester, turned);
+      var c = await showPanel(tester, turned);
       var (start, _) = _drawn(turned);
-      await _press(tester, find.byKey(const ValueKey("lineLevel")));
+      await pressOn(tester, find.byKey(const ValueKey("lineLevel")));
       var (a, b) = _drawn(lineIn(c));
       expect(b.dy, closeTo(a.dy, 0.05));
       expect((b - a).distance, closeTo(turned.length, 0.05));
@@ -338,15 +267,15 @@ void main() {
 
     testWidgets("Upright stands a turned line upright where it is drawn",
         (tester) async {
-      var c = await _panel(tester, turned);
-      await _press(tester, find.byKey(const ValueKey("linePlumb")));
+      var c = await showPanel(tester, turned);
+      await pressOn(tester, find.byKey(const ValueKey("linePlumb")));
       var (a, b) = _drawn(lineIn(c));
       expect(b.dx, closeTo(a.dx, 0.05));
     });
 
     testWidgets("Direction shows which way the line is drawn pointing",
         (tester) async {
-      await _panel(tester, turned);
+      await showPanel(tester, turned);
       var (a, b) = _drawn(turned);
       var field = tester
           .widget<CanvasNumberField>(find.byKey(const ValueKey("lineAngle")));
@@ -355,9 +284,9 @@ void main() {
 
     testWidgets("and sets it, the start staying where it is drawn",
         (tester) async {
-      var c = await _panel(tester, turned);
+      var c = await showPanel(tester, turned);
       var (start, _) = _drawn(turned);
-      await _set(tester, find.byKey(const ValueKey("lineAngle")), 90);
+      await setNumber(tester, find.byKey(const ValueKey("lineAngle")), 90);
       var (a, b) = _drawn(lineIn(c));
       expect(_degrees(b - a), closeTo(90, 0.05));
       expect((a - start).distance, closeTo(0, 0.05));
@@ -365,7 +294,7 @@ void main() {
 
     testWidgets("Length shows how long a slanted line is drawn",
         (tester) async {
-      await _panel(tester, slanted);
+      await showPanel(tester, slanted);
       var (a, b) = _drawn(slanted);
       var field = tester
           .widget<CanvasNumberField>(find.byKey(const ValueKey("lineLength")));
@@ -374,9 +303,9 @@ void main() {
 
     testWidgets("and sets it, keeping where it starts and points",
         (tester) async {
-      var c = await _panel(tester, turned);
+      var c = await showPanel(tester, turned);
       var (start, end) = _drawn(turned);
-      await _set(tester, find.byKey(const ValueKey("lineLength")), 500);
+      await setNumber(tester, find.byKey(const ValueKey("lineLength")), 500);
       var (a, b) = _drawn(lineIn(c));
       expect((b - a).distance, closeTo(500, 0.05));
       expect((a - start).distance, closeTo(0, 0.05));
@@ -385,7 +314,7 @@ void main() {
 
     testWidgets("its own direction is not a second field called Angle",
         (tester) async {
-      await _panel(tester, turned);
+      await showPanel(tester, turned);
       expect(
           tester
               .widget<CanvasNumberField>(
@@ -393,8 +322,8 @@ void main() {
               .label,
           "Direction");
       expect(
-          _widget<Widget>(
-              _layout,
+          widgetIn<Widget>(
+              layoutSection,
               (w) =>
                   (w is CanvasNumberField && w.label == "Angle") ||
                   (w is CanvasStepper && w.label == "Angle")),
@@ -410,8 +339,8 @@ void main() {
         endEnd: LineEnd.arrow);
 
     testWidgets("Swap ends puts each end's mark on the other", (tester) async {
-      var c = await _panel(tester, line);
-      await _press(tester, find.byKey(const ValueKey("strokeSwapEnds")));
+      var c = await showPanel(tester, line);
+      await pressOn(tester, find.byKey(const ValueKey("strokeSwapEnds")));
       var after = lineIn(c);
       expect((after.startEnd, after.endEnd), (LineEnd.arrow, LineEnd.circle));
       expect((after.start, after.end), (line.start, line.end),
@@ -419,14 +348,14 @@ void main() {
     });
 
     testWidgets("the slope switch says what it does", (tester) async {
-      var c = await _panel(tester, line);
-      var toggle = _widget<CanvasToggle>(
-          _look, (w) => w.key == const ValueKey("lineFlipped"));
+      var c = await showPanel(tester, line);
+      var toggle = widgetIn<CanvasToggle>(
+          lookSection, (w) => w.key == const ValueKey("lineFlipped"));
       expect(tester.widget<CanvasToggle>(toggle).label, "Slope the other way");
       var ends = tester.widget<CanvasControlGroup>(
-          _widget<CanvasControlGroup>(_look, (w) => w.label == "Ends"));
+          widgetIn<CanvasControlGroup>(lookSection, (w) => w.label == "Ends"));
       expect(ends.help, isNot(contains("swaps which end is the start")));
-      await _press(tester, toggle);
+      await pressOn(tester, toggle);
       var after = lineIn(c);
       expect(after.flipped, isTrue);
       expect(after.startEnd, LineEnd.circle,
@@ -437,7 +366,7 @@ void main() {
 
   group("a bubble's tail", () {
     testWidgets("is said to point to, not to have points", (tester) async {
-      await _panel(
+      await showPanel(
           tester,
           const ShapeElement(ElementBase(id: "s", width: 200, height: 120),
               shape: ShapeKind.speechBubble));
@@ -509,7 +438,7 @@ void main() {
     });
 
     test("a new shape from the add menu starts square", () {
-      var made = newElement(ElementKind.shape, _doc) as ShapeElement;
+      var made = newElement(ElementKind.shape, panelDocument) as ShapeElement;
       expect(made.width, made.height);
       var round = made.withKind(ShapeKind.circle);
       expect((round.x, round.y, round.width, round.height),
@@ -518,13 +447,13 @@ void main() {
     });
 
     testWidgets("picked from the tiles", (tester) async {
-      var c = await _panel(tester, oblong);
-      await _press(tester, find.byKey(const ValueKey("shapeKind-circle")));
+      var c = await showPanel(tester, oblong);
+      await pressOn(tester, find.byKey(const ValueKey("shapeKind-circle")));
       expectSquared(c.document.elementById("s") as ShapeElement);
     });
 
     testWidgets("picked from the quick strip", (tester) async {
-      var c = await _panel(tester, oblong);
+      var c = await showPanel(tester, oblong);
       tester
           .widget<CanvasDropdown<ShapeKind>>(
               find.byKey(const ValueKey("quickShape")))
@@ -534,12 +463,12 @@ void main() {
     });
 
     /// lock is the button that holds the proportions, or lets them go.
-    Finder lock() => _widget<CanvasIconButton>(
-        _layout, (w) => w.icon == Icons.link || w.icon == Icons.link_off);
+    Finder lock() => widgetIn<CanvasIconButton>(
+        layoutSection, (w) => w.icon == Icons.link || w.icon == Icons.link_off);
 
     testWidgets("a circle's proportions show held and cannot be let go",
         (tester) async {
-      await _panel(tester, oblong.withKind(ShapeKind.circle));
+      await showPanel(tester, oblong.withKind(ShapeKind.circle));
       var button = tester.widget<CanvasIconButton>(lock());
       expect(button.icon, Icons.link);
       expect(button.active, isTrue);
@@ -547,9 +476,9 @@ void main() {
     });
 
     testWidgets("a rectangle's can still be held and let go", (tester) async {
-      var c = await _panel(tester, oblong);
+      var c = await showPanel(tester, oblong);
       expect(tester.widget<CanvasIconButton>(lock()).onPressed, isNotNull);
-      await _press(tester, lock());
+      await pressOn(tester, lock());
       expect(c.document.elementById("s")!.base.lockAspect, isTrue);
     });
 
@@ -560,8 +489,8 @@ void main() {
           ElementBase(id: "s", x: 100, y: 100, width: 120, height: 120),
           shape: ShapeKind.circle,
           strokeWidth: 6);
-      var c = await _panel(tester, round);
-      await _set(tester, _stepper(_layout, "W"), 200);
+      var c = await showPanel(tester, round);
+      await setNumber(tester, stepperIn(layoutSection, "W"), 200);
       var s = c.document.elementById("s") as ShapeElement;
       expect((s.width, s.height), (200.0, 200.0));
       expect(s.strokeWidth, 6);
@@ -674,69 +603,8 @@ void main() {
     }
   });
 
-  group("every control", () {
-    for (var row in _rows()) {
-      testWidgets("${row.what} changes what it says, in one step",
-          (tester) async {
-        var c = await _panel(tester, row.element, beside: row.beside);
-        var before = jsonEncode(c.document.toJson());
-        await row.press(tester);
-        await tester.pumpAndSettle();
-        row.check(c.document);
-        expect(c.canUndo, isTrue, reason: "a step was made");
-        c.undo();
-        expect(jsonEncode(c.document.toJson()), before,
-            reason: "and one undo takes it all back");
-        expect(c.canUndo, isFalse, reason: "it was one step");
-      });
-    }
-  });
+  group("every control", () => everyControl(_rows()));
 }
-
-/// _Row is one control of a shape's, a line's or a path's panel: what it
-/// is, the element it is shown for (with [beside] on the canvas too), how it
-/// is pressed or set, and what that must have changed.
-typedef _Row = ({
-  String what,
-  CanvasElement element,
-  List<CanvasElement> beside,
-  Future<void> Function(WidgetTester) press,
-  void Function(CanvasDocument) check,
-});
-
-const _red = Color(0xFFE53935);
-const _fade = GradientSpec(to: Color(0xFF3D7EFF), angle: 30);
-
-/// _typed sets the number field or stepper [f] to [v], as a typed number
-/// does.
-Future<void> Function(WidgetTester) _typed(Finder f, double v) =>
-    (tester) => _set(tester, f, v);
-
-Future<void> Function(WidgetTester) _key(String key, double v) =>
-    _typed(find.byKey(ValueKey(key)), v);
-
-/// _chosen picks [v] from the dropdown [f].
-Future<void> Function(WidgetTester) _chosen<T>(Finder f, T v) =>
-    (tester) async => tester.widget<CanvasDropdown<T>>(f).onChanged(v);
-
-/// _coloured gives the colour button [f] the colour, or with [fade], the
-/// fade, as its picker does.
-Future<void> Function(WidgetTester) _coloured(Finder f, {bool fade = false}) =>
-    (tester) async {
-      var w = tester.widget<CanvasColorButton>(f);
-      fade ? w.onGradientChanged!(_fade) : w.onChanged(_red);
-    };
-
-/// _switched turns the switch [f] over.
-Future<void> Function(WidgetTester) _switched(Finder f) => (tester) async {
-      var w = tester.widget<CanvasToggle>(f);
-      w.onChanged(!w.value);
-    };
-
-Future<void> Function(WidgetTester) _pressed(Finder f) =>
-    (tester) => _press(tester, f);
-
-Finder _keyed(String key) => find.byKey(ValueKey(key));
 
 /// _nodeButton is the button with [icon] on the path's point [i].
 Finder _nodeButton(int i, IconData icon) => find.descendant(
@@ -744,7 +612,7 @@ Finder _nodeButton(int i, IconData icon) => find.descendant(
     matching:
         find.byWidgetPredicate((w) => w is CanvasIconButton && w.icon == icon));
 
-List<_Row> _rows() {
+List<ControlRow> _rows() {
   const shape = ShapeElement(
       ElementBase(id: "s", x: 100, y: 100, width: 200, height: 120));
   final star = shape.copyWith(shape: ShapeKind.star);
@@ -762,7 +630,7 @@ List<_Row> _rows() {
       ElementBase(id: "l", x: 100, y: 300, width: 300, height: 100),
       startEnd: LineEnd.circle,
       endEnd: LineEnd.arrow);
-  final keyed = line.withBase(
+  final bowed = line.withBase(
       track: ElementTrack(const [
     Keyframe(frame: 0, values: {KeyframeChannel.bow: 0.2}),
   ])) as LineElement;
@@ -788,83 +656,74 @@ List<_Row> _rows() {
   LineElement lineIn(CanvasDocument d) => d.elementById("l") as LineElement;
   PathElement pathIn(CanvasDocument d) => d.elementById("p") as PathElement;
 
-  _Row row(
-          String what,
-          CanvasElement element,
-          Future<void> Function(WidgetTester) press,
-          void Function(CanvasDocument) check,
-          {List<CanvasElement> beside = const []}) =>
-      (
-        what: what,
-        element: element,
-        beside: beside,
-        press: press,
-        check: check
-      );
+  const row = controlRow;
 
   return [
     // A shape.
     row(
         "a shape's quick Shape",
         shape,
-        _chosen(_keyed("quickShape"), ShapeKind.ellipse),
+        chosen(keyed("quickShape"), ShapeKind.ellipse),
         (d) => expect(shapeIn(d).shape, ShapeKind.ellipse)),
-    row("a shape's tiles", shape, _pressed(_keyed("shapeKind-star")),
+    row("a shape's tiles", shape, pressed(keyed("shapeKind-star")),
         (d) => expect(shapeIn(d).shape, ShapeKind.star)),
-    row("a shape's quick Fill", shape, _coloured(_keyed("quickFill")),
-        (d) => expect(shapeIn(d).fill, _red)),
+    row("a shape's quick Fill", shape, coloured(keyed("quickFill")),
+        (d) => expect(shapeIn(d).fill, rowRed)),
     row(
         "a shape's quick Fill's fade",
         shape,
-        _coloured(_keyed("quickFill"), fade: true),
-        (d) => expect(shapeIn(d).fillFade, _fade)),
+        coloured(keyed("quickFill"), fade: true),
+        (d) => expect(shapeIn(d).fillFade, rowFade)),
     row(
         "a shape's quick Outline",
         shape,
-        _typed(_stepper(_quick, "Outline"), 5),
+        typedIn(stepperIn(quickStrip, "Outline"), 5),
         (d) => expect(shapeIn(d).strokeWidth, 5)),
     row("a shape's quick Outline colour", shape,
-        _coloured(_keyed("quickStrokeColour")), (d) {
-      expect(shapeIn(d).strokeColor, _red);
+        coloured(keyed("quickStrokeColour")), (d) {
+      expect(shapeIn(d).strokeColor, rowRed);
       expect(shapeIn(d).strokeWidth, greaterThan(0));
     }),
     row(
         "a shape's quick Outline colour's fade",
         shape,
-        _coloured(_keyed("quickStrokeColour"), fade: true),
-        (d) => expect(shapeIn(d).strokeFade, _fade)),
-    row("a shape's Fill", shape, _coloured(_colour(_look, "Fill")),
-        (d) => expect(shapeIn(d).fill, _red)),
+        coloured(keyed("quickStrokeColour"), fade: true),
+        (d) => expect(shapeIn(d).strokeFade, rowFade)),
+    row("a shape's Fill", shape, coloured(colourIn(lookSection, "Fill")),
+        (d) => expect(shapeIn(d).fill, rowRed)),
     row(
         "a shape's Fill's fade",
         shape,
-        _coloured(_colour(_look, "Fill"), fade: true),
-        (d) => expect(shapeIn(d).fillFade, _fade)),
+        coloured(colourIn(lookSection, "Fill"), fade: true),
+        (d) => expect(shapeIn(d).fillFade, rowFade)),
     row(
         "a shape's Painted with",
         shape,
-        _chosen(_keyed("shapeFillKind"), TextFillKind.pattern),
+        chosen(keyed("shapeFillKind"), TextFillKind.pattern),
         (d) => expect(shapeIn(d).painted.kind, TextFillKind.pattern)),
-    row("a shape's Stroke", shape, _typed(_number(_look, "Stroke"), 7),
+    row("a shape's Stroke", shape, typedIn(numberIn(lookSection, "Stroke"), 7),
         (d) => expect(shapeIn(d).strokeWidth, 7)),
-    row("a shape's outline Colour", shape, _coloured(_colour(_look, "Colour")),
-        (d) => expect(shapeIn(d).strokeColor, _red)),
+    row(
+        "a shape's outline Colour",
+        shape,
+        coloured(colourIn(lookSection, "Colour")),
+        (d) => expect(shapeIn(d).strokeColor, rowRed)),
     row(
         "a shape's outline Colour's fade",
         shape,
-        _coloured(_colour(_look, "Colour"), fade: true),
-        (d) => expect(shapeIn(d).strokeFade, _fade)),
+        coloured(colourIn(lookSection, "Colour"), fade: true),
+        (d) => expect(shapeIn(d).strokeFade, rowFade)),
     row(
         "a star's Points",
         star,
-        _typed(_number("elementSection-content", "Points"), 7),
+        typedIn(numberIn("elementSection-content", "Points"), 7),
         (d) => expect(shapeIn(d).points, 7)),
     row(
         "a star's Depth",
         star,
-        _typed(_number("elementSection-content", "Depth"), 0.6),
+        typedIn(numberIn("elementSection-content", "Depth"), 0.6),
         (d) => expect(shapeIn(d).innerRatio, 0.6)),
-    row("a shape's Corners", shape, _key("shapeRadius", 12),
+    row("a shape's Corners", shape, keyTyped("shapeRadius", 12),
         (d) => expect(shapeIn(d).cornerRadius, 12)),
     for (var (glyph, corner) in [
       ("↖", (Corners c) => c.topLeft),
@@ -872,11 +731,11 @@ List<_Row> _rows() {
       ("↘", (Corners c) => c.bottomRight),
       ("↙", (Corners c) => c.bottomLeft),
     ])
-      row("a shape's corner $glyph", split, _key("shapeRadius$glyph", 30),
+      row("a shape's corner $glyph", split, keyTyped("shapeRadius$glyph", 30),
           (d) => expect(corner(shapeIn(d).corners), 30)),
-    row("a shape's corners joined", split, _pressed(_keyed("shapeRadiusLink")),
+    row("a shape's corners joined", split, pressed(keyed("shapeRadiusLink")),
         (d) => expect(shapeIn(d).corners.even, 20)),
-    row("a shape's Padding", shape, _key("shapePadding", 10),
+    row("a shape's Padding", shape, keyTyped("shapePadding", 10),
         (d) => expect(shapeIn(d).padding, 10)),
     for (var (side, room) in [
       ("Top", (Room r) => r.top),
@@ -884,25 +743,25 @@ List<_Row> _rows() {
       ("Bottom", (Room r) => r.bottom),
       ("Left", (Room r) => r.left),
     ])
-      row("a shape's padding at its $side", padded, _key("shapePad$side", 30),
+      row(
+          "a shape's padding at its $side",
+          padded,
+          keyTyped("shapePad$side", 30),
           (d) => expect(room(shapeIn(d).pad), 30)),
-    row(
-        "a shape's padding joined",
-        padded,
-        _pressed(_keyed("shapePaddingLink")),
+    row("a shape's padding joined", padded, pressed(keyed("shapePaddingLink")),
         (d) => expect(shapeIn(d).pad.even, 20)),
     row(
         "a patterned shape's fill Opacity",
         patterned,
-        _key("shapeFillOpacity", 0.5),
+        keyTyped("shapeFillOpacity", 0.5),
         (d) => expect(shapeIn(d).painted.opacity, 0.5)),
     row(
         "a pictured shape's fill Saturation",
         pictured,
-        _key("shapeFillSaturation", 2),
+        keyTyped("shapeFillSaturation", 2),
         (d) => expect(shapeIn(d).painted.saturation, 2)),
     row("a shape's Words", shape, (tester) async {
-      var w = tester.widget<CanvasTextField>(_widget<CanvasTextField>(
+      var w = tester.widget<CanvasTextField>(widgetIn<CanvasTextField>(
           "elementSection-content", (w) => w.hint == "Type text on the shape"));
       w.onChanged("Hello");
       w.onCommit?.call();
@@ -910,172 +769,183 @@ List<_Row> _rows() {
     row(
         "a shape's label Size",
         worded,
-        _typed(
+        typedIn(
             find.descendant(
-                of: _keyed("shapeLabelType"), matching: _keyed("typeSize")),
+                of: keyed("shapeLabelType"), matching: keyed("typeSize")),
             30),
         (d) => expect(shapeIn(d).textSpec.fontSize, 30)),
     row(
         "a bubble's Body",
         bubble,
-        _chosen(_dropdown("elementSection-content", "Body"), BubbleBody.cloud),
+        chosen(dropdownIn("elementSection-content", "Body"), BubbleBody.cloud),
         (d) => expect(shapeIn(d).bubble.body, BubbleBody.cloud)),
     row(
         "a bubble's Tail",
         bubble,
-        _chosen(
-            _dropdown("elementSection-content", "Tail"), BubbleTail.thought),
+        chosen(
+            dropdownIn("elementSection-content", "Tail"), BubbleTail.thought),
         (d) => expect(shapeIn(d).bubble.tail, BubbleTail.thought)),
-    row("a bubble's Points to", bubble, _key("bubbleTailAngle", 200),
+    row("a bubble's Points to", bubble, keyTyped("bubbleTailAngle", 200),
         (d) => expect(shapeIn(d).bubble.tailAngle, 200)),
     row(
         "a bubble's Length",
         bubble,
-        _typed(_number("elementSection-content", "Length"), 0.9),
+        typedIn(numberIn("elementSection-content", "Length"), 0.9),
         (d) => expect(shapeIn(d).bubble.tailLength, 0.9)),
     row(
         "a bubble's Width",
         bubble,
-        _typed(_number("elementSection-content", "Width"), 0.6),
+        typedIn(numberIn("elementSection-content", "Width"), 0.6),
         (d) => expect(shapeIn(d).bubble.tailWidth, 0.6)),
     row(
         "a bubble's Curl",
         bubble,
-        _typed(_number("elementSection-content", "Curl"), 1),
+        typedIn(numberIn("elementSection-content", "Curl"), 1),
         (d) => expect(shapeIn(d).bubble.curl, 1)),
 
     // A line.
-    row("a line's quick Colour", line, _coloured(_keyed("quickLineColour")),
-        (d) => expect(lineIn(d).color, _red)),
+    row("a line's quick Colour", line, coloured(keyed("quickLineColour")),
+        (d) => expect(lineIn(d).color, rowRed)),
     row(
         "a line's quick Colour's fade",
         line,
-        _coloured(_keyed("quickLineColour"), fade: true),
-        (d) => expect(lineIn(d).fade, _fade)),
-    row("a line's quick Width", line, _key("quickLineWidth", 9),
+        coloured(keyed("quickLineColour"), fade: true),
+        (d) => expect(lineIn(d).fade, rowFade)),
+    row("a line's quick Width", line, keyTyped("quickLineWidth", 9),
         (d) => expect(lineIn(d).strokeWidth, 9)),
     row(
         "a line's quick End",
         line,
-        _chosen(_keyed("quickLineEnd"), LineEnd.diamond),
+        chosen(keyed("quickLineEnd"), LineEnd.diamond),
         (d) => expect(lineIn(d).endEnd, LineEnd.diamond)),
-    row("a line's quick Dash", line, _key("quickLineDash", 15),
+    row("a line's quick Dash", line, keyTyped("quickLineDash", 15),
         (d) => expect(lineIn(d).dash, 15)),
-    row("a line's Colour", line, _coloured(_colour(_look, "Colour")),
-        (d) => expect(lineIn(d).color, _red)),
+    row("a line's Colour", line, coloured(colourIn(lookSection, "Colour")),
+        (d) => expect(lineIn(d).color, rowRed)),
     row(
         "a line's Colour's fade",
         line,
-        _coloured(_colour(_look, "Colour"), fade: true),
-        (d) => expect(lineIn(d).fade, _fade)),
-    row("a line's Width", line, _typed(_number(_look, "Width"), 11),
+        coloured(colourIn(lookSection, "Colour"), fade: true),
+        (d) => expect(lineIn(d).fade, rowFade)),
+    row("a line's Width", line, typedIn(numberIn(lookSection, "Width"), 11),
         (d) => expect(lineIn(d).strokeWidth, 11)),
-    row("a line's Curve", line, _typed(_number(_look, "Curve"), 0.4),
+    row("a line's Curve", line, typedIn(numberIn(lookSection, "Curve"), 0.4),
         (d) => expect(lineIn(d).curvature, 0.4)),
-    row("a line's keyed Curve", keyed, _typed(_number(_look, "Curve"), 0.4),
-        (d) {
+    row("a line's keyed Curve", bowed,
+        typedIn(numberIn(lookSection, "Curve"), 0.4), (d) {
       expect(lineIn(d).track!.keyAt(0)!.values[KeyframeChannel.bow], 0.4);
       expect(lineIn(d).curvature, 0, reason: "the key, not where it rests");
     }),
     row(
         "a line's Curve diamond",
         line,
-        _pressed(_widget<CanvasKeyframeDot>(_look, (_) => true)),
+        pressed(widgetIn<CanvasKeyframeDot>(lookSection, (_) => true)),
         (d) =>
             expect(lineIn(d).track!.keyAt(0)!.values[KeyframeChannel.bow], 0)),
     row(
         "a line's Stroke end",
         line,
-        _chosen(_dropdown(_look, "Stroke end"), LineStrokeCap.round),
+        chosen(dropdownIn(lookSection, "Stroke end"), LineStrokeCap.round),
         (d) => expect(lineIn(d).cap, LineStrokeCap.round)),
     row(
         "a line's Start",
         line,
-        _chosen(_dropdown(_look, "Start"), LineEnd.square),
+        chosen(dropdownIn(lookSection, "Start"), LineEnd.square),
         (d) => expect(lineIn(d).startEnd, LineEnd.square)),
-    row("a line's End", line, _chosen(_dropdown(_look, "End"), LineEnd.bar),
+    row(
+        "a line's End",
+        line,
+        chosen(dropdownIn(lookSection, "End"), LineEnd.bar),
         (d) => expect(lineIn(d).endEnd, LineEnd.bar)),
-    row("a line's End size", line, _typed(_number(_look, "End size"), 3),
+    row(
+        "a line's End size",
+        line,
+        typedIn(numberIn(lookSection, "End size"), 3),
         (d) => expect(lineIn(d).endSize, 3)),
     row(
         "a line's Swap ends",
         line,
-        _pressed(_keyed("strokeSwapEnds")),
+        pressed(keyed("strokeSwapEnds")),
         (d) => expect((lineIn(d).startEnd, lineIn(d).endEnd),
             (LineEnd.arrow, LineEnd.circle))),
-    row("a line's Slope the other way", line, _switched(_keyed("lineFlipped")),
+    row("a line's Slope the other way", line, switched(keyed("lineFlipped")),
         (d) => expect(lineIn(d).flipped, isTrue)),
-    row("a line's Dash", line, _key("lineDash", 8),
+    row("a line's Dash", line, keyTyped("lineDash", 8),
         (d) => expect(lineIn(d).dash, 8)),
-    row("a line's Length", line, _key("lineLength", 250),
+    row("a line's Length", line, keyTyped("lineLength", 250),
         (d) => expect(lineIn(d).length, closeTo(250, 1e-6))),
-    row("a line's Direction", line, _key("lineAngle", 45),
+    row("a line's Direction", line, keyTyped("lineAngle", 45),
         (d) => expect(lineIn(d).angle, closeTo(45, 1e-6))),
-    row("a line's Level", line, _pressed(_keyed("lineLevel")),
+    row("a line's Level", line, pressed(keyed("lineLevel")),
         (d) => expect(lineIn(d).angle, closeTo(0, 0.01))),
-    row("a line's Upright", line, _pressed(_keyed("linePlumb")),
+    row("a line's Upright", line, pressed(keyed("linePlumb")),
         (d) => expect(lineIn(d).angle, closeTo(90, 0.01))),
 
     // A path.
-    row("a path's quick Colour", path, _coloured(_keyed("quickPathColour")),
-        (d) => expect(pathIn(d).color, _red)),
+    row("a path's quick Colour", path, coloured(keyed("quickPathColour")),
+        (d) => expect(pathIn(d).color, rowRed)),
     row(
         "a path's quick Colour's fade",
         path,
-        _coloured(_keyed("quickPathColour"), fade: true),
-        (d) => expect(pathIn(d).fade, _fade)),
-    row("a path's quick Width", path, _key("quickPathWidth", 4),
+        coloured(keyed("quickPathColour"), fade: true),
+        (d) => expect(pathIn(d).fade, rowFade)),
+    row("a path's quick Width", path, keyTyped("quickPathWidth", 4),
         (d) => expect(pathIn(d).strokeWidth, 4)),
-    row("a path's quick Closed", path, _switched(_keyed("quickPathClosed")),
+    row("a path's quick Closed", path, switched(keyed("quickPathClosed")),
         (d) => expect(pathIn(d).closed, isTrue)),
-    row("a path's Colour", path, _coloured(_colour(_look, "Colour")),
-        (d) => expect(pathIn(d).color, _red)),
+    row("a path's Colour", path, coloured(colourIn(lookSection, "Colour")),
+        (d) => expect(pathIn(d).color, rowRed)),
     row(
         "a path's Colour's fade",
         path,
-        _coloured(_colour(_look, "Colour"), fade: true),
-        (d) => expect(pathIn(d).fade, _fade)),
-    row("a path's Width", path, _typed(_number(_look, "Width"), 6),
+        coloured(colourIn(lookSection, "Colour"), fade: true),
+        (d) => expect(pathIn(d).fade, rowFade)),
+    row("a path's Width", path, typedIn(numberIn(lookSection, "Width"), 6),
         (d) => expect(pathIn(d).strokeWidth, 6)),
     row(
         "a path's Closed",
         path,
-        _switched(_widget<CanvasToggle>(_look, (w) => w.label == "Closed")),
+        switched(
+            widgetIn<CanvasToggle>(lookSection, (w) => w.label == "Closed")),
         (d) => expect(pathIn(d).closed, isTrue)),
     row(
         "a path's Guide only",
         path,
-        _switched(_widget<CanvasToggle>(_look, (w) => w.label == "Guide only")),
+        switched(widgetIn<CanvasToggle>(
+            lookSection, (w) => w.label == "Guide only")),
         (d) => expect(pathIn(d).guide, isTrue)),
     row(
         "a path's Stroke end",
         path,
-        _chosen(_dropdown(_look, "Stroke end"), LineStrokeCap.square),
+        chosen(dropdownIn(lookSection, "Stroke end"), LineStrokeCap.square),
         (d) => expect(pathIn(d).cap, LineStrokeCap.square)),
     row(
         "a path's Start",
         path,
-        _chosen(_dropdown(_look, "Start"), LineEnd.diamond),
+        chosen(dropdownIn(lookSection, "Start"), LineEnd.diamond),
         (d) => expect(pathIn(d).startEnd, LineEnd.diamond)),
     row(
         "a path's End",
         path,
-        _chosen(_dropdown(_look, "End"), LineEnd.hollowArrow),
+        chosen(dropdownIn(lookSection, "End"), LineEnd.hollowArrow),
         (d) => expect(pathIn(d).endEnd, LineEnd.hollowArrow)),
-    row("a path's End size", path, _typed(_number(_look, "End size"), 2.5),
+    row(
+        "a path's End size",
+        path,
+        typedIn(numberIn(lookSection, "End size"), 2.5),
         (d) => expect(pathIn(d).endSize, 2.5)),
     row(
         "a path's Swap ends",
         path,
-        _pressed(_keyed("strokeSwapEnds")),
+        pressed(keyed("strokeSwapEnds")),
         (d) => expect((pathIn(d).startEnd, pathIn(d).endEnd),
             (LineEnd.arrow, LineEnd.circle))),
-    row("a path's Dash", path, _typed(_number(_look, "Dash"), 14),
+    row("a path's Dash", path, typedIn(numberIn(lookSection, "Dash"), 14),
         (d) => expect(pathIn(d).dash, 14)),
     row(
         "a path's Who follows",
         path,
-        _chosen(_dropdown("elementSection-more", "Who follows"),
+        chosen(dropdownIn("elementSection-more", "Who follows"),
             const PathFollow(elementId: "f")), (d) {
       expect(pathIn(d).follow, const PathFollow(elementId: "f"));
       expect(pathIn(d).guide, isTrue, reason: "a route is a guide");
@@ -1084,51 +954,48 @@ List<_Row> _rows() {
     row(
         "a path's Who follows, set to nothing",
         followed,
-        _chosen(_dropdown("elementSection-more", "Who follows"),
+        chosen(dropdownIn("elementSection-more", "Who follows"),
             const PathFollow(elementId: "")),
         (d) => expect(pathIn(d).follow, isNull),
         beside: [follower]),
-    row("a path's run Start", path, _key("pathStartFrame", 20),
+    row("a path's run Start", path, keyTyped("pathStartFrame", 20),
         (d) => expect(pathIn(d).firstFrame, 20)),
-    row("a path's run End", path, _key("pathEndFrame", 80),
+    row("a path's run End", path, keyTyped("pathEndFrame", 80),
         (d) => expect(pathIn(d).lastFrame, 80)),
-    row(
-        "a path's Space the points evenly",
-        path,
-        _pressed(_keyed("pathSpread")),
+    row("a path's Space the points evenly", path, pressed(keyed("pathSpread")),
         (d) => expect([for (var n in pathIn(d).nodes) n.frame], [0, 48, 95])),
-    row("a path's Apply again", followed, _pressed(_keyed("pathRelink")),
+    row("a path's Apply again", followed, pressed(keyed("pathRelink")),
         (d) => expect(d.elementById("f")!.track, isNotNull),
         beside: [follower]),
-    row("a path's Carry it on", path, _pressed(_keyed("pathCarryOn")),
+    row("a path's Carry it on", path, pressed(keyed("pathCarryOn")),
         (d) => expect(pathIn(d).nodes, hasLength(4))),
-    row("a path's point's frame", path, _key("node-frame-1-p", 30),
+    row("a path's point's frame", path, keyTyped("node-frame-1-p", 30),
         (d) => expect(pathIn(d).nodes[1].frame, 30)),
-    row("a path's point's X", path, _key("node-x-0-p", 160),
+    row("a path's point's X", path, keyTyped("node-x-0-p", 160),
         (d) => expect(pathIn(d).pointOf(pathIn(d).nodes[0]).dx, 160)),
-    row("a path's point's Y", path, _key("node-y-0-p", 420),
+    row("a path's point's Y", path, keyTyped("node-y-0-p", 420),
         (d) => expect(pathIn(d).pointOf(pathIn(d).nodes[0]).dy, 420)),
-    row("a path's point's add", path, _pressed(_nodeButton(0, Icons.add)),
+    row("a path's point's add", path, pressed(_nodeButton(0, Icons.add)),
         (d) => expect(pathIn(d).nodes, hasLength(4))),
-    row("a path's point's remove", path, _pressed(_nodeButton(1, Icons.close)),
+    row("a path's point's remove", path, pressed(_nodeButton(1, Icons.close)),
         (d) => expect(pathIn(d).nodes, hasLength(2))),
 
     // A closed path: its run goes round to the start again, on frame 23.
-    row("a closed path's run Start", loop, _key("pathStartFrame", 5), (d) {
+    row("a closed path's run Start", loop, keyTyped("pathStartFrame", 5), (d) {
       expect(pathIn(d).firstFrame, 5);
       expect(pathIn(d).endFrame, 23, reason: "its end where it was");
     }),
-    row("a closed path's run End", loop, _key("pathEndFrame", 60), (d) {
+    row("a closed path's run End", loop, keyTyped("pathEndFrame", 60), (d) {
       expect(pathIn(d).endFrame, 60);
       expect(pathIn(d).firstFrame, 0);
     }),
     row(
         "a closed path's Space the points evenly",
         loop,
-        _pressed(_keyed("pathSpread")),
+        pressed(keyed("pathSpread")),
         (d) => expect([for (var n in pathIn(d).nodes) n.frame], [0, 7, 15])),
     row("a closed path's last point's add", loop,
-        _pressed(_nodeButton(2, Icons.add)), (d) {
+        pressed(_nodeButton(2, Icons.add)), (d) {
       expect(pathIn(d).nodes, hasLength(4));
       expect(pathIn(d).nodes[3].frame, 18, reason: "half-way back");
       expect(pathIn(d).endFrame, 23);
@@ -1136,7 +1003,7 @@ List<_Row> _rows() {
     row(
         "a closed path's added last point's remove",
         loop.insertAfter(2),
-        _pressed(_nodeButton(3, Icons.close)),
+        pressed(_nodeButton(3, Icons.close)),
         (d) => expect(pathIn(d).nodes, hasLength(3))),
   ];
 }

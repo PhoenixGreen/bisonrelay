@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_scene_chain_test.dart is a scene's motion chain as the chain
-// prototype has it (Ken, 2026-11-08, "Scene chain yes"): its own clips --
+// prototype has it: its own clips --
 // a Camera's, keying its zoom and where it looks -- with a "+" to put one
 // on, a join after them, its Transition, its Camera, and an Output.
 

@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 // keeps one that is going on the beat it is on; its colours are written as
 // any element's are, and leave it going as it was.
 
+/// metronomeSettings is [e]'s panel (see element_panel.dart).
 List<Widget> metronomeSettings(
   BuildContext context,
   CanvasController controller,

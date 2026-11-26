@@ -44,6 +44,9 @@ enum ButtonActionKind {
         orElse: () => ButtonActionKind.goToFrame,
       );
 
+  /// needsFrame, needsElement and needsUrl are whether the action names a
+  /// frame, an element, or a link to open: what its controls offer and
+  /// what it saves.
   bool get needsFrame =>
       this == goToFrame || this == playFrom || this == playToFrame;
   bool get needsElement => this == toggleElement || needsSound;
@@ -65,6 +68,8 @@ enum ButtonActionKind {
 /// ButtonAction is one action, fully specified.
 class ButtonAction {
   final ButtonActionKind kind;
+
+  /// frame is the frame a frame action goes to, plays from or plays to.
   final int frame;
 
   /// elementId is what the action is done to, saved as "element" whatever it
@@ -74,6 +79,7 @@ class ButtonAction {
   /// id first). Naming nothing, the button does nothing.
   final String elementId;
 
+  /// url is the link an openLink action asks to open.
   final String url;
 
   const ButtonAction({
@@ -120,6 +126,7 @@ class ButtonAction {
 /// ButtonElement is a labelled rectangle that does something when pressed,
 /// in a published interactive canvas only; inert in a picture or video.
 class ButtonElement extends CanvasElement {
+  /// label is the words on it, set in [textSpec], over its [box].
   final String label;
   final TextSpec textSpec;
   final BoxSpec box;
@@ -129,8 +136,10 @@ class ButtonElement extends CanvasElement {
   final Color hoverFill;
   final Color hoverTextColor;
 
+  /// action is what pressing it does.
   final ButtonAction action;
 
+  /// animation is how it arrives and leaves.
   final ElementAnimation animation;
 
   const ButtonElement(

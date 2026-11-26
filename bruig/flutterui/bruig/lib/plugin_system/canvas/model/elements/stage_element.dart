@@ -47,6 +47,11 @@ class StageCamera {
   static const double minDistance = 1.5;
   static const double maxDistance = 40;
 
+  /// maxYaw is how far round it is held either way: ten turns, ten times
+  /// what its panel offers, so a camera swung round and round by dragging
+  /// keeps its turns while a received one cannot hold a turn without end.
+  static const double maxYaw = 3600;
+
   StageCamera copyWith(
           {double? yaw,
           double? pitch,
@@ -56,7 +61,7 @@ class StageCamera {
           double? ty,
           double? tz}) =>
       StageCamera(
-        yaw: yaw ?? this.yaw,
+        yaw: (yaw ?? this.yaw).clamp(-maxYaw, maxYaw),
         pitch: (pitch ?? this.pitch).clamp(-10.0, 89.0),
         distance: (distance ?? this.distance).clamp(minDistance, maxDistance),
         lens: (lens ?? this.lens).clamp(12.0, 200.0),

@@ -36,10 +36,8 @@ import 'support/canvas_app.dart';
 
 // canvas_panel_reading_test.dart is Panel mode (panel_reading.dart,
 // panel_reader.dart): a comic read panel by panel, each page whole and then
-// its Layouts' cells in their reading order. Ken, 2026-11-18: "if you build
-// a comic ebook a user can go into panel mode and use the page back and
-// forward buttons to move through the panels and pages"; the rest of the
-// page dimmed, not hidden.
+// its Layouts' cells in their reading order, stepped through by the page's
+// back and forward buttons; the rest of the page dimmed, not hidden.
 
 const _page = CanvasSize(ratio: CanvasRatio.a4, width: 1240);
 

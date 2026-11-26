@@ -19,7 +19,10 @@ const metronomeSlowest = 30.0, metronomeFastest = 240.0;
 /// holds is one of these.
 const metronomeBeats = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
+/// MetronomeElement is a clockwork metronome on the page, swinging and
+/// clicking while the editor has it going (controller/metronomes.dart).
 class MetronomeElement extends CanvasElement {
+  /// bpm is its beats a minute, metronomeSlowest to metronomeFastest.
   final double bpm;
 
   /// beats is beats in a bar, the first louder; 1 for all alike.

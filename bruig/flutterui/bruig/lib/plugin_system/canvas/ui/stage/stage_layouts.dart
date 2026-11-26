@@ -244,7 +244,7 @@ extension StageLayouts on CanvasStageState {
     var frame = _layoutFrame(drag.start);
     var next = drag._moved(
         this, now, frame.fromPage(drag.pressed), frame.fromPage(doc));
-    if (next != null) controller.setLayout(next, transient: true);
+    if (next != null) controller.replaceElement(next, transient: true);
   }
 
   /// _doubleClickLayout picks the cell of [e] under [doc]; none where it is
@@ -366,7 +366,8 @@ class _CutGutter extends _CutDrag {
     if (length < 1e-6) return null;
     var normal = Offset(-along.dy, along.dx) / length;
     var by = (to - from).dx * normal.dx + (to - from).dy * normal.dy;
-    var gutter = (cutGutter(start, before) + by * 2).clamp(0.0, 400.0);
+    var gutter =
+        (cutGutter(start, before) + by * 2).clamp(0.0, LayoutRange.maxGutter);
     gutter = stage._shiftHeld
         ? (gutter / 10).round() * 10.0
         : gutter.roundToDouble();

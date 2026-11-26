@@ -12,8 +12,8 @@ import 'package:flutter/painting.dart';
 // Where each piece lands is worked out once (counterLaidOut), for the
 // painter and for the stage's presses alike.
 
-/// counterGap is the space between the buttons, and above them to the number.
-const double counterGap = 8;
+/// _buttonGap is the space between the buttons, and above them to the number.
+const double _buttonGap = 8;
 
 /// CounterLaidOut is a counter laid out in its box: where its number goes
 /// and at what size, and where each piece is. The painter draws from it and
@@ -60,7 +60,7 @@ CounterLaidOut? counterLaidOut(CounterElement e, Rect bounds, double value) {
   var room = buttons.isEmpty || e.looseButtons
       ? inner
       : Rect.fromLTRB(inner.left, inner.top, inner.right,
-          buttons.first.top - counterGap * _unit(inner));
+          buttons.first.top - _buttonGap * _unit(inner));
   var fit = room.height > 0 && e.fit ? counterFitScale(e, room, value) : 1.0;
 
   var words = <CounterWords, Rect>{}, bands = <CounterWords, Rect>{};
@@ -110,7 +110,7 @@ List<Rect> _buttonRects(CounterElement e, Rect inner) {
   }
 
   var height = _buttonRowHeight(e, inner);
-  var gap = counterGap * _unit(inner);
+  var gap = _buttonGap * _unit(inner);
   var each = (inner.width - gap * (e.buttons.length - 1)) / e.buttons.length;
   if (each <= 0) return const [];
 

@@ -406,7 +406,7 @@ void main() {
           cells: const [LayoutCell(id: "a"), LayoutCell(id: "b")],
           gutter: 20,
           rowGutter: 20);
-      var line = layoutCutLines(l, l.bounds).single;
+      var line = layoutGeometry(l, l.bounds).cuts.single;
       // The ring that tilts the cut, near its end.
       var knob = Offset.lerp(line.from, line.to, 0.88)!;
       var c = guided(

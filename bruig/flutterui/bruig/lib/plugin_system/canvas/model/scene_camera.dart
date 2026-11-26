@@ -9,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/scene_transition.dart';
 /// than one, so the page is filled) and the point it centres on, as
 /// fractions of the page.
 class SceneCamera {
+  /// fromZoom, fromX and fromY are the framing it starts on; toZoom, toX
+  /// and toY the one it ends on; [ease] how it goes between.
   final double fromZoom;
   final double fromX;
   final double fromY;

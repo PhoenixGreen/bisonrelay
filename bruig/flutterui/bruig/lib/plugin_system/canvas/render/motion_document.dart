@@ -1186,7 +1186,7 @@ CameraLook cameraLookAt(CameraElement cam, int frame, CanvasDocument doc,
             .clamp(-CameraElement.maxKeyedFocus, CameraElement.maxKeyedFocus)
             .toDouble(),
     blur: v(KeyframeChannel.blur, cam.blur)
-        .clamp(0.0, CameraElement.maxBlur)
+        .clamp(0.0, CameraElement.readBlur)
         .toDouble(),
     parallax: cam.parallax,
     vignette:

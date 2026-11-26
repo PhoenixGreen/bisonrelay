@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble, jsonStr, jsonString;
+    show jsonDouble, jsonId, jsonLabel, jsonStr, jsonString;
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 
 // play.dart is a canvas played as a game: what each element does and the
@@ -467,8 +467,7 @@ class GameCount {
 
   static GameCount? fromJson(Object? json) {
     if (json is! Map || json["id"] is! String) return null;
-    return GameCount(json["id"] as String,
-        json["name"] is String ? json["name"] as String : "Count",
+    return GameCount(jsonId(json["id"], ""), jsonLabel(json["name"], "Count"),
         start: json["start"] is num ? (json["start"] as num).toInt() : 0,
         reach: json["reach"] is num ? (json["reach"] as num).toInt() : null,
         then: GameEffect.fromJson(json["then"]));
