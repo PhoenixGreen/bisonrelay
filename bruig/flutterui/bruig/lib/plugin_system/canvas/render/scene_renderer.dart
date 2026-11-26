@@ -749,12 +749,13 @@ void paintElement(
       return;
     }
   }
-  // Its clips' moves over any legacy track. See motion_document.dart.
-  var pose = poseWithMotion(element, frame, document,
-      live: liveMotion, instance: instance, frameRate: frameRate);
-  // Its own settings as its Design has them on this frame (design_device).
-  element = designedNow(element, frame, document,
-      live: liveMotion, frameRate: frameRate);
+  // Its pose on this frame, its own settings as its Design has them then
+  // (design_device.dart), and where they lay its box on the page: one answer,
+  // which whatever asks where a part of it is drawn asks too.
+  var onPage = placeOnPage(element, frame, document, liveMotion,
+      instance: instance, frameRate: frameRate);
+  var pose = onPage.pose;
+  element = onPage.drawn;
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   // A closing stretch with no exit chosen fades rather than doing nothing:
@@ -903,8 +904,10 @@ void paintElement(
   // travel; its resting turn and slant about its centre; the pose's turn and
   // size about its anchor; and its moving loop's turn and size, whose move
   // and fade are in the pose already (poseWithMotion), for whatever follows
-  // it. Whatever asks where a part of it is drawn asks the same place.
-  element.placedIn(bounds, outer, loop: pose).applyTo(canvas);
+  // it. Whatever asks where a part of it is drawn asks the same place. With
+  // the pose left to the caller, only the loop's turn and size are laid on.
+  (poseOutside ? element.placedIn(bounds, outer, loop: pose) : onPage.place)
+      .applyTo(canvas);
 
   // A video laid on as light or shade is composited through the same layer
   // its fade is: the blend has to be on the outermost layer, the one that

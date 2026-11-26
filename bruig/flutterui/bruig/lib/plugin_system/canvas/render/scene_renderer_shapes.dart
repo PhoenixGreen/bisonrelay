@@ -96,63 +96,47 @@ typedef StrokeOnPage = ({
 /// its anchor, through its turn and slant), or as it rests with no frame
 /// given. Null for anything not a stroke, or a stroke with no curve. The
 /// selection box, the press, text set on a line and Follow path all ask it,
-/// and the painter lays the element out by the same ElementPlace, so they
-/// cannot part.
+/// and it is laid out by the pose and the place the painter lays the
+/// element out by (placeOnPage), so they cannot part.
 StrokeOnPage? strokeOnPage(CanvasElement? element,
     [int? frame, CanvasDocument? doc, LiveMotion? live]) {
   if (element is! StrokedElement) return null;
-  // The stage asks at every move of the pointer and every paint, of the
-  // same document on the same frame: kept for the stroke, the document and
-  // the frame. Not while slots play, nor for a stroke following a sound,
-  // which is read from outside the document; and only an answer asked from
-  // outside any pose, which the guard below has not cut short.
-  var keeps = live == null &&
-      _riding == 0 &&
-      !element.base.motion.devices
-          .any((d) => d.kind == MotionDeviceKind.followSound);
-  if (keeps) {
-    if (_strokesKept[element] case (var d, var f, var known)
-        when identical(d, doc) && f == frame) {
-      return known;
-    }
+  if (frame == null) {
+    if (_restingKept[element] case (var known,)) return known;
+    var resting = _strokeOn(
+        ElementOnPage(element, Keyframe.rest, element.placedBy(Keyframe.rest)));
+    _restingKept[element] = (resting,);
+    return resting;
   }
-  var drawn = _strokeOnPage(element, frame, doc, live);
-  if (keeps) _strokesKept[element] = (doc, frame, drawn);
+  // Kept beside the answer placeOnPage keeps, while it hands back that one:
+  // the stage asks at every move of the pointer and every paint.
+  var on = placeOnPage(element, frame, doc, live);
+  if (_strokesKept[element] case (var from, var known)
+      when identical(from, on)) {
+    return known;
+  }
+  var drawn = _strokeOn(on);
+  if (on.kept) _strokesKept[element] = (on, drawn);
   return drawn;
 }
 
-/// _strokesKept is each stroke's last answer from strokeOnPage, with the
-/// document and frame it was for.
-final Expando<(CanvasDocument?, int?, StrokeOnPage?)> _strokesKept =
+/// _strokesKept is each stroke's last answer from strokeOnPage on a frame,
+/// with the place it was worked out from; _restingKept its answer as it
+/// rests.
+final Expando<(ElementOnPage, StrokeOnPage?)> _strokesKept =
     Expando("strokeOnPage");
+final Expando<(StrokeOnPage?,)> _restingKept = Expando("strokeAtRest");
 
-StrokeOnPage? _strokeOnPage(
-    StrokedElement element, int? frame, CanvasDocument? doc, LiveMotion? live) {
-  Keyframe pose;
-  if (frame == null) {
-    pose = Keyframe.rest;
-  } else if (_riding > 3) {
-    // A stroke posed by something that rides it in turn (a path following
-    // what follows it, a line turned to face the text on it) is asked again
-    // from inside its own pose: past a few rounds, its keys alone answer.
-    pose = element.poseAt(frame);
-  } else {
-    _riding++;
-    try {
-      pose = element.drawnPoseAt(frame, doc, live: live);
-    } finally {
-      _riding--;
-    }
-  }
-  var shaped = element.bowedBy(pose);
-  var place = element.placedBy(pose);
-  var curve = shaped.curvePlaced(place);
+/// _strokeOn is the stroke [on] lays out: bowed by its pose, and its curve
+/// laid on the page by its place.
+StrokeOnPage? _strokeOn(ElementOnPage on) {
+  var element = on.drawn;
+  if (element is! StrokedElement) return null;
+  var shaped = element.bowedBy(on.pose);
+  var curve = shaped.curvePlaced(on.place);
   if (curve.isEmpty) return null;
-  return (shaped: shaped, place: place, curve: curve);
+  return (shaped: shaped, place: on.place, curve: curve);
 }
-
-/// _riding is how deep strokeOnPage is in asking poses: see there.
-var _riding = 0;
 
 /// curveOfElement is [strokeOnPage]'s curve: where [element]'s curve is
 /// drawn on the page on [frame], as points along it.

@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/render/camera_aim.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show channelLevelAt;
@@ -577,20 +578,27 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
   if (kept == null ||
       !identical(kept.$1, doc) ||
       !identical(kept.$2, devices)) {
-    kept = (doc, devices, <(int?, int, int), Keyframe>{});
+    kept = (doc, devices, <(int?, int, int, int), Keyframe>{});
     _pulledKept[e] = kept;
   }
-  var key = (instance, i, frame);
-  if (kept.$3[key] case var known?) return known;
+  var known = kept.$3[(instance, i, frame, -1)] ??
+      kept.$3[(instance, i, frame, _asking)];
+  if (known != null) return known;
   if (kept.$3.length > 4096) kept.$3.clear();
-  return kept.$3[key] = _pulledNow(e, frame, doc, null, devices, i, instance);
+  var cuts = _cuts;
+  var pose = _pulledNow(e, frame, doc, null, devices, i, instance);
+  return kept.$3[(instance, i, frame, _keptFor(cuts))] = pose;
 }
 
 /// _pulledKept is each element's poses worked out by _pulled, for the
-/// document and chain they were worked out in: by copy, device and frame.
+/// document and chain they were worked out in: by copy, device, frame and
+/// the depth they are kept for (see _keptFor).
 final Expando<
-        (CanvasDocument, List<MotionDevice>, Map<(int?, int, int), Keyframe>)>
-    _pulledKept = Expando("pulled");
+    (
+      CanvasDocument,
+      List<MotionDevice>,
+      Map<(int?, int, int, int), Keyframe>
+    )> _pulledKept = Expando("pulled");
 
 Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
     LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
@@ -760,7 +768,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
     case MotionDeviceKind.followPath:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
       var host = doc.elementById(d.target);
-      var points = curveOfElement(host, frame, doc, live);
+      var points = _askingInside(() => curveOfElement(host, frame, doc, live));
       if (points == null || points.length < 2) return p;
       var t = _seconds(frame, doc, live);
       var u = d.value("start") + t / d.value("lap");
@@ -843,9 +851,48 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
 /// asset: the editor's. Null (a lone element drawn) follows nothing.
 Float32List? Function(String assetId)? motionSoundPeaks;
 
-/// _looking is how deep Look at is in asking where its targets are: two
-/// elements looking at each other would ask for ever.
-int _looking = 0;
+/// _asking is how many poses deep the work is in asking where another element
+/// is from inside a pose: a Look at's or a Spring's target, the camera a Look
+/// at faces, the path Follow path rides. Two elements asking after each other
+/// would ask for ever, so past [_deepest] the answer is cut short: a target's
+/// resting middle, a path's keys alone. One count for every such question,
+/// since one kind of question can ask another (a Look at's target riding a
+/// path that looks back at it).
+int _asking = 0;
+
+/// _deepest is how many rounds of asking from inside a pose are answered in
+/// full.
+const _deepest = 4;
+
+/// _cuts is how many answers have been cut short, so what is worked out can
+/// tell whether any part of it was.
+int _cuts = 0;
+
+/// _askingInside is [ask] counted as one round deeper of asking from inside
+/// a pose.
+T _askingInside<T>(T Function() ask) {
+  _asking++;
+  try {
+    return ask();
+  } finally {
+    _asking--;
+  }
+}
+
+/// _tooDeep is whether the work is past [_deepest], counting a cut if so.
+bool get _tooDeep {
+  if (_asking <= _deepest) return false;
+  _cuts++;
+  return true;
+}
+
+/// _keptFor is the depth an answer worked out since [cutsBefore] is kept
+/// for, -1 for any. One worked out whole is the same however deep it is
+/// asked. One cut short is the answer only as deep as it was asked: asked a
+/// round deeper, the same question is cut a round sooner. So it is kept for
+/// that depth alone, and the painter, asking from outside any pose, is never
+/// handed one worked out from inside one.
+int _keptFor(int cutsBefore) => _cuts == cutsBefore ? -1 : _asking;
 
 /// lookAtCamera is the target a Look at is given to face the camera.
 const lookAtCamera = "@camera";
@@ -883,27 +930,18 @@ bool facesPointer(CanvasDocument doc) => [
 /// _cameraCentre and _centreOf are where the camera looks (else the page's
 /// middle) and where element [id] is on [frame], moved by what plays from
 /// slots ([live]) too, so a Look at a launched element follows it.
-Offset? _cameraCentre(CanvasDocument doc, int frame, {LiveMotion? live}) {
-  if (_looking > 3) return doc.size.rect.center;
-  _looking++;
-  try {
-    return sceneFraming(doc, frame, live: live)?.$2 ?? doc.size.rect.center;
-  } finally {
-    _looking--;
-  }
-}
+Offset? _cameraCentre(CanvasDocument doc, int frame, {LiveMotion? live}) =>
+    _askingInside(() => _tooDeep
+        ? doc.size.rect.center
+        : sceneFraming(doc, frame, live: live)?.$2 ?? doc.size.rect.center);
 
 Offset? _centreOf(CanvasDocument doc, String id, int frame,
     {LiveMotion? live}) {
   var t = doc.elementById(id);
   if (t == null) return null;
-  if (_looking > 3) return t.bounds.center;
-  _looking++;
-  try {
-    return t.boundsWith(poseWithMotion(t, frame, doc, live: live)).center;
-  } finally {
-    _looking--;
-  }
+  return _askingInside(() => _tooDeep
+      ? t.bounds.center
+      : t.boundsWith(poseWithMotion(t, frame, doc, live: live)).center);
 }
 
 /// motionSpeedAt is how fast [e] is going on [frame], in page pixels a
@@ -1014,6 +1052,79 @@ Keyframe _clipPose(
   return moved;
 }
 
+/// ElementOnPage is an element as paintElement lays it out on a frame:
+/// [drawn], the element with its Design's settings on it then; [pose], its
+/// pose there (its keys, clips, devices, loop and Design); and [place],
+/// where its box is laid on the page by that pose (ElementPlace), a page
+/// number mirrored onto a left-hand page in the box it is drawn in.
+class ElementOnPage {
+  final CanvasElement drawn;
+  final Keyframe pose;
+  final ElementPlace place;
+
+  /// kept is whether this is an answer placeOnPage keeps, with nothing read
+  /// from outside the document. What is worked out from it can be kept
+  /// beside it while placeOnPage hands back this same answer.
+  final bool kept;
+
+  const ElementOnPage(this.drawn, this.pose, this.place, {this.kept = false});
+}
+
+/// placeOnPage is [e] as paintElement lays it out on [frame] of [doc]: the
+/// pose it is drawn in and the place that pose lays its box on the page.
+/// The painter lays the canvas out by it, and whatever asks where a part of
+/// an element is drawn (a stroke's curve, a path's points, a layout's
+/// cells) asks it, so none can part from what is drawn. [instance] is which
+/// copy of an element reused (instances.dart), null for the element itself;
+/// [frameRate] a lone element's, drawn with no [doc].
+///
+/// The stage asks at every move of the pointer and every paint, of the same
+/// document on the same frame, so the answer is kept for the element, the
+/// document, the frame and the copy. Not while slots play ([live]), nor for
+/// an element following a sound, which is read from outside the document.
+/// One cut short by asking too many rounds deep from inside a pose is kept
+/// only for as deep as it was asked (see _keptFor).
+ElementOnPage placeOnPage(
+    CanvasElement e, int frame, CanvasDocument? doc, LiveMotion? live,
+    {int? instance, int frameRate = defaultFrameRate}) {
+  var keeps = live == null &&
+      !e.base.motion.devices.any((d) => d.kind == MotionDeviceKind.followSound);
+  var copies = <(int?, int), ElementOnPage>{};
+  if (keeps) {
+    if (_placesKept[e] case (var d, var f, var r, var known)
+        when identical(d, doc) && f == frame && r == frameRate) {
+      if (known[(instance, -1)] ?? known[(instance, _asking)] case var on?) {
+        return on;
+      }
+      copies = known;
+    } else {
+      _placesKept[e] = (doc, frame, frameRate, copies);
+    }
+  }
+  var cuts = _cuts;
+  // Asked from inside its own pose past a few rounds (a path following
+  // what follows it), its keys alone answer.
+  var pose = _tooDeep
+      ? e.poseAt(frame)
+      : poseWithMotion(e, frame, doc,
+          live: live, instance: instance, frameRate: frameRate);
+  var drawn = designedNow(e, frame, doc, live: live, frameRate: frameRate);
+  var box = drawn.bounds;
+  if (drawn is CounterElement && doc != null) {
+    box =
+        drawn.drawnBox(box, page: doc.size.rect, leftHand: doc.pageIsLeftHand);
+  }
+  var on = ElementOnPage(drawn, pose, drawn.placedIn(box, pose), kept: keeps);
+  if (keeps) copies[(instance, _keptFor(cuts))] = on;
+  return on;
+}
+
+/// _placesKept is each element's answers from placeOnPage, by copy and the
+/// depth they are kept for (see _keptFor), with the document, frame and
+/// frame rate they were for.
+final Expando<(CanvasDocument?, int, int, Map<(int?, int), ElementOnPage>)>
+    _placesKept = Expando("placeOnPage");
+
 /// MovedElement is where an element is with its clips' moves on it, so the
 /// selection box, the handles and the hit-test agree with what is drawn.
 extension MovedElement on CanvasElement {
@@ -1053,17 +1164,15 @@ extension MovedElement on CanvasElement {
   }
 
   /// drawnPoseAt is the pose paintElement draws this element in on [frame]:
-  /// its track's alone where nothing else moves it, else poseWithMotion's
-  /// (without [doc], a lone element's track and loop, as the painter has).
+  /// see placeOnPage.
   Keyframe drawnPoseAt(int frame, CanvasDocument? doc, {LiveMotion? live}) =>
-      movesAtAll(this)
-          ? poseWithMotion(this, frame, doc, live: live)
-          : poseAt(frame);
+      placeOnPage(this, frame, doc, live).pose;
 
   /// placeAt is where paintElement lays this element's box on the page on
-  /// [frame] (ElementPlace), as the element itself, not one of its copies.
+  /// [frame] (ElementPlace), as the element itself, not one of its copies:
+  /// see placeOnPage.
   ElementPlace placeAt(int frame, CanvasDocument? doc, {LiveMotion? live}) =>
-      placedBy(drawnPoseAt(frame, doc, live: live));
+      placeOnPage(this, frame, doc, live).place;
 
   /// movedRotationAt is rotationAt with the clips' turn added.
   double movedRotationAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>

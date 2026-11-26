@@ -384,23 +384,50 @@ and a moving loop's turn and size. The painter lays the canvas out by its
 in the same order and `unplace` brings one back, so nothing can ask where a
 part of the element is drawn and get anything but where the painter put it
 (`test/canvas_stroke_on_page_test.dart` holds `applyTo` and `place` to each
-other). `drawnPoseAt` and `placeAt` (`render/motion_document.dart`) are the
-pose and the place the painter uses on a frame, keys, clips and devices
-and all. `curvePlaced` is a stroke's points laid on the page by a place, and
-`curveOnPage` by its place at rest.
+other). `placeOnPage` (`render/motion_document.dart`) is an element as the
+painter lays it out on a frame: the pose it is drawn in (keys, clips,
+devices, loop and Design), the element with its Design's settings on it,
+and the place that pose lays its box on the page (a page number mirrored
+onto a left-hand page in the box it is drawn in), for the element or one of
+its copies. `paintElement` lays its canvas out by it, so it is the one
+statement of where an element is drawn; `drawnPoseAt` and `placeAt` are its
+pose and its place. The stage asks at every pointer move and paint, so the
+answer is kept for the element, the document, the frame and the copy (not
+while slots play, nor for an element following a sound). `curvePlaced` is
+a stroke's points laid on the page by a place, and `curveOnPage` by its
+place at rest.
+
+Something asked about from inside a pose (a Look at's or a Spring's target,
+the camera a Look at faces, the path Follow path rides) is one round deeper
+(`_asking`, one count for every such question, since one can ask another:
+a Look at's target riding a path that looks back at it). Past a few rounds
+the answer is cut short (a target's resting middle, a path's keys alone),
+and an answer any part of which was cut short is kept, by `placeOnPage` and
+by a device chain's poses (`_pulled`), only where it was asked from outside
+any pose and handed back only there: asked from inside one, the same
+question is cut a round sooner. An answer worked out whole is the same
+however deep it is asked, and is kept wherever.
 
 `strokeOnPage` (`render/scene_renderer_shapes.dart`) is a stroke as drawn on
-a frame of a document: bowed and placed by the pose there, with its curve on
-the page; `curveOfElement` is that curve. What asks where a stroke is asks
-it: the selection box (`visualBoundsOf`, its room for the stroke as wide as
-the pose draws it), the press (`StageHitTest.contains`), text set on a line,
-the Follow path device and words wrapped beside it. The answer is kept for
-the stroke, the document and the frame, since the stage asks at every
-pointer move. A stroke can be posed by what rides it (a path following what
-follows it): past a few rounds of asking from inside its own pose, its keys
-alone answer, and a Look at has its own such guard (`_looking`). A loop
-runs round `curvePoints` bowed by the painter's pose, inside the frame the
-painter has already laid out.
+a frame of a document: bowed and placed by its `placeOnPage`, with its curve
+on the page; `curveOfElement` is that curve. What asks where a stroke is
+asks it: the selection box (`visualBoundsOf`, its room for the stroke as
+wide as the pose draws it), the press (`StageHitTest.contains`), text set on
+a line, the Follow path device and words wrapped beside it. Its curve is
+kept beside the answer `placeOnPage` keeps, while that hands back the same
+one. A loop runs round `curvePoints` bowed by the painter's pose, inside the
+frame the painter has already laid out.
+
+`test/canvas_element_on_page_test.dart` holds every other kind to the same:
+a filled shape, a picture and a text drawn part-way through each motion,
+pressed on their ink and boxed round it, copies pressed each, and a drag at
+a moved frame moving what is drawn as far as the pointer. The press and the
+selection box of every kind but a stroke ask `movedBoundsAt` and
+`movedFrameAt`, which leave out a keyed turn or size about an anchor off the
+middle, a keyed turn under a slant, a loop's turn and a squash, and take
+copies as one box round them all; the checks that fail for it are skipped,
+each saying what is left out, and a drag at a moved frame writes where the
+element is drawn as where it rests.
 
 A lone line's or path's selection box is the box round its curve as drawn on
 the frame, so the stage lays it out upright (`_boxIsDrawn`), not turned and
