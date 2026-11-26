@@ -98,6 +98,34 @@ enum ElementKind {
 /// pages, but never a size that cannot be drawn.
 const double _far = 1e6;
 
+/// LayoutDock is the Layout cell an element is docked in: the layout's id
+/// and the cell's. It is saved as one string, "layout id:cell id"
+/// (ElementBase.dock): [toJson] writes it and [read] reads it back.
+class LayoutDock {
+  final String layout, cell;
+  const LayoutDock(this.layout, this.cell);
+
+  /// read is the dock [saved] names, or null for none or one that names no
+  /// layout or no cell.
+  static LayoutDock? read(String saved) {
+    var at = saved.indexOf(":");
+    if (at <= 0 || at == saved.length - 1) return null;
+    return LayoutDock(saved.substring(0, at), saved.substring(at + 1));
+  }
+
+  String toJson() => "$layout:$cell";
+
+  @override
+  bool operator ==(Object other) =>
+      other is LayoutDock && other.layout == layout && other.cell == cell;
+
+  @override
+  int get hashCode => Object.hash(layout, cell);
+
+  @override
+  String toString() => toJson();
+}
+
 /// ElementBase is every property every element has. Held by composition, so
 /// a subclass implements only [CanvasElement.rebase] to be fully editable.
 class ElementBase {
@@ -199,11 +227,12 @@ class ElementBase {
   /// size and what it does in its scene are its own. See cast.dart.
   final String cast;
 
-  /// dock is the Layout cell it is docked in, "layout id:cell id", or empty:
-  /// drawn clipped to the cell, and moved when the whole layout is moved;
-  /// editing the layout's cells leaves it as it is (layout_sync.dart).
-  /// [dockOut] lets it break out of the
-  /// cell's edge, as a figure does over a comic panel's line.
+  /// dock is the Layout cell it is docked in as saved, "layout id:cell id",
+  /// or empty; [docked] reads it. Docked, it is drawn clipped to the cell,
+  /// and moved when the whole layout is moved; editing the layout's cells
+  /// leaves it as it is, and a cell that goes lets it go
+  /// (layout_sync.dart). [dockOut] lets it break out of the cell's edge, as
+  /// a figure does over a comic panel's line.
   final String dock;
   final bool dockOut;
 
@@ -254,6 +283,10 @@ class ElementBase {
   /// _defaults is one as made: what a saved one means by leaving a
   /// field out.
   static const _defaults = ElementBase(id: "");
+
+  /// docked is the Layout cell it is docked in, read from [dock] as asked
+  /// (so a base stays const), or null where it is not docked.
+  LayoutDock? get docked => LayoutDock.read(dock);
 
   /// asDesign is this base as a design kept to be used again (a preset):
   /// without what ties the element to its place in one document. Those are
@@ -1255,6 +1288,87 @@ class ElementPlace {
     return q;
   }
 
+  /// placePath is [path], drawn in the box, laid on the page as [applyTo]
+  /// lays the canvas out: an outline that must land where the element is
+  /// drawn on this frame, for something drawn through it (a docked element's
+  /// cell) or a mark over it. Turned and slanted only, it is
+  /// [BoxFrame.placePath] itself.
+  Path placePath(Path path) {
+    if (leavesAlone) return path;
+    if (shift == Offset.zero && !_squashed && !_posed && !_looped) {
+      return frame.placePath(path, centre);
+    }
+    var m = _matrix;
+    return path.transform(Float64List.fromList([
+      m.a, m.c, 0, 0, //
+      m.b, m.d, 0, 0, //
+      0, 0, 1, 0, //
+      m.e, m.f, 0, 1,
+    ]));
+  }
+
+  /// boxOnPage is [box], a rectangle of the element's box turned by [turn]
+  /// degrees about its own middle, as it is drawn on the page: a box of the
+  /// size it is drawn at, about where its middle lands, and the turn and
+  /// slant it is drawn with there. What one part of an element has as its
+  /// own selection box (a Layout's Free cell) asks it. Only turned, it is
+  /// the box moved, turned by both; otherwise the slant is taken across its
+  /// width, which a turn and a slant can always draw.
+  (Rect, BoxFrame) boxOnPage(Rect box, {double turn = 0}) {
+    var middle = place(box.center);
+    if (shift == Offset.zero && !_squashed && !_posed && !_looped) {
+      if (!frame.slanted) {
+        return (
+          Rect.fromCenter(center: middle, width: box.width, height: box.height),
+          BoxFrame(frame.rotation + turn, 0, 0)
+        );
+      }
+    }
+    // The box's half axes, turned, then laid on the page.
+    var t = turn * math.pi / 180;
+    var across = Offset(math.cos(t), math.sin(t)) * (box.width / 2);
+    var down = Offset(-math.sin(t), math.cos(t)) * (box.height / 2);
+    var u = place(box.center + across) - middle;
+    var v = place(box.center + down) - middle;
+    // The width lies along u; the height is what of v is square to it, and
+    // the rest of v its slant.
+    var angle = math.atan2(u.dy, u.dx);
+    var cs = math.cos(angle), sn = math.sin(angle);
+    var vAlong = v.dx * cs + v.dy * sn, vUp = -v.dx * sn + v.dy * cs;
+    var height = vUp.abs() * 2;
+    var slant = height < 1e-9
+        ? 0.0
+        : (math.atan(vAlong / vUp) * 180 / math.pi).clamp(-maxSkew, maxSkew);
+    return (
+      Rect.fromCenter(center: middle, width: u.distance * 2, height: height),
+      BoxFrame(angle * 180 / math.pi, slant, 0)
+    );
+  }
+
+  /// _matrix is [place] as one affine map, its steps composed in its order.
+  _Affine get _matrix {
+    var m = _Affine.identity;
+    if (_looped) {
+      var (c, s) = _loopTurn;
+      m = m.then(_Affine.about(
+          loopPivot, c * loopSx, -s * loopSy, s * loopSx, c * loopSy));
+    }
+    if (_posed) {
+      var (c, s) = _poseTurn;
+      m = m
+          .then(_Affine.about(anchor, c * size, -s * size, s * size, c * size));
+    }
+    m = m.then(_Affine.about(centre, frame.a, frame.b, frame.c, frame.d));
+    if (_squashed) {
+      // Turned back, stretched along and squeezed across, turned again.
+      var (c, s) = _squashTurn;
+      var k = squash, j = 1 / squash;
+      m = m.then(_Affine.about(centre, c * c * k + s * s * j, c * s * (k - j),
+          c * s * (k - j), s * s * k + c * c * j));
+    }
+    return m.then(_Affine(1, 0, 0, 1, shift.dx, shift.dy));
+  }
+
   /// _turned is [v] turned by the angle whose cosine and sine are [by].
   static Offset _turned(Offset v, (double, double) by) {
     var (c, s) = by;
@@ -1284,4 +1398,27 @@ class ElementPlace {
   @override
   int get hashCode => Object.hash(centre, shift, squash, squashAngle, frame,
       anchor, turn, size, loopPivot, loopTurn, loopSx, loopSy);
+}
+
+/// _Affine is a map of the plane, x' = a x + b y + e and y' = c x + d y + f:
+/// an ElementPlace's steps as one, to lay a path out by.
+class _Affine {
+  final double a, b, c, d, e, f;
+  const _Affine(this.a, this.b, this.c, this.d, this.e, this.f);
+
+  static const identity = _Affine(1, 0, 0, 1, 0, 0);
+
+  /// about is the linear map [a] [b] [c] [d] about the point [p].
+  factory _Affine.about(Offset p, double a, double b, double c, double d) =>
+      _Affine(
+          a, b, c, d, p.dx - a * p.dx - b * p.dy, p.dy - c * p.dx - d * p.dy);
+
+  /// then is this map followed by [next].
+  _Affine then(_Affine next) => _Affine(
+      next.a * a + next.b * c,
+      next.a * b + next.b * d,
+      next.c * a + next.d * c,
+      next.c * b + next.d * d,
+      next.a * e + next.b * f + next.e,
+      next.c * e + next.d * f + next.f);
 }

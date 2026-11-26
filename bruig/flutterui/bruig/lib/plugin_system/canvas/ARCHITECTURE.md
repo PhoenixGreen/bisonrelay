@@ -466,6 +466,49 @@ the run ending where it did, to a frame where that piece's frames are odd.
 The run's Start and End fields and "Space the points evenly" share the run
 out with the closing piece as one of its pieces (`spreadRun`).
 
+### A layout's frame
+
+Where a Layout's cells fall in its own box has one answer,
+`layoutGeometry` (`model/layout_geometry.dart`): its cells, and the Panels
+cuts or Grid lines the stage grabs, from one walk of the tree, kept for the
+layout and the box (an `Expando`, so the painter, each docked element and
+the stage ask it every frame for nothing). The pieces of it others need are
+public there and asked, never copied: a cut's gutter (`cutGutter`), the
+point it turns about (`cutPivot`), a Free cell's rectangle
+(`freeCellRect`). A Free cell's triangle, diamond, hexagon and star are the
+shape element's corners (`model/outline_points.dart`, which `shapePath`
+draws by too), a cell keeping its own numbers where they differ: its
+hexagon has a corner at each side, and its star is cut less deep.
+
+Where that is on the page on a frame is a `LayoutFrame`: the geometry laid
+out by the `ElementPlace` the painter draws the layout by there
+(`layoutFrameAt`, `render/layout_painter.dart`), so a cell is wherever the
+layout is drawn, turned, slanted, and moved, turned or sized by its keys,
+clips and devices. `toPage` and `pathOnPage` take a point or an outline
+there and `fromPage` brings a point back (`ElementPlace.placePath`, held to
+`applyTo` by `test/canvas_stroke_on_page_test.dart`). A docked element is
+clipped to its cell through it (`dockClip`, given the layout's place on the
+frame it is drawn on); Panel mode's outlines are the cells on the frame the
+page is read at, everything arrived (`settledFrameOf`); and the stage's
+marks, presses and drags are on and taken back through the layout's frame
+on the playhead (`stage_layouts.dart`), a picked Free cell's selection box
+included (`LayoutFrame.freeCellBox`, by `ElementPlace.boxOnPage`: its box
+at the size it is drawn, with the turn and slant it is drawn with). A
+docked element itself is placed by its own box, not its layout's motion:
+`layoutsSynced` moves it when the layout's resting box moves, so under a
+keyed or clipped move the cell is drawn moved and the element stays.
+
+A dock is a `LayoutDock` (layout id, cell id), saved as it always was, one
+string `"layout:cell"` in `ElementBase.dock`, read on demand by
+`ElementBase.docked` so a base stays `const`. The edits that change which
+cells there are live on `LayoutElement` (`split`, `removeCell`,
+`addCell`), each keeping every other cell with its id; removing a Panels
+cell puts its neighbour's subtree in its parent's place and docks what was
+in it in the cell that met it. Whatever makes a layout's cells afresh (a
+preset, a cell removed) lets go of what was docked in a cell that is gone,
+where it is: `layoutsSynced` does it on every change (`docksLetGo`), and
+moves only what is docked in a cell the layout has.
+
 ## The editor
 
 `CanvasController` (`ui/canvas_controller.dart`) is the editing session. One

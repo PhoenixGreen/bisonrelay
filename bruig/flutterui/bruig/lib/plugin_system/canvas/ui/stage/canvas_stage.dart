@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/code_task_element.dart';
@@ -13,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/code/code_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/code/code_live_preview.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/render/layout_painter.dart'
+    show layoutFrameAt;
 import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/synth_task_element.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart';
@@ -589,7 +590,8 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _layoutStart is a Layout as it was when one of its lines or cells was
   /// pressed, and _layoutCut, _layoutTrack and _layoutMiddle what was
-  /// pressed (stage_layouts.dart).
+  /// pressed (stage_layouts.dart): _layoutMiddle a Free cell's middle in the
+  /// layout's own box.
   LayoutElement? _layoutStart;
   LayoutCutLine? _layoutCut;
   LayoutTrackLine? _layoutTrack;

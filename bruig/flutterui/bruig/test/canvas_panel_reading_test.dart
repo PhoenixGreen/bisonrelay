@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/export/panel_video.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart'
     show parseProbe;
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -19,8 +20,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show MovedElement, settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/panel_reading.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -110,6 +114,38 @@ void main() {
       // A lower panel is zoomed in on: smaller than the page.
       var b = panelSteps(_book()).firstWhere((s) => s.cell == "b");
       expect(panelView(b, size).width, lessThan(size.width * 0.8));
+    });
+
+    // The page is read as it settles; a panel's outline, which the rest of
+    // the page is dimmed round, is its cell there as drawn.
+    test("a panel's outline is its cell as the page draws it", () {
+      // Slanted, and held down 40 by its keys on every frame, the one the
+      // page settles on among them.
+      var comic = _comic("L").withBase(
+              skewX: 12,
+              track: ElementTrack(const [Keyframe(frame: 0, dy: 40)]))
+          as LayoutElement;
+      var doc = const CanvasDocument(size: _page, frames: 48).addElement(comic);
+      var settled = settledFrameOf(doc);
+      var place = comic.placeAt(settled, doc);
+      for (var s in panelSteps(doc).where((s) => !s.whole)) {
+        var cell = layoutPlaceOf(comic, comic.bounds, s.cell!)!;
+        // Its corners as the painter lays the layout out there.
+        var drawn = [for (var p in cell.points) place.place(p)];
+        var want = Rect.fromPoints(drawn.first, drawn.first);
+        for (var p in drawn) {
+          want = want.expandToInclude(Rect.fromPoints(p, p));
+        }
+        var got = s.outline!.getBounds();
+        for (var (a, b) in [
+          (got.left, want.left),
+          (got.top, want.top),
+          (got.right, want.right),
+          (got.bottom, want.bottom),
+        ]) {
+          expect(a, closeTo(b, 1e-3), reason: "${s.cell}: $got against $want");
+        }
+      }
     });
   });
 

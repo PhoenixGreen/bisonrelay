@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
 // layout_element.dart is a Layout: one element that divides its box into
-// cells, three ways (Ken, 2026-11-18):
+// cells, three ways:
 //
 //  - Panels, a comic page's way: cells made by cutting a cell in two, again
 //    and again. Each cut has its own place, tilt and gutter; moving a cut
@@ -18,8 +18,10 @@ import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 // corners), or by the layout's cell style. What is round the cells -- the
 // gutters and the margin -- is clear unless given a colour, so what is
 // behind the layout shows. Other elements can be docked into a cell
-// (ElementBase.dock): drawn clipped to it, and moved and sized with it.
-// Where the cells fall is layout_geometry.dart.
+// (ElementBase.dock): drawn clipped to it, and moved with it. Where the
+// cells fall is layout_geometry.dart. The edits that change which cells
+// there are (split, removeCell, addCell) are here, each keeping every
+// other cell with its id, so what is docked in it stays.
 
 enum LayoutMode {
   panels("Panels"),
@@ -505,34 +507,96 @@ class LayoutElement extends CanvasElement {
     return (next, fresh);
   }
 
-  /// merge takes away the cut beside Panels cell [id]: it and what was on
-  /// the other side are one cell again, [id]. Answers the layout and the
-  /// cells gone, whose docked elements move into [id].
-  (LayoutElement, List<String>) merge(String id) {
+  /// removeCell takes cell [id] out. In Panels the cut beside it goes and
+  /// what was on its other side fills the room, its own cuts and cells as
+  /// they were; answers the layout and the cell of those that what was docked
+  /// in [id] goes into: the one that met it across the cut (the first of
+  /// what was after it, the last of what was before). Elsewhere the cell
+  /// goes, and what was docked in it is let go (no cell answered). One the
+  /// layout does not have, or a Panels layout's only cell, leaves it as it
+  /// is (the same layout answered).
+  (LayoutElement, String?) removeCell(String id) {
+    List<String> without(List<String> ids) => [
+          for (var o in ids)
+            if (o != id) o
+        ];
+    var rest = [
+      for (var c in cells)
+        if (c.id != id) c
+    ];
+    if (mode != LayoutMode.panels) {
+      if (rest.length == cells.length) return (this, null);
+      return (
+        copyWith(cells: rest, order: without(order), unread: without(unread)),
+        null
+      );
+    }
     var path = root.pathTo(id);
-    if (path == null || path.isEmpty) return (this, const []);
+    if (path == null || path.isEmpty) return (this, null);
     var parentPath = path.sublist(0, path.length - 1);
     var parent = root.nodeAt(parentPath)!;
-    var gone = [
-      for (var c in parent.cells)
-        if (c != id) c
-    ];
-    var next = copyWith(
-      root: root.replaced(parentPath, LayoutNode.leaf(id)),
-      cells: [
-        for (var c in cells)
-          if (!gone.contains(c.id)) c
-      ],
-      order: [
-        for (var o in order)
-          if (!gone.contains(o)) o
-      ],
-      unread: [
-        for (var o in unread)
-          if (!gone.contains(o)) o
-      ],
+    var other = path.last ? parent.a! : parent.b!;
+    return (
+      copyWith(
+          root: root.replaced(parentPath, other),
+          cells: rest,
+          order: without(order),
+          unread: without(unread)),
+      path.last ? other.cells.last : other.cells.first,
     );
-    return (next, gone);
+  }
+
+  /// addCell puts a new cell in: a Grid's in the first slot no cell covers
+  /// (a row added if none is free), otherwise a Free [shape] in the middle.
+  /// Answers the layout and the new cell's id, or null where it is full.
+  (LayoutElement, String)? addCell(
+      {LayoutCellShape shape = LayoutCellShape.rectangle}) {
+    if (cells.length >= maxCells) return null;
+    var id = newElementId();
+    if (mode == LayoutMode.grid) {
+      bool covered(int c, int r) => cells.any((x) =>
+          c >= x.col &&
+          c < x.col + x.colSpan &&
+          r >= x.row &&
+          r < x.row + x.rowSpan);
+      (int, int)? free;
+      for (var r = 0; r < rows.length && free == null; r++) {
+        for (var c = 0; c < columns.length && free == null; c++) {
+          if (!covered(c, r)) free = (c, r);
+        }
+      }
+      var more = rows;
+      if (free == null) {
+        if (more.length >= maxTracks) return null;
+        more = [...more, 1];
+        free = (0, more.length - 1);
+      }
+      return (
+        copyWith(rows: more, cells: [
+          ...cells,
+          LayoutCell(
+              id: id,
+              name: "Card ${cells.length + 1}",
+              col: free.$1,
+              row: free.$2),
+        ]),
+        id
+      );
+    }
+    return (
+      copyWith(cells: [
+        ...cells,
+        LayoutCell(
+            id: id,
+            name: "Frame ${cells.length + 1}",
+            x: 0.35,
+            y: 0.35,
+            width: 0.3,
+            height: 0.3,
+            shape: shape),
+      ]),
+      id
+    );
   }
 
   @override
@@ -590,11 +654,4 @@ class LayoutElement extends CanvasElement {
         cellStyle:
             jsonSpec(json["cellStyle"], BoxSpec.fromJson, plain.cellStyle));
   }
-}
-
-/// dockOf is [dock]'s layout and cell ids ("layout:cell"), or null.
-(String, String)? dockOf(String dock) {
-  var at = dock.indexOf(":");
-  if (at <= 0 || at == dock.length - 1) return null;
-  return (dock.substring(0, at), dock.substring(at + 1));
 }

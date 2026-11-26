@@ -1,8 +1,9 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/outline_points.dart';
 
 // layout_geometry.dart is where a Layout's cells fall in its box, the one
 // answer for the painter, the stage's hit tests and docked elements.
@@ -11,6 +12,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 // cut above it in the tree, each side kept half the cut's gutter from the
 // cut's line. A Grid cell is its tracks' rectangle; a Free cell its shape in
 // its share of the box, turned.
+//
+// That is the layout in its own box. Where it is on the page on a frame is
+// that geometry laid out by the layout's place there (LayoutFrame, by the
+// ElementPlace the painter lays the layout out by), so whatever asks where a
+// cell, a cut or a track is on the page (a docked element's clip, Panel
+// mode, the stage's marks and presses) is answered where it is drawn,
+// turned, slanted and moved by its motion.
 
 /// LayoutPlace is one cell as drawn.
 class LayoutPlace {
@@ -49,6 +57,39 @@ class LayoutTrackLine {
   const LayoutTrackLine(this.index, this.column, this.from, this.to);
 }
 
+/// LayoutGeometry is a layout laid out in a box, all at once: its cells,
+/// and the Panels cuts or the Grid lines between tracks the stage grabs.
+class LayoutGeometry {
+  final List<LayoutPlace> places;
+  final List<LayoutCutLine> cuts;
+  final List<LayoutTrackLine> tracks;
+  const LayoutGeometry(this.places, this.cuts, this.tracks);
+}
+
+/// _laidOut is the geometry last worked out for each layout, by the layout's
+/// identity, with the box it was laid out in: the painter, every element
+/// docked in it and the stage all ask on every frame, and a layout is a
+/// value, so the same one in the same box is laid out the same. A changed
+/// layout is another object, and is laid out afresh.
+final _laidOut = Expando<(Rect, LayoutGeometry)>("layoutGeometry");
+
+/// layoutGeometry is [e] laid out in [box]: see LayoutGeometry.
+LayoutGeometry layoutGeometry(LayoutElement e, Rect box) {
+  if (_laidOut[e] case (var at, var kept) when at == box) return kept;
+  var inner = layoutInner(e, box);
+  var laid = switch (e.mode) {
+    LayoutMode.panels => _panels(e, inner),
+    LayoutMode.grid =>
+      LayoutGeometry(_grid(e, inner), const [], _trackLines(e, inner)),
+    LayoutMode.free => LayoutGeometry(_free(e, inner), const [], const []),
+  };
+  // Kept and handed to every caller, so no caller can change it.
+  var geometry = LayoutGeometry(List.unmodifiable(laid.places),
+      List.unmodifiable(laid.cuts), List.unmodifiable(laid.tracks));
+  _laidOut[e] = (box, geometry);
+  return geometry;
+}
+
 /// layoutInner is the box the cells are laid out in: [box] less the margin.
 Rect layoutInner(LayoutElement e, Rect box) {
   var m = math.min(e.margin, math.min(box.width, box.height) / 2 - 1);
@@ -56,14 +97,8 @@ Rect layoutInner(LayoutElement e, Rect box) {
 }
 
 /// layoutPlaces is every cell of [e] in [box] (its bounds, unturned).
-List<LayoutPlace> layoutPlaces(LayoutElement e, Rect box) {
-  var inner = layoutInner(e, box);
-  return switch (e.mode) {
-    LayoutMode.panels => _panels(e, inner),
-    LayoutMode.grid => _grid(e, inner),
-    LayoutMode.free => _free(e, inner),
-  };
-}
+List<LayoutPlace> layoutPlaces(LayoutElement e, Rect box) =>
+    layoutGeometry(e, box).places;
 
 /// layoutPlaceOf is cell [id] of [e] in [box], or null.
 LayoutPlace? layoutPlaceOf(LayoutElement e, Rect box, String id) {
@@ -75,15 +110,19 @@ LayoutPlace? layoutPlaceOf(LayoutElement e, Rect box, String id) {
 
 // ---- Panels ---------------------------------------------------------------
 
+/// cutPivot is the point cut [n] turns about in [box], the box it divides:
+/// where it crosses the box's middle, which its place (at) names.
+Offset cutPivot(LayoutNode n, Rect box) => n.vertical
+    ? Offset(box.left + n.at * box.width, box.center.dy)
+    : Offset(box.center.dx, box.top + n.at * box.height);
+
 /// _line is a cut's point and its normal (pointing towards [b]).
 (Offset, Offset) _line(LayoutNode n, Rect box) {
   var t = n.tilt * math.pi / 180;
-  if (n.vertical) {
-    var p = Offset(box.left + n.at * box.width, box.center.dy);
-    return (p, Offset(math.cos(t), math.sin(t)));
-  }
-  var p = Offset(box.center.dx, box.top + n.at * box.height);
-  return (p, Offset(-math.sin(t), math.cos(t)));
+  var p = cutPivot(n, box);
+  return n.vertical
+      ? (p, Offset(math.cos(t), math.sin(t)))
+      : (p, Offset(-math.sin(t), math.cos(t)));
 }
 
 double _dot(Offset a, Offset b) => a.dx * b.dx + a.dy * b.dy;
@@ -120,39 +159,27 @@ Rect _boundsOf(List<Offset> poly) {
 List<Offset> _rectPoly(Rect r) =>
     [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft];
 
-double _cutGutter(LayoutElement e, LayoutNode n) =>
+/// cutGutter is the gap cut [n] of [e] leaves: its own, or the layout's
+/// for its way (a cut down has the gutter between cells side by side).
+double cutGutter(LayoutElement e, LayoutNode n) =>
     n.gutter ?? (n.vertical ? e.gutter : e.rowGutter);
 
-List<LayoutPlace> _panels(LayoutElement e, Rect inner) {
-  var out = <LayoutPlace>[];
-  void walk(LayoutNode n, List<Offset> poly) {
+/// _panels walks the tree of cuts once, cutting [inner] down to each cell
+/// and noting each cut where it crosses the box it divides.
+LayoutGeometry _panels(LayoutElement e, Rect inner) {
+  var places = <LayoutPlace>[];
+  var cuts = <LayoutCutLine>[];
+  void walk(LayoutNode n, List<Offset> poly, List<bool> path) {
     if (poly.length < 3) return;
     if (n.isLeaf) {
       var cell = e.cellById(n.cell) ?? LayoutCell(id: n.cell);
       var radius = e.styleOf(cell).borderRadius;
-      out.add(LayoutPlace(
+      places.add(LayoutPlace(
           cell, roundedPolygon(poly, radius), _boundsOf(poly), poly));
       return;
     }
     var box = _boundsOf(poly);
     var (at, normal) = _line(n, box);
-    var g = _cutGutter(e, n) / 2;
-    walk(n.a!, _clip(poly, at, -normal, g));
-    walk(n.b!, _clip(poly, at, normal, g));
-  }
-
-  walk(e.root, _rectPoly(inner));
-  return out;
-}
-
-/// layoutCutLines is each Panels cut where it crosses its box.
-List<LayoutCutLine> layoutCutLines(LayoutElement e, Rect box) {
-  if (e.mode != LayoutMode.panels) return const [];
-  var out = <LayoutCutLine>[];
-  void walk(LayoutNode n, List<Offset> poly, List<bool> path) {
-    if (n.isLeaf || poly.length < 3) return;
-    var bounds = _boundsOf(poly);
-    var (at, normal) = _line(n, bounds);
     // Where the line meets the polygon's edges.
     var hits = <Offset>[];
     for (var i = 0; i < poly.length; i++) {
@@ -163,16 +190,20 @@ List<LayoutCutLine> layoutCutLines(LayoutElement e, Rect box) {
       }
     }
     if (hits.length >= 2) {
-      out.add(LayoutCutLine(path, hits[0], hits[1], n.vertical, bounds));
+      cuts.add(LayoutCutLine(path, hits[0], hits[1], n.vertical, box));
     }
-    var g = _cutGutter(e, n) / 2;
+    var g = cutGutter(e, n) / 2;
     walk(n.a!, _clip(poly, at, -normal, g), [...path, false]);
     walk(n.b!, _clip(poly, at, normal, g), [...path, true]);
   }
 
-  walk(e.root, _rectPoly(layoutInner(e, box)), const []);
-  return out;
+  walk(e.root, _rectPoly(inner), const []);
+  return LayoutGeometry(places, cuts, const []);
 }
+
+/// layoutCutLines is each Panels cut where it crosses its box.
+List<LayoutCutLine> layoutCutLines(LayoutElement e, Rect box) =>
+    layoutGeometry(e, box).cuts;
 
 /// cutAtPoint is the place (0..1 of its box) that puts [cut] through
 /// [point], its tilt kept.
@@ -225,9 +256,10 @@ List<LayoutPlace> _grid(LayoutElement e, Rect inner) {
 
 /// layoutTrackLines is a Grid's lines between tracks, down the middle of
 /// each gap.
-List<LayoutTrackLine> layoutTrackLines(LayoutElement e, Rect box) {
-  if (e.mode != LayoutMode.grid) return const [];
-  var inner = layoutInner(e, box);
+List<LayoutTrackLine> layoutTrackLines(LayoutElement e, Rect box) =>
+    layoutGeometry(e, box).tracks;
+
+List<LayoutTrackLine> _trackLines(LayoutElement e, Rect inner) {
   var cols = _tracks(e.columns, inner.left, inner.right, e.gutter);
   var rows = _tracks(e.rows, inner.top, inner.bottom, e.rowGutter);
   return [
@@ -268,71 +300,51 @@ List<double> tracksMoved(
 
 // ---- Free -----------------------------------------------------------------
 
+/// freeCellRect is Free cell [c]'s own rectangle in [e] laid out in [box],
+/// before its turn: its share of the box less the margin.
+Rect freeCellRect(LayoutElement e, Rect box, LayoutCell c) =>
+    _freeRect(layoutInner(e, box), c);
+
+Rect _freeRect(Rect inner, LayoutCell c) => Rect.fromLTWH(
+    inner.left + c.x * inner.width,
+    inner.top + c.y * inner.height,
+    c.width * inner.width,
+    c.height * inner.height);
+
 List<LayoutPlace> _free(LayoutElement e, Rect inner) => [
       for (var c in e.cells)
         () {
-          var r = Rect.fromLTWH(
-              inner.left + c.x * inner.width,
-              inner.top + c.y * inner.height,
-              c.width * inner.width,
-              c.height * inner.height);
+          var r = _freeRect(inner, c);
           var radius = e.styleOf(c).borderRadius;
           var (path, points) = _shape(c.shape, r, radius);
           if (c.turn != 0) {
-            var m = _turnAbout(r.center, c.turn);
-            path = path.transform(m);
-            points = [for (var p in points) _apply(m, p)];
+            // Turned about its own middle, as a box is (BoxFrame).
+            var turn = BoxFrame(c.turn, 0, 0);
+            path = turn.placePath(path, r.center);
+            points = [for (var p in points) turn.place(p, r.center)];
           }
           return LayoutPlace(c, path,
               points.isEmpty ? path.getBounds() : _boundsOf(points), points);
         }(),
     ];
 
+/// _shape is a Free cell's outline in [r], and its corners where it has
+/// them: each straight-sided one is the shape's own (outline_points.dart),
+/// with a cell's own numbers where they differ from a Shape's: its hexagon
+/// has a corner at each side, not at the top, and its star is cut less deep.
 (Path, List<Offset>) _shape(LayoutCellShape s, Rect r, double radius) {
-  List<Offset> regular(int n, double start, {double inner = 1}) => [
-        for (var i = 0; i < n; i++)
-          () {
-            var a = start + i * 2 * math.pi / n;
-            var k = inner != 1 && i.isOdd ? inner : 1.0;
-            return Offset(r.center.dx + math.cos(a) * r.width / 2 * k,
-                r.center.dy + math.sin(a) * r.height / 2 * k);
-          }(),
-      ];
+  var c = r.center, rx = r.width / 2, ry = r.height / 2;
   List<Offset> points = switch (s) {
     LayoutCellShape.rectangle => _rectPoly(r),
     LayoutCellShape.ellipse => const [],
-    LayoutCellShape.triangle => [
-        Offset(r.center.dx, r.top),
-        r.bottomRight,
-        r.bottomLeft
-      ],
-    LayoutCellShape.diamond => [
-        Offset(r.center.dx, r.top),
-        Offset(r.right, r.center.dy),
-        Offset(r.center.dx, r.bottom),
-        Offset(r.left, r.center.dy)
-      ],
-    LayoutCellShape.hexagon => regular(6, 0),
-    LayoutCellShape.star => regular(10, -math.pi / 2, inner: 0.45),
+    LayoutCellShape.triangle => trianglePoints(r),
+    LayoutCellShape.diamond => diamondPoints(r),
+    LayoutCellShape.hexagon => regularPoints(c, rx, ry, 6, start: 0),
+    LayoutCellShape.star => regularPoints(c, rx, ry, 10, inner: 0.45),
   };
   if (points.isEmpty) return (Path()..addOval(r), points);
   return (roundedPolygon(points, radius), points);
 }
-
-Float64List _turnAbout(Offset c, double degrees) {
-  var a = degrees * math.pi / 180;
-  var cs = math.cos(a), sn = math.sin(a);
-  // Column-major 4x4: translate(c) * rotate(a) * translate(-c).
-  return Float64List.fromList([
-    cs, sn, 0, 0, //
-    -sn, cs, 0, 0,
-    0, 0, 1, 0,
-    c.dx - cs * c.dx + sn * c.dy, c.dy - sn * c.dx - cs * c.dy, 0, 1,
-  ]);
-}
-
-Offset _apply(Float64List m, Offset p) => Offset(
-    m[0] * p.dx + m[4] * p.dy + m[12], m[1] * p.dx + m[5] * p.dy + m[13]);
 
 // ---- Shared ---------------------------------------------------------------
 
@@ -373,4 +385,33 @@ LayoutPlace? layoutCellAt(LayoutElement e, Rect box, Offset point) {
     if (p.path.contains(point)) return p;
   }
   return null;
+}
+
+/// LayoutFrame is a layout on the page on one frame: its geometry in its box
+/// ([geometry]) laid out by [place], the ElementPlace the painter lays the
+/// layout out by on that frame (turned, slanted, and moved, turned and sized
+/// by its motion). Whatever asks where a cell, a cut or a track is on the
+/// page asks it, there ([toPage], [pathOnPage]) and back ([fromPage]), so it
+/// is answered where the cell is drawn.
+class LayoutFrame {
+  final LayoutElement layout;
+  final ElementPlace place;
+  const LayoutFrame(this.layout, this.place);
+
+  LayoutGeometry get geometry => layoutGeometry(layout, layout.bounds);
+
+  Offset toPage(Offset p) => place.place(p);
+  Offset fromPage(Offset p) => place.unplace(p);
+  Path pathOnPage(Path path) => place.placePath(path);
+
+  /// cellAt is the cell under page point [p], the last drawn first, or
+  /// null where it is a gutter or off the layout.
+  LayoutPlace? cellAt(Offset p) =>
+      layoutCellAt(layout, layout.bounds, fromPage(p));
+
+  /// freeCellBox is Free cell [c] as drawn on the page: its own box, before
+  /// its turn, about where its middle lands, and the turn and slant it is
+  /// drawn with. Its selection box and handles are this.
+  (Rect, BoxFrame) freeCellBox(LayoutCell c) =>
+      place.boxOnPage(freeCellRect(layout, layout.bounds, c), turn: c.turn);
 }

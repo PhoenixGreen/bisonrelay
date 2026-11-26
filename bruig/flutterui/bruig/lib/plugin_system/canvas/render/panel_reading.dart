@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
-import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/layout_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show settledFrameOf;
@@ -17,8 +16,7 @@ import 'package:flutter/painting.dart';
 // seen whole, then each cell of its Layouts in their reading order
 // (LayoutElement.reading), zoomed to fill the view with the rest of the
 // page dimmed. The in-app reader (panel_reader.dart) and the EPUB's panel
-// pages (document_export.dart) both draw through paintPanelView. Ken,
-// 2026-11-18.
+// pages (document_export.dart) both draw through paintPanelView.
 
 /// PanelStep is one stop: page [scene] seen whole ([cell] null), or one
 /// cell of Layout [layout], [focus] its box on the page and [outline] its
@@ -38,7 +36,10 @@ class PanelStep {
 /// its Layouts' cells as they are read -- the Layouts top to bottom, left
 /// to right, not one docked in another's cell (a diagram drawn as one), nor
 /// a hidden one, nor a cell that is most of the page (the page whole
-/// already shows it).
+/// already shows it). Each cell's outline is where it is drawn on the frame
+/// the page is read at, everything arrived (settledFrameOf, as
+/// paintPanelView draws the page), its layout turned, slanted and moved as
+/// its motion has it there.
 List<PanelStep> panelSteps(CanvasDocument doc) {
   var size = doc.size.size;
   var page = Offset.zero & size;
@@ -50,12 +51,16 @@ List<PanelStep> panelSteps(CanvasDocument doc) {
         if (e is LayoutElement && e.visible && e.base.dock.isEmpty) e
     ]..sort((a, b) =>
         (a.y - b.y).abs() > 40 ? a.y.compareTo(b.y) : a.x.compareTo(b.x));
+    if (layouts.isEmpty) continue;
+    var scene = doc.goToScene(i);
+    var settled = settledFrameOf(scene);
     for (var l in layouts) {
-      var places = {for (var p in layoutPlaces(l, l.bounds)) p.cell.id: p};
+      var frame = layoutFrameAt(l, settled, scene);
+      var places = {for (var p in frame.geometry.places) p.cell.id: p};
       for (var c in l.reading) {
         var place = places[c.id];
         if (place == null) continue;
-        var outline = onPageOf(l, place.path);
+        var outline = frame.pathOnPage(place.path);
         var focus = outline.getBounds().intersect(page);
         if (focus.width < 8 || focus.height < 8) continue;
         if (focus.width * focus.height >= 0.85 * size.width * size.height) {

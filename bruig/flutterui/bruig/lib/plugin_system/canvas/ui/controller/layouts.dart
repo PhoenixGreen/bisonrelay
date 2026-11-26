@@ -111,91 +111,36 @@ extension CanvasLayouts on CanvasController {
     pickLayoutCell(e.id, fresh);
   }
 
-  /// removeLayoutCell takes cell [cell] out of [e]: in Panels, the cut
-  /// beside it goes and its neighbour fills the room (what was docked in
-  /// either is docked in the one left); elsewhere the cell goes, and what
-  /// was docked in it is let go where it is.
+  /// removeLayoutCell takes cell [cell] out of [e] (LayoutElement
+  /// .removeCell): in Panels, the cut beside it goes and what was on its
+  /// other side fills the room, and what was docked in it is docked in the
+  /// cell that met it; elsewhere the cell goes, and what was docked in it is
+  /// let go where it is (layoutsSynced, as for any cell that goes).
   void removeLayoutCell(LayoutElement e, String cell) {
-    var next = _document;
-    List<String> gone;
-    String? into;
-    if (e.mode == LayoutMode.panels) {
-      var path = e.root.pathTo(cell);
-      if (path == null || path.isEmpty) return;
-      // The sibling's first cell stays: the cut beside [cell] goes, so the
-      // cell it is merged with keeps its name and style.
-      var parent = e.root.nodeAt(path.sublist(0, path.length - 1))!;
-      var keep = (path.last ? parent.a! : parent.b!).cells.first;
-      LayoutElement merged;
-      (merged, gone) = e.merge(keep);
-      into = keep;
-      next = next.withElement(merged);
-    } else {
-      gone = [cell];
-      next = next.withElement(e.copyWith(cells: [
-        for (var c in e.cells)
-          if (c.id != cell) c
-      ]));
+    var (next, into) = e.removeCell(cell);
+    if (identical(next, e)) return;
+    var doc = _document.withElement(next);
+    if (into != null) {
+      for (var el in _document.elements) {
+        if (el.base.docked == LayoutDock(e.id, cell)) {
+          doc = doc
+              .withElement(el.withBase(dock: LayoutDock(e.id, into).toJson()));
+        }
+      }
     }
-    for (var el in _document.elements) {
-      var d = dockOf(el.base.dock);
-      if (d == null || d.$1 != e.id || !gone.contains(d.$2)) continue;
-      next = next
-          .withElement(el.withBase(dock: into == null ? "" : "${e.id}:$into"));
-    }
-    apply(next);
+    apply(doc);
     pickLayoutCell(e.id, into);
   }
 
-  /// addLayoutCell puts a new cell in [e]: a Free shape in the middle, or a
-  /// Grid cell in the first slot no cell covers (a row added if none is
-  /// free). Picks it.
+  /// addLayoutCell puts a new cell in [e] (LayoutElement.addCell): a Free
+  /// shape in the middle, or a Grid cell in the first slot no cell covers.
+  /// Picks it.
   void addLayoutCell(LayoutElement e,
       {LayoutCellShape shape = LayoutCellShape.rectangle}) {
-    var id = newElementId();
-    LayoutElement next;
-    if (e.mode == LayoutMode.grid) {
-      bool covered(int c, int r) => e.cells.any((x) =>
-          c >= x.col &&
-          c < x.col + x.colSpan &&
-          r >= x.row &&
-          r < x.row + x.rowSpan);
-      (int, int)? free;
-      for (var r = 0; r < e.rows.length && free == null; r++) {
-        for (var c = 0; c < e.columns.length && free == null; c++) {
-          if (!covered(c, r)) free = (c, r);
-        }
-      }
-      var rows = e.rows;
-      if (free == null) {
-        if (rows.length >= LayoutElement.maxTracks) return;
-        rows = [...rows, 1];
-        free = (0, rows.length - 1);
-      }
-      next = e.copyWith(rows: rows, cells: [
-        ...e.cells,
-        LayoutCell(
-            id: id,
-            name: "Card ${e.cells.length + 1}",
-            col: free.$1,
-            row: free.$2),
-      ]);
-    } else {
-      next = e.copyWith(cells: [
-        ...e.cells,
-        LayoutCell(
-            id: id,
-            name: "Frame ${e.cells.length + 1}",
-            x: 0.35,
-            y: 0.35,
-            width: 0.3,
-            height: 0.3,
-            shape: shape),
-      ]);
+    if (e.addCell(shape: shape) case (var next, var id)?) {
+      setLayout(next);
+      pickLayoutCell(e.id, id);
     }
-    if (next.cells.length > LayoutElement.maxCells) return;
-    setLayout(next);
-    pickLayoutCell(e.id, id);
   }
 
   /// setLayoutTracks gives a Grid [columns] and [rows]: cells past the end
@@ -274,7 +219,7 @@ extension CanvasLayouts on CanvasController {
       replaceElement(e.withBase(dock: "", dockOut: false));
       return;
     }
-    var next = e.withBase(dock: "$layoutId:$cell");
+    var next = e.withBase(dock: LayoutDock(layoutId, cell).toJson());
     var layout = _document.elementById(layoutId);
     if (fit && layout is LayoutElement) {
       var place = layoutPlaceOf(layout, layout.bounds, cell);
@@ -287,16 +232,15 @@ extension CanvasLayouts on CanvasController {
     replaceElement(next);
   }
 
-  /// dockableCells is every cell an element on this page can be docked in:
-  /// (layout id, cell id, what to call it).
-  List<(String, String, String)> dockableCells(CanvasElement e) => [
+  /// dockableCells is every cell an element on this page can be docked in,
+  /// and what to call it.
+  List<({LayoutDock dock, String name})> dockableCells(CanvasElement e) => [
         for (var l in _document.elements)
           if (l is LayoutElement && l.id != e.id)
             for (var (i, c) in l.shownCells.indexed)
               (
-                l.id,
-                c.id,
-                "${l.name} · ${c.name.isEmpty ? "Cell ${i + 1}" : c.name}"
+                dock: LayoutDock(l.id, c.id),
+                name: "${l.name} · ${c.name.isEmpty ? "Cell ${i + 1}" : c.name}"
               )
       ];
 }

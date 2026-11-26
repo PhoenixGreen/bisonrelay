@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
@@ -10,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/outline_points.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/render/layout_painter.dart';
@@ -70,14 +72,14 @@ void main() {
           reason: "the edge runs at a slant, not straight down");
     });
 
-    test("a cell is split, and merged back", () {
+    test("a cell is split, and the new half removed again", () {
       var e = _two();
       var (cut, fresh) = e.split("b", vertical: false);
       expect(cut.root.cells, ["a", "b", fresh]);
       expect(layoutPlaces(cut, _bounds), hasLength(3));
-      var (merged, gone) = cut.merge("b");
-      expect(gone, [fresh]);
-      expect(merged.root.cells, ["a", "b"]);
+      var (back, into) = cut.removeCell(fresh);
+      expect(into, "b");
+      expect(back.root.cells, ["a", "b"]);
     });
 
     test("a cut's line can be grabbed, and moved to a point", () {
@@ -140,6 +142,51 @@ void main() {
       expect(p.first.path.contains(p.first.bounds.topLeft + const Offset(2, 2)),
           isFalse,
           reason: "an ellipse misses its corners");
+    });
+
+    // A cell's straight-sided outlines are the shapes' own (outline_points
+    // .dart); its hexagon and star keep their own numbers, so a saved
+    // layout looks as it did: a corner at each side, and a shallower cut.
+    test("a cell's outline is the shape's, with a cell's own numbers", () {
+      const r = Rect.fromLTWH(100, 100, 400, 300);
+      List<Offset> cornersOf(LayoutCellShape shape) => layoutPlaces(
+              LayoutElement(_box,
+                  mode: LayoutMode.free,
+                  margin: 0,
+                  cellStyle: const BoxSpec(),
+                  cells: [
+                    LayoutCell(
+                        id: "c",
+                        x: 0,
+                        y: 0,
+                        width: 0.4,
+                        height: 300 / 1400,
+                        shape: shape)
+                  ]),
+              _bounds)
+          .single
+          .points;
+      void same(List<Offset> a, List<Offset> b) {
+        expect(a.length, b.length);
+        for (var (i, p) in a.indexed) {
+          expect((p - b[i]).distance, lessThan(1e-9), reason: "corner $i");
+        }
+      }
+
+      same(cornersOf(LayoutCellShape.triangle), trianglePoints(r));
+      same(cornersOf(LayoutCellShape.diamond), diamondPoints(r));
+      var hexagon = cornersOf(LayoutCellShape.hexagon);
+      same(hexagon, regularPoints(r.center, 200, 150, 6, start: 0));
+      expect((hexagon.first - r.centerRight).distance, lessThan(1e-9),
+          reason: "a cell's hexagon has a corner at its side");
+      var star = cornersOf(LayoutCellShape.star);
+      same(star, regularPoints(r.center, 200, 150, 10, inner: 0.45));
+      expect(
+          (star[1] - r.center).distance,
+          greaterThan(
+              (regularPoints(r.center, 200, 150, 10, inner: 0.42)[1] - r.center)
+                  .distance),
+          reason: "cut less deep than a Shape's star");
     });
   });
 
@@ -212,6 +259,59 @@ void main() {
       expect(layoutsSynced(was, both).elementById("s")!.x, 300);
     });
 
+    test("a dock is saved as it always was, and read back", () {
+      var docked = ShapeElement(const ElementBase(id: "s", dock: "L:a"));
+      expect(docked.base.docked, const LayoutDock("L", "a"));
+      expect(docked.base.toJson()["dock"], "L:a");
+      expect(ElementBase.fromJson(docked.base.toJson(), "Shape").docked,
+          const LayoutDock("L", "a"));
+      expect(const LayoutDock("L", "a").toJson(), "L:a");
+      for (var none in ["", "L:", ":a", "La"]) {
+        expect(LayoutDock.read(none), isNull, reason: "'$none' names no cell");
+      }
+      expect(const ElementBase(id: "t").docked, isNull);
+    });
+
+    test("only what is docked in a cell the layout has moves with it", () {
+      var layout = _two();
+      var stray = ShapeElement(const ElementBase(id: "s", x: 10, dock: "L:x"));
+      var was = const CanvasDocument().addElement(layout).addElement(stray);
+      var now = layoutsSynced(was, was.withElement(layout.withBase(x: 300)));
+      expect(now.elementById("s")!.x, 10, reason: "no cell x in L");
+    });
+
+    // A preset makes every cell afresh, with new ids: what was docked in
+    // the old ones is let go where it is, as the tile says, not left docked
+    // in nothing and still carried about with the layout.
+    testWidgets("choosing a preset lets go of what was docked in it",
+        (tester) async {
+      var doc = const CanvasDocument().addElement(_two()).addElement(
+          ShapeElement(
+              const ElementBase(id: "s", x: 150, y: 160, dock: "L:a")));
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.selectOnly("L");
+      setTestScreen(tester, const Size(1400, 1400));
+      await tester.pumpWidget(canvasApp(designSidebar(c)));
+      await tester.pumpAndSettle();
+      var tile = find.byKey(const ValueKey("layoutPreset-sixPanels"));
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      var s = c.document.elementById("s")!;
+      expect(s.base.dock, "", reason: "its cell has gone");
+      expect(s.bounds.topLeft, const Offset(150, 160), reason: "where it was");
+      var l = c.document.elementById("L") as LayoutElement;
+      c.setLayout(l.withBase(x: 400) as LayoutElement);
+      expect(c.document.elementById("s")!.x, 150,
+          reason: "not carried with the layout");
+      c.undo();
+      c.undo();
+      expect(c.document.elementById("s")!.base.dock, "L:a",
+          reason: "undone with the preset");
+    });
+
     test("merging a cell docks what was in it in the cell left", () {
       var layout = _two();
       var c = CanvasController(const CanvasDocument()
@@ -268,6 +368,179 @@ void main() {
           await at(hidden, Offset(a.right + 40, 400)), const Color(0xFFFF0000),
           reason: "the layout hidden, all of what is docked shows");
     });
+
+    // A layout slanted, or moved by its keys, is drawn there, and what is
+    // docked in it is drawn through its cell where the cell is drawn, not
+    // where it would be upright and at rest.
+    testWidgets("a docked element is cut to its cell as the layout is drawn",
+        (tester) async {
+      Future<Color> at(CanvasDocument d, Offset p, {int frame = 0}) async {
+        var rec = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(rec), d, frame: frame);
+        var pic = rec.endRecording();
+        var img = await tester.runAsync(
+            () => pic.toImage(d.size.width.round(), d.size.height.round()));
+        var bytes = await tester.runAsync(
+            () => img!.toByteData(format: ui.ImageByteFormat.rawRgba));
+        var i = (p.dy.round() * img!.width + p.dx.round()) * 4;
+        return Color.fromARGB(bytes!.getUint8(i + 3), bytes.getUint8(i),
+            bytes.getUint8(i + 1), bytes.getUint8(i + 2));
+      }
+
+      const red = Color(0xFFFF0000);
+      // Cell a is left of 550 at rest; the red square covers it and more.
+      var layout = _two(gutter: 100).copyWith(cellStyle: const BoxSpec());
+      var square = ShapeElement(
+          const ElementBase(
+              id: "s", x: 250, y: 300, width: 550, height: 900, dock: "L:a"),
+          fill: red);
+      CanvasDocument page(LayoutElement l) => const CanvasDocument(
+              size: CanvasSize(ratio: CanvasRatio.a4, width: 1240), frames: 48)
+          .addElement(l)
+          .addElement(square);
+
+      // Slanted 25 degrees about its middle (600, 800): the cut leans, so
+      // the cell's right edge is left of 550 above the middle and right of
+      // it below.
+      var slanted = page(layout.withBase(skewX: 25) as LayoutElement);
+      var lean = math.tan(25 * math.pi / 180);
+      double edgeAt(double y) => 550 + lean * (y - 800);
+      expect(await at(slanted, Offset(edgeAt(1100) - 20, 1100)), red,
+          reason: "inside the cell as drawn, right of where it rests");
+      expect(await at(slanted, Offset(edgeAt(400) + 40, 400)), isNot(red),
+          reason: "in the gutter as drawn, inside where the cell rests");
+
+      // Moved 200 to the left by its keys on frame 24: cell a is left of
+      // 350 there, and the gutter after it.
+      var moved = page(layout.withBase(
+          track: ElementTrack(const [
+        Keyframe(frame: 0),
+        Keyframe(frame: 24, dx: -200),
+      ])) as LayoutElement);
+      expect(await at(moved, const Offset(400, 700), frame: 24), isNot(red),
+          reason: "the cell has gone left of it: in the gutter there");
+      expect(await at(moved, const Offset(300, 700), frame: 24), red,
+          reason: "inside the moved cell");
+    });
+  });
+
+  // Removing a cell takes that cell out and no other: every other cell
+  // stays with its id, and with what is docked in it.
+  group("removing a cell", () {
+    LayoutNode down(LayoutNode a, LayoutNode b) =>
+        LayoutNode.cut(vertical: true, a: a, b: b);
+    LayoutNode across(LayoutNode a, LayoutNode b) =>
+        LayoutNode.cut(vertical: false, at: 0.4, a: a, b: b);
+    LayoutNode leaf(String id) => LayoutNode.leaf(id);
+    LayoutElement panels(LayoutNode root) => LayoutElement(_box,
+        root: root,
+        cells: [for (var id in root.cells) LayoutCell(id: id, name: id)],
+        order: root.cells.reversed.toList());
+
+    /// removed is [l] in a document with a shape docked in each of its
+    /// cells ("s" and the cell's id), after [cell] is removed through the
+    /// controller as the panel and the Delete key do.
+    CanvasDocument removed(LayoutElement l, String cell) {
+      var doc = const CanvasDocument().addElement(l);
+      for (var c in l.shownCells) {
+        doc = doc.addElement(ShapeElement(ElementBase(
+            id: "s${c.id}", dock: LayoutDock(l.id, c.id).toJson())));
+      }
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.removeLayoutCell(l, cell);
+      return c.document;
+    }
+
+    /// holds checks that only [cell] went from [l], and that what was docked
+    /// in it went into [into] (let go where that is null).
+    void holds(LayoutElement l, String cell, String? into) {
+      var doc = removed(l, cell);
+      var next = doc.elementById("L") as LayoutElement;
+      var rest = [
+        for (var c in l.shownCells)
+          if (c.id != cell) c.id
+      ];
+      expect([for (var c in next.shownCells) c.id], rest,
+          reason: "$cell is gone, and only it");
+      for (var id in rest) {
+        expect(next.cellById(id)?.name, id, reason: "$id kept as it was");
+        expect(doc.elementById("s$id")!.base.dock, "L:$id",
+            reason: "what is docked in $id stays there");
+      }
+      expect(next.order, [
+        for (var o in l.order)
+          if (o != cell) o
+      ]);
+      expect(
+          doc.elementById("s$cell")!.base.dock, into == null ? "" : "L:$into",
+          reason: "what was docked in $cell");
+      if (l.mode == LayoutMode.panels) {
+        // What was beside it fills its room: the cells still cover the box.
+        var cover = layoutPlaces(next, _bounds)
+            .map((p) => p.bounds)
+            .reduce((a, b) => a.expandToInclude(b));
+        expect(cover, _bounds);
+      }
+    }
+
+    // a over b, b over c.
+    var tiers = panels(across(leaf("a"), across(leaf("b"), leaf("c"))));
+    for (var (cell, into) in [("a", "b"), ("b", "c"), ("c", "b")]) {
+      test("of three tiers, $cell", () => holds(tiers, cell, into));
+    }
+
+    // a beside b over c beside d: cut three deep.
+    var deep = panels(down(leaf("a"),
+        across(leaf("b"), down(leaf("c"), across(leaf("d"), leaf("e"))))));
+    for (var (cell, into) in [
+      ("a", "b"),
+      ("b", "c"),
+      ("c", "d"),
+      ("d", "e"),
+      ("e", "d"),
+    ]) {
+      test("of a tree cut three deep, $cell", () => holds(deep, cell, into));
+    }
+    // Into the cell that met it across the cut: the last of what was before
+    // it.
+    test("of a tree cut three deep, before a cut of its own", () {
+      var l = panels(down(across(leaf("a"), leaf("b")), leaf("c")));
+      holds(l, "c", "b");
+    });
+
+    test("of the last two", () {
+      holds(panels(down(leaf("a"), leaf("b"))), "a", "b");
+      holds(panels(down(leaf("a"), leaf("b"))), "b", "a");
+    });
+
+    test("not the only one", () {
+      var l = panels(leaf("a"));
+      expect(identical(l.removeCell("a").$1, l), isTrue);
+      expect(identical(l.removeCell("x").$1, l), isTrue);
+    });
+
+    test("of a Grid or a Free layout: it goes, and what was in it is let go",
+        () {
+      for (var mode in [LayoutMode.grid, LayoutMode.free]) {
+        var l = LayoutElement(_box, mode: mode, columns: const [
+          1,
+          1
+        ], rows: const [
+          1,
+          1
+        ], cells: const [
+          LayoutCell(id: "a", name: "a"),
+          LayoutCell(id: "b", name: "b", col: 1, x: 0.5),
+          LayoutCell(id: "c", name: "c", row: 1, y: 0.5),
+        ], order: const [
+          "c",
+          "b",
+          "a"
+        ]);
+        holds(l, "b", null);
+      }
+    });
   });
 
   // Ken, 2026-11-18: "customise panel order so that if you build a comic
@@ -306,8 +579,8 @@ void main() {
       expect(l.numberOf("b"), isNull);
       var (cut, fresh) = l.split("c", vertical: false);
       expect(ids(cut), ["c", fresh, "a"], reason: "straight after its half");
-      var (merged, _) = cut.merge("c");
-      expect(merged.order, ["c", "a"]);
+      var (back, _) = cut.removeCell(fresh);
+      expect(back.order, ["c", "a"]);
     });
 
     test("kept in the file, and junk in it read safely", () {
@@ -630,6 +903,86 @@ void main() {
       var moved =
           (c.document.elementById("L") as LayoutElement).cellById(first.id)!;
       expect(moved.x, closeTo(first.x + 100 / 1000, 0.005));
+    });
+
+    // A slanted layout, or one its keys have moved, is drawn there; its
+    // lines, knobs, picked cell and a Free cell's box are shown there, and
+    // pressed and dragged there.
+    testWidgets(
+        "a slanted layout's lines and picked cell are where it is drawn",
+        (tester) async {
+      var l = _two().withBase(skewX: 20) as LayoutElement;
+      var (c, _) = await stage(tester, page(l));
+      c.selectOnly("L");
+      c.pickLayoutCell("L", "b");
+      await tester.pumpAndSettle();
+      var marks = painted(tester).inputs.elements.layout!;
+      var slant = l.boxFrame;
+      Offset drawn(Offset p) => slant.place(p, l.bounds.center);
+      var line = layoutCutLines(l, _bounds).single;
+      var (from, to) = marks.lines.single;
+      expect((from - drawn(line.from)).distance, lessThan(1e-6));
+      expect((to - drawn(line.to)).distance, lessThan(1e-6));
+      var cell = layoutPlaceOf(l, _bounds, "b")!;
+      var picked = marks.picked.value!.getBounds();
+      var want = slant.placePath(cell.path, l.bounds.center).getBounds();
+      expect((picked.topLeft - want.topLeft).distance, lessThan(1e-6));
+      expect((picked.bottomRight - want.bottomRight).distance, lessThan(1e-6));
+    });
+
+    testWidgets("a cut dragged on a slanted layout goes under the pointer",
+        (tester) async {
+      var l = _two().withBase(skewX: 20) as LayoutElement;
+      var (c, s) = await stage(tester, page(l));
+      c.selectOnly("L");
+      await tester.pumpAndSettle();
+      // A point on the cut as drawn, well above the middle where the slant
+      // has carried it furthest from where the cut rests.
+      var slant = l.boxFrame;
+      var on = slant.place(const Offset(600, 300), l.bounds.center);
+      await tester.timedDragFrom(s.toStagePoint(on),
+          Offset(-150 * scaleOf(s), 0), const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var moved = c.document.elementById("L") as LayoutElement;
+      expect(moved.x, 100, reason: "the layout itself did not move");
+      var line = layoutCutLines(moved, _bounds).single;
+      var a = slant.place(line.from, l.bounds.center);
+      var b = slant.place(line.to, l.bounds.center);
+      var let = on - const Offset(150, 0);
+      // How far the pointer is from the cut as drawn now.
+      var ab = b - a;
+      var away =
+          ((let - a).dx * ab.dy - (let - a).dy * ab.dx).abs() / ab.distance;
+      expect(away, lessThan(2), reason: "the cut is drawn where it was let go");
+    });
+
+    testWidgets("a Free cell is moved where its layout's keys have moved it",
+        (tester) async {
+      var l = layoutFrom(_box, LayoutPreset.circles).withBase(
+              track: ElementTrack(const [Keyframe(frame: 0, dx: 400)]))
+          as LayoutElement;
+      var (c, s) = await stage(
+          tester,
+          const CanvasDocument(
+                  size: CanvasSize(ratio: CanvasRatio.a4, width: 1240),
+                  frames: 48)
+              .addElement(l));
+      c.frame = 10;
+      c.selectOnly("L");
+      var first = l.cells.first;
+      c.pickLayoutCell("L", first.id);
+      await tester.pumpAndSettle();
+      // Its middle where it is drawn: 400 right of where it rests.
+      var at = layoutPlaceOf(l, _bounds, first.id)!.bounds.center +
+          const Offset(400, 0);
+      await tester.timedDragFrom(s.toStagePoint(at),
+          Offset(100 * scaleOf(s), 0), const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var moved =
+          (c.document.elementById("L") as LayoutElement).cellById(first.id)!;
+      expect(moved.x, closeTo(first.x + 100 / 1000, 0.005));
+      expect((c.document.elementById("L") as LayoutElement).x, 100,
+          reason: "the cell moved, not the layout");
     });
   });
 

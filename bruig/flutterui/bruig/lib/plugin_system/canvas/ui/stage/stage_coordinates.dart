@@ -183,7 +183,7 @@ extension StageCoordinates on CanvasStageState {
     // A picture piece picked in a text: its own box (stage_text_pieces.dart).
     if (_onePiece case (var e, var i)?) return _pieceBounds(e, i);
     // A Free cell picked in a Layout (stage_layouts.dart).
-    if (_oneFreeCell case (var e, var c)?) return _freeCellBounds(e, c);
+    if (_oneFreeCell case (var e, var c)?) return _freeCellBox(e, c).$1;
     if (elements.length == 1) {
       var e = elements.first;
       if (e.base.motion.instances case var set? when set.count > 1) {
@@ -246,7 +246,7 @@ extension StageCoordinates on CanvasStageState {
   double get _rotationOfSelection {
     if (_onePiece case (var e, var i)?) return _pieceTurn(e, i) * math.pi / 180;
     if (_oneFreeCell case (var e, var c)?) {
-      return (e.rotation + c.turn) * math.pi / 180;
+      return _freeCellBox(e, c).$2.rotation * math.pi / 180;
     }
     if (_oneCopy case (var e, var i)?) {
       return (e.rotation + _copyPose(e, i).rotate) * math.pi / 180;
@@ -260,13 +260,19 @@ extension StageCoordinates on CanvasStageState {
         : 0;
   }
 
-  /// _skewOfSelection is the lone selection's slant in degrees, or zero.
-  Offset get _skewOfSelection => _chosen.length == 1 &&
-          _onePiece == null &&
-          _oneFreeCell == null &&
-          !_boxIsDrawn
-      ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
-      : Offset.zero;
+  /// _skewOfSelection is the lone selection's slant in degrees, or zero: a
+  /// picked Free cell's as its layout draws it.
+  Offset get _skewOfSelection {
+    if (_onePiece == null) {
+      if (_oneFreeCell case (var e, var c)?) {
+        var frame = _freeCellBox(e, c).$2;
+        return Offset(frame.skewX, frame.skewY);
+      }
+    }
+    return _chosen.length == 1 && _onePiece == null && !_boxIsDrawn
+        ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
+        : Offset.zero;
+  }
 
   /// _boxIsDrawn is whether the lone selection's box is already round it as
   /// it is drawn on the page on this frame, turned, slanted and moved: a

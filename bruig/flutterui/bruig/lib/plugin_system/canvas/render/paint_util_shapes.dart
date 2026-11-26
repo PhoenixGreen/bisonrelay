@@ -87,22 +87,15 @@ Path shapePath(ShapeKind kind, Rect rect,
       path.addOval(rect);
 
     case ShapeKind.triangle:
-      path.moveTo(c.dx, rect.top);
-      path.lineTo(rect.right, rect.bottom);
-      path.lineTo(rect.left, rect.bottom);
-      path.close();
+      path.addPolygon(trianglePoints(rect), true);
 
     case ShapeKind.diamond:
-      path.moveTo(c.dx, rect.top);
-      path.lineTo(rect.right, c.dy);
-      path.lineTo(c.dx, rect.bottom);
-      path.lineTo(rect.left, c.dy);
-      path.close();
+      path.addPolygon(diamondPoints(rect), true);
 
     case ShapeKind.pentagon:
-      _regular(path, c, rx, ry, 5);
+      path.addPolygon(regularPoints(c, rx, ry, 5), true);
     case ShapeKind.hexagon:
-      _regular(path, c, rx, ry, 6);
+      path.addPolygon(regularPoints(c, rx, ry, 6), true);
 
     case ShapeKind.star:
       return starPath(c, rx, ry, points.clamp(minStarPoints, maxStarPoints),
@@ -163,26 +156,10 @@ Path shapePath(ShapeKind kind, Rect rect,
 /// across and [ry] down, cut between the spikes to [inner] of that reach,
 /// its first spike straight up: a star shape, a burst bubble's body and a
 /// burst transition's middle.
-Path starPath(Offset centre, double rx, double ry, int points, double inner) {
-  var path = Path();
-  for (var i = 0; i < points * 2; i++) {
-    var a = -math.pi / 2 + i * math.pi / points;
-    var r = i.isEven ? 1.0 : inner;
-    var p = Offset(
-        centre.dx + math.cos(a) * rx * r, centre.dy + math.sin(a) * ry * r);
-    i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-  }
-  return path..close();
-}
-
-void _regular(Path path, Offset c, double rx, double ry, int sides) {
-  for (var i = 0; i < sides; i++) {
-    var a = -math.pi / 2 + i * 2 * math.pi / sides;
-    var p = Offset(c.dx + math.cos(a) * rx, c.dy + math.sin(a) * ry);
-    i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-  }
-  path.close();
-}
+Path starPath(Offset centre, double rx, double ry, int points, double inner) =>
+    Path()
+      ..addPolygon(
+          regularPoints(centre, rx, ry, points * 2, inner: inner), true);
 
 /// _dashPath breaks [source] into dashes of [on] followed by gaps of [off].
 Path _dashPath(Path source, double on, double off) {

@@ -975,7 +975,8 @@ void _layoutNumbers(
     out.writeln("$id shape ${p.cell.shape.name} points ${p.points.length}");
     out.writeln("$id in its box ${_rect(p.bounds)}");
     out.writeln("$id drawn ${_rect(_placedBounds(e, p.path, frame, doc))}");
-    out.writeln("$id dock outline ${_rect(onPageOf(e, p.path).getBounds())}");
+    out.writeln("$id dock outline "
+        "${_rect(layoutFrameAt(e, frame, doc).pathOnPage(p.path).getBounds())}");
   }
   for (var line in layoutCutLines(e, e.bounds)) {
     out.writeln("${e.id} cut ${line.path.map((b) => b ? "b" : "a").join()} "
@@ -1111,7 +1112,7 @@ String _numbers(CanvasDocument doc, int frame) {
     out.writeln("${e.id} drawn ${_rect(visualBoundsOf(e, doc, frame))}");
     out.writeln("${e.id} pressed ${_digest(page, (p) => hits.contains(e, p))}");
     if (e.base.dock.isNotEmpty) {
-      var clip = dockClip(e, doc.elements);
+      var clip = dockClip(e, doc.elements, (l) => l.placeAt(frame, doc));
       out.writeln("${e.id} docked ${e.base.dock}${e.base.dockOut ? " out" : ""}"
           " clip ${clip == null ? "none" : _rect(clip.getBounds())}");
     }

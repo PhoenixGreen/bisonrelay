@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
+import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/layout_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/layout_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -247,8 +248,7 @@ List<Widget> layoutSettings(
                           CanvasStepper(
                             key: const ValueKey("layoutCutGutter"),
                             label: "Its gutter",
-                            value: cut.gutter ??
-                                (cut.vertical ? e.gutter : e.rowGutter),
+                            value: cutGutter(e, cut),
                             min: 0,
                             max: 400,
                             onChanged: (v) =>
@@ -535,8 +535,8 @@ Widget _readingGroup(
 Widget? dockGroup(CanvasController controller, CanvasElement e) {
   var cells = controller.dockableCells(e);
   if (cells.isEmpty) return null;
-  var now = e.base.dock;
-  var known = cells.any((c) => "${c.$1}:${c.$2}" == now);
+  var now = e.base.docked;
+  var known = cells.any((c) => c.dock == now);
   return CanvasControlGroup(
       key: const ValueKey("dockGroup"),
       label: "In a cell",
@@ -550,14 +550,14 @@ Widget? dockGroup(CanvasController controller, CanvasElement e) {
         CanvasDropdown<String>(
           key: const ValueKey("dockCell"),
           label: "Cell",
-          value: known ? now : "",
+          value: known ? now!.toJson() : "",
           options: [
             ("", "None"),
-            for (var (l, c, name) in cells) ("$l:$c", name),
+            for (var (:dock, :name) in cells) (dock.toJson(), name),
           ],
           onChanged: (v) {
-            var d = dockOf(v);
-            controller.dockElement(e, d?.$1 ?? "", d?.$2 ?? "");
+            var d = LayoutDock.read(v);
+            controller.dockElement(e, d?.layout ?? "", d?.cell ?? "");
           },
         ),
         if (known) ...[
@@ -571,10 +571,8 @@ Widget? dockGroup(CanvasController controller, CanvasElement e) {
             key: const ValueKey("dockFit"),
             label: "Fit to the cell",
             icon: Icons.fit_screen_outlined,
-            onPressed: () {
-              var d = dockOf(now)!;
-              controller.dockElement(e, d.$1, d.$2, fit: true);
-            },
+            onPressed: () =>
+                controller.dockElement(e, now!.layout, now.cell, fit: true),
           ),
         ],
       ]);

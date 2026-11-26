@@ -286,6 +286,46 @@ void main() {
           expect((place.unplace(placed) - p).distance, lessThan(1e-6));
         }
       });
+
+      // An outline laid out by the place (placePath) lands where the canvas
+      // the painter lays out draws it, and a box laid on the page
+      // (boxOnPage) has its corners there too.
+      test("$name: an outline and a box", () {
+        var e = _line(base);
+        var place = e.placedBy(pose);
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        place.applyTo(canvas);
+        var m = canvas.getTransform();
+        recorder.endRecording().dispose();
+        Offset painted(Offset p) => Offset(m[0] * p.dx + m[4] * p.dy + m[12],
+            m[1] * p.dx + m[5] * p.dy + m[13]);
+        var corners = [
+          e.bounds.topLeft,
+          e.bounds.topRight,
+          const Offset(-30, 500),
+        ];
+        for (var (i, p) in corners.indexed) {
+          // A path of one point each, so its bounds are that point.
+          var dot = Path()
+            ..moveTo(p.dx, p.dy)
+            ..lineTo(p.dx, p.dy);
+          var at = place.placePath(dot).getBounds().topLeft;
+          expect((at - painted(p)).distance, lessThan(1e-3),
+              reason: "corner $i: drawn at ${painted(p)}, laid at $at");
+        }
+        var cell = Rect.fromLTWH(e.bounds.left + 10, e.bounds.top + 5, 50, 30);
+        for (var turn in [0.0, 25.0]) {
+          var (box, frame) = place.boxOnPage(cell, turn: turn);
+          var turned = BoxFrame(turn, 0, 0).corners(cell);
+          var laid = frame.corners(box);
+          for (var p in turned) {
+            var want = painted(p);
+            expect(laid.any((q) => (q - want).distance < 1e-3), isTrue,
+                reason: "turned $turn: $want is a corner of $laid");
+          }
+        }
+      });
     }
   });
 

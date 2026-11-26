@@ -20,7 +20,8 @@ extension StageGuides on CanvasStageState {
   /// or a table column rule's grips.
   bool _drawnOverGuide(Offset stage, Offset doc) {
     if (_onSelectionGrip(stage, doc)) return true;
-    if (_oneLayout case var layout? when _cutKnobAt(layout, doc) != null) {
+    if (_oneLayout case var layout?
+        when _cutKnobAt(_layoutFrame(layout), doc) != null) {
       return true;
     }
     if (_chartLabelAt(doc)?.resizing ?? false) return true;

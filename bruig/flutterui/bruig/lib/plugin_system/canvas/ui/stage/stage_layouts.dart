@@ -6,27 +6,20 @@ part of 'canvas_stage.dart';
 // gutter's edge to widen the gutter.
 // Double-clicked, the cell under the pointer is picked (its settings
 // show); a picked Free cell has the selection's handles, to move, size and
-// turn it. Delete takes the picked cell out (in Panels, merges it). Part of
-// CanvasStageState: its fields, lifecycle and build are in canvas_stage.dart.
+// turn it. Delete takes the picked cell out (in Panels, merges it).
+// Every mark, press and drag is on the layout as it is drawn on this frame,
+// turned, slanted and moved by its motion: its geometry in its own box laid
+// out by its place there and taken back by the same place (LayoutFrame,
+// layout_geometry.dart). Part of CanvasStageState: its fields, lifecycle and
+// build are in canvas_stage.dart.
 
 extension StageLayouts on CanvasStageState {
   LayoutElement? get _oneLayout => chosenLayout(controller);
 
-  /// _intoLayout is document point [p] in [e]'s own frame, its turn undone.
-  Offset _intoLayout(LayoutElement e, Offset p) =>
-      _turned(p, e.bounds.center, -e.rotation);
-
-  Offset _outOfLayout(LayoutElement e, Offset p) =>
-      _turned(p, e.bounds.center, e.rotation);
-
-  static Offset _turned(Offset p, Offset about, double degrees) {
-    if (degrees == 0) return p;
-    var a = degrees * math.pi / 180;
-    var d = p - about;
-    return about +
-        Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
-            d.dx * math.sin(a) + d.dy * math.cos(a));
-  }
+  /// _layoutFrame is [e] on the page on this frame, where the painter
+  /// draws it.
+  LayoutFrame _layoutFrame(LayoutElement e) =>
+      layoutFrameAt(e, controller.frame, document, live: controller.liveMotion);
 
   /// _layoutMarks is what the painter shows of the selected Layout.
   LayoutMarks? _layoutMarks() {
@@ -36,24 +29,25 @@ extension StageLayouts on CanvasStageState {
         ? chosen.first as LayoutElement
         : null;
     if (e == null || !controller.showHelpers) return null;
+    // Laid out once for the build: its cells, cuts and tracks together.
+    var frame = _layoutFrame(e);
+    var geometry = frame.geometry;
     var free = !e.locked;
+    var cuts = free ? geometry.cuts : const <LayoutCutLine>[];
     var lines = <(Offset, Offset)>[
-      if (free) ...[
-        for (var c in layoutCutLines(e, e.bounds))
-          (_outOfLayout(e, c.from), _outOfLayout(e, c.to)),
-        for (var t in layoutTrackLines(e, e.bounds))
-          (_outOfLayout(e, t.from), _outOfLayout(e, t.to)),
-      ],
+      for (var c in cuts) (frame.toPage(c.from), frame.toPage(c.to)),
+      if (free)
+        for (var t in geometry.tracks)
+          (frame.toPage(t.from), frame.toPage(t.to)),
     ];
     var knobs = <LayoutCutKnobs>[
-      for (var c
-          in free ? layoutCutLines(e, e.bounds) : const <LayoutCutLine>[])
-        if (_cutKnobs(e, c) case var k?)
+      for (var c in cuts)
+        if (_cutKnobs(frame, c) case var k?)
           (
-            turn: _outOfLayout(e, k.turn),
-            gutter: _outOfLayout(e, k.gutter),
-            edgeA: (_outOfLayout(e, k.edgeA.$1), _outOfLayout(e, k.edgeA.$2)),
-            edgeB: (_outOfLayout(e, k.edgeB.$1), _outOfLayout(e, k.edgeB.$2)),
+            turn: frame.toPage(k.turn),
+            gutter: frame.toPage(k.gutter),
+            edgeA: (frame.toPage(k.edgeA.$1), frame.toPage(k.edgeA.$2)),
+            edgeB: (frame.toPage(k.edgeB.$1), frame.toPage(k.edgeB.$2)),
           ),
     ];
     // Reading numbers, at each cell's middle: the clicked ones while the
@@ -61,9 +55,9 @@ extension StageLayouts on CanvasStageState {
     var ordering = controller.orderingLayout == e.id;
     var clicked = controller.orderClicked;
     var badges = <LayoutBadge>[
-      for (var p in layoutPlaces(e, e.bounds))
+      for (var p in geometry.places)
         (
-          at: _outOfLayout(e, _middleOf(p)),
+          at: frame.toPage(_middleOf(p)),
           number: ordering
               ? (clicked.contains(p.cell.id)
                   ? clicked.indexOf(p.cell.id) + 1
@@ -76,11 +70,7 @@ extension StageLayouts on CanvasStageState {
     var id = controller.layoutCell(e.id);
     if (id != null) {
       var place = layoutPlaceOf(e, e.bounds, id);
-      if (place != null) {
-        picked = e.rotation == 0
-            ? place.path
-            : place.path.transform(_turnMatrix(e.bounds.center, e.rotation));
-      }
+      if (place != null) picked = frame.pathOnPage(place.path);
     }
     return (
       lines: EqualList(lines),
@@ -102,28 +92,32 @@ extension StageLayouts on CanvasStageState {
     return sum / p.points.length.toDouble();
   }
 
-  /// _cutKnobs is where [line]'s knobs are in [e]'s own frame: the turn
-  /// knob near its end, the gutter knob a quarter along on the gutter's
+  /// _cutKnobs is where [line]'s knobs are in its layout's own box: the
+  /// turn knob near its end, the gutter knob a quarter along on the gutter's
   /// edge -- kept off the line, where a thin gutter would hide it -- and
-  /// the gutter's edges a short way either side of it.
+  /// the gutter's edges a short way either side of it. Their distances are
+  /// a size on screen, so they are taken through the size [frame] draws the
+  /// layout at.
   ({
     Offset turn,
     Offset gutter,
     (Offset, Offset) edgeA,
     (Offset, Offset) edgeB
-  })? _cutKnobs(LayoutElement e, LayoutCutLine line) {
+  })? _cutKnobs(LayoutFrame frame, LayoutCutLine line) {
+    var e = frame.layout;
     var node = e.root.nodeAt(line.path);
     if (node == null || node.isLeaf) return null;
     var along = line.to - line.from;
     var length = along.distance;
     if (length < 1e-6) return null;
     var dir = along / length, normal = Offset(-dir.dy, dir.dx);
-    var half = _cutGutterOf(e, node) / 2;
+    var half = cutGutter(e, node) / 2;
     var at = Offset.lerp(line.from, line.to, 0.25)!;
-    var reach = 18 / _scale;
+    var scale = _scale * frame.place.stretch;
+    var reach = 18 / scale;
     return (
       turn: Offset.lerp(line.from, line.to, 0.88)!,
-      gutter: at + normal * math.max(half, 9 / _scale),
+      gutter: at + normal * math.max(half, 9 / scale),
       edgeA: (
         at + normal * half - dir * reach,
         at + normal * half + dir * reach
@@ -135,41 +129,22 @@ extension StageLayouts on CanvasStageState {
     );
   }
 
-  /// _cutKnobAt is the cut of [e] whose knob is at document point [doc],
-  /// and the drag that knob begins, or null.
-  (LayoutCutLine, _DragMode)? _cutKnobAt(LayoutElement e, Offset doc) {
-    var local = _intoLayout(e, doc);
-    for (var line in layoutCutLines(e, e.bounds)) {
-      var k = _cutKnobs(e, line);
+  /// _cutKnobAt is the cut of [frame]'s layout whose knob is drawn at
+  /// document point [doc], and the drag that knob begins, or null.
+  (LayoutCutLine, _DragMode)? _cutKnobAt(LayoutFrame frame, Offset doc) {
+    for (var line in frame.geometry.cuts) {
+      var k = _cutKnobs(frame, line);
       if (k == null) continue;
       for (var (at, mode) in [
         (k.turn, _DragMode.layoutCutTurn),
         (k.gutter, _DragMode.layoutCutGutter),
       ]) {
-        if ((local - at).distance <= 8 / _scale) return (line, mode);
+        if ((doc - frame.toPage(at)).distance <= 8 / _scale) {
+          return (line, mode);
+        }
       }
     }
     return null;
-  }
-
-  static double _cutGutterOf(LayoutElement e, LayoutNode n) =>
-      n.gutter ?? (n.vertical ? e.gutter : e.rowGutter);
-
-  /// _cutPivot is the point a cut turns about, in its layout's frame: where
-  /// it crosses its box's middle, which its place (at) names.
-  static Offset _cutPivot(LayoutNode n, Rect box) => n.vertical
-      ? Offset(box.left + n.at * box.width, box.center.dy)
-      : Offset(box.center.dx, box.top + n.at * box.height);
-
-  static Float64List _turnMatrix(Offset c, double degrees) {
-    var a = degrees * math.pi / 180;
-    var cs = math.cos(a), sn = math.sin(a);
-    return Float64List.fromList([
-      cs, sn, 0, 0, //
-      -sn, cs, 0, 0,
-      0, 0, 1, 0,
-      c.dx - cs * c.dx + sn * c.dy, c.dy - sn * c.dx - cs * c.dy, 0, 1,
-    ]);
   }
 
   /// _oneFreeCell is the selected Free layout and its picked cell, which has
@@ -182,18 +157,10 @@ extension StageLayouts on CanvasStageState {
     return cell == null ? null : (e, cell);
   }
 
-  /// _freeCellBounds is a Free cell's own rectangle on the page, upright:
-  /// its middle turned with the layout, its own turn left to the frame.
-  Rect _freeCellBounds(LayoutElement e, LayoutCell c) {
-    var inner = layoutInner(e, e.bounds);
-    var r = Rect.fromLTWH(
-        inner.left + c.x * inner.width,
-        inner.top + c.y * inner.height,
-        c.width * inner.width,
-        c.height * inner.height);
-    return Rect.fromCenter(
-        center: _outOfLayout(e, r.center), width: r.width, height: r.height);
-  }
+  /// _freeCellBox is a Free cell's own box on the page and the turn and
+  /// slant it is drawn with (LayoutFrame.freeCellBox): its selection box.
+  (Rect, BoxFrame) _freeCellBox(LayoutElement e, LayoutCell c) =>
+      _layoutFrame(e).freeCellBox(c);
 
   static double _toSegment(Offset p, Offset a, Offset b) {
     var ab = b - a;
@@ -212,8 +179,8 @@ extension StageLayouts on CanvasStageState {
       var l = controller.document.elementById(id);
       if (l is LayoutElement &&
           l.visible &&
-          l.bounds.contains(_intoLayout(l, doc))) {
-        var place = layoutCellAt(l, l.bounds, _intoLayout(l, doc));
+          l.bounds.contains(_layoutFrame(l).fromPage(doc))) {
+        var place = _layoutFrame(l).cellAt(doc);
         if (place != null) controller.clickReadingOrder(place.cell.id);
         _mode = _DragMode.none;
         return true;
@@ -223,7 +190,10 @@ extension StageLayouts on CanvasStageState {
     var e = _oneLayout;
     if (e == null) return false;
     // A picked Free cell: its handles size and turn it, inside moves it.
+    // Its middle, and where the pointer is, are taken in the layout's own
+    // box, where a cell is placed and turned.
     if (_oneFreeCell case (var l, var c)?) {
+      var r = freeCellRect(l, l.bounds, c);
       var handle = _hitHandle(stage);
       if (handle != null) {
         _beginLayoutDrag(
@@ -231,35 +201,39 @@ extension StageLayouts on CanvasStageState {
             handle == StageHandle.rotate
                 ? _DragMode.layoutCellTurn
                 : _DragMode.layoutCellSize);
-        _layoutMiddle = _freeCellBounds(l, c).center;
+        _layoutMiddle = r.center;
         return true;
       }
-      var box = _freeCellBounds(l, c);
-      var local = BoxFrame(l.rotation + c.turn, 0, 0).invert(doc - box.center);
-      if (local.dx.abs() <= box.width / 2 && local.dy.abs() <= box.height / 2) {
+      var local = BoxFrame(c.turn, 0, 0)
+              .unplace(_layoutFrame(l).fromPage(doc), r.center) -
+          r.center;
+      if (local.dx.abs() <= r.width / 2 && local.dy.abs() <= r.height / 2) {
         _beginLayoutDrag(l, _DragMode.layoutCellMove);
         return true;
       }
     }
     // The layout's own handles first: a cut half way meets the middle one.
     if (_hitHandle(stage) != null) return false;
-    var local = _intoLayout(e, doc);
+    var frame = _layoutFrame(e);
     var reach = 10 / _scale;
     // A cut's knobs before its line, as they sit on or beside it.
-    if (_cutKnobAt(e, doc) case (var line, var mode)?) {
+    if (_cutKnobAt(frame, doc) case (var line, var mode)?) {
       _beginLayoutDrag(e, mode);
       _layoutCut = line;
       return true;
     }
-    for (var line in layoutCutLines(e, e.bounds)) {
-      if (_toSegment(local, line.from, line.to) <= reach) {
+    // Each line as it is drawn on the page.
+    double away(Offset from, Offset to) =>
+        _toSegment(doc, frame.toPage(from), frame.toPage(to));
+    for (var line in frame.geometry.cuts) {
+      if (away(line.from, line.to) <= reach) {
         _beginLayoutDrag(e, _DragMode.layoutCut);
         _layoutCut = line;
         return true;
       }
     }
-    for (var line in layoutTrackLines(e, e.bounds)) {
-      if (_toSegment(local, line.from, line.to) <= reach) {
+    for (var line in frame.geometry.tracks) {
+      if (away(line.from, line.to) <= reach) {
         _beginLayoutDrag(e, _DragMode.layoutTrack);
         _layoutTrack = line;
         return true;
@@ -274,11 +248,15 @@ extension StageLayouts on CanvasStageState {
     controller.beginInteraction();
   }
 
-  /// _applyLayout moves what was pressed as the pointer goes to [doc].
+  /// _applyLayout moves what was pressed as the pointer goes to [doc]:
+  /// the pointer taken into the layout's own box by where it is drawn, so
+  /// what is dragged stays under it.
   void _applyLayout(Offset doc) {
     var start = _layoutStart;
     if (start == null) return;
-    var local = _intoLayout(start, doc);
+    var frame = _layoutFrame(start);
+    var local = frame.fromPage(doc);
+    var from = frame.fromPage(_dragStart);
     switch (_mode) {
       case _DragMode.layoutCut:
         var line = _layoutCut;
@@ -295,11 +273,10 @@ extension StageLayouts on CanvasStageState {
         if (line == null) return;
         var node = start.root.nodeAt(line.path);
         if (node == null || node.isLeaf) return;
-        var from = _intoLayout(start, _dragStart);
         LayoutNode next;
         if (_mode == _DragMode.layoutCutTurn) {
           // Turned by as much as the pointer has gone round the pivot.
-          var pivot = _cutPivot(node, line.box);
+          var pivot = cutPivot(node, line.box);
           var a = from - pivot, b = local - pivot;
           var swept =
               (math.atan2(b.dy, b.dx) - math.atan2(a.dy, a.dx)) * 180 / math.pi;
@@ -318,7 +295,7 @@ extension StageLayouts on CanvasStageState {
           var normal = Offset(-along.dy, along.dx) / length;
           var by =
               (local - from).dx * normal.dx + (local - from).dy * normal.dy;
-          var gutter = (_cutGutterOf(start, node) + by * 2).clamp(0.0, 400.0);
+          var gutter = (cutGutter(start, node) + by * 2).clamp(0.0, 400.0);
           next = node.withCut(
               gutter: _shiftHeld
                   ? (gutter / 10).round() * 10.0
@@ -331,7 +308,6 @@ extension StageLayouts on CanvasStageState {
         var line = _layoutTrack;
         if (line == null) return;
         var inner = layoutInner(start, start.bounds);
-        var from = _intoLayout(start, _dragStart);
         var by = line.column ? local.dx - from.dx : local.dy - from.dy;
         controller.setLayout(
             line.column
@@ -351,27 +327,25 @@ extension StageLayouts on CanvasStageState {
         var inner = layoutInner(start, start.bounds);
         LayoutCell moved;
         if (_mode == _DragMode.layoutCellMove) {
-          var d = local - _intoLayout(start, _dragStart);
+          var d = local - from;
           if (_shiftHeld) {
             d = d.dx.abs() >= d.dy.abs() ? Offset(d.dx, 0) : Offset(0, d.dy);
           }
           moved = c.copyWith(
               x: c.x + d.dx / inner.width, y: c.y + d.dy / inner.height);
         } else if (_mode == _DragMode.layoutCellTurn) {
-          var from = _dragStart - _layoutMiddle, to = doc - _layoutMiddle;
-          var swept =
-              (math.atan2(to.dy, to.dx) - math.atan2(from.dy, from.dx)) *
-                  180 /
-                  math.pi;
+          var was = from - _layoutMiddle, to = local - _layoutMiddle;
+          var swept = (math.atan2(to.dy, to.dx) - math.atan2(was.dy, was.dx)) *
+              180 /
+              math.pi;
           var turn = c.turn + swept;
           if (_shiftHeld) turn = steppedTurn(turn);
           moved = c.copyWith(turn: (turn + 180) % 360 - 180);
         } else {
-          var from = _dragStart - _layoutMiddle, to = doc - _layoutMiddle;
-          var along = from.distanceSquared;
+          var was = from - _layoutMiddle, to = local - _layoutMiddle;
+          var along = was.distanceSquared;
           if (along < 1e-6) return;
-          var f =
-              ((to.dx * from.dx + to.dy * from.dy) / along).clamp(0.05, 20.0);
+          var f = ((to.dx * was.dx + to.dy * was.dy) / along).clamp(0.05, 20.0);
           var w = c.width * f, h = c.height * f;
           moved = c.copyWith(
               x: c.x + (c.width - w) / 2,
@@ -388,7 +362,7 @@ extension StageLayouts on CanvasStageState {
   /// a gutter. Answers whether [e] was a layout.
   bool _doubleClickLayout(CanvasElement e, Offset doc) {
     if (e is! LayoutElement) return false;
-    var place = layoutCellAt(e, e.bounds, _intoLayout(e, doc));
+    var place = _layoutFrame(e).cellAt(doc);
     controller.pickLayoutCell(e.id, place?.cell.id);
     return true;
   }

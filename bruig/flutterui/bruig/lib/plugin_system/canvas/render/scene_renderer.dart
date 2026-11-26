@@ -430,6 +430,13 @@ void _paintScene(
       if (e is TileMapElement && e.visible) ...e.figureIds,
   };
 
+  // The frame each element is drawn on.
+  int drawnAtOf(CanvasElement e) => e.id == previewing?.id
+      ? previewing!.frame
+      : onMaster.contains(e.id)
+          ? runFrame ?? frame
+          : frame;
+
   // Characters standing on a stage are drawn with it, nearest last.
   for (var element in inStageOrder(elements, frame,
       backdrop: doc.drawnBackground, page: doc.size.rect)) {
@@ -438,26 +445,19 @@ void _paintScene(
         onMaps.contains(element.id)) {
       continue;
     }
-    var drawnAt = element.id == previewing?.id
-        ? previewing!.frame
-        : onMaster.contains(element.id)
-            ? runFrame ?? frame
-            : frame;
+    var drawnAt = drawnAtOf(element);
     var lensed = lens?.on(canvas, element, drawnAt, doc, liveMotion) ?? 0;
-    // Docked in a Layout's cell: drawn through it (ElementBase.dock).
-    var cell = element.base.dock.isEmpty ? null : dockClip(element, elements);
+    // Docked in a Layout's cell: drawn through it as the layout is drawn on
+    // its frame (ElementBase.dock).
+    var cell = element.base.dock.isEmpty
+        ? null
+        : dockClip(element, elements,
+            (l) => l.placeAt(drawnAtOf(l), doc, live: liveMotion));
     if (cell != null) {
       canvas.save();
       canvas.clipPath(cell);
     }
-    paintElement(
-        canvas,
-        element,
-        element.id == previewing?.id
-            ? previewing!.frame
-            : onMaster.contains(element.id)
-                ? runFrame ?? frame
-                : frame,
+    paintElement(canvas, element, drawnAt,
         frameRate: doc.frameRate,
         images: images,
         editing: editing,
