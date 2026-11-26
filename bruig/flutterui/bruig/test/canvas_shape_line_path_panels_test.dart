@@ -29,8 +29,9 @@ import 'support/canvas_sidebar_host.dart';
 // path's settings, used in the real sidebar: a stroke's controls in the
 // quick strip and in Look are one control twice, with the model's range; a
 // line's Layout reads and sets the line as it is drawn, turned or slanted;
-// a closed path offers no ends; a follower gone from the canvas is shown
-// as missing; a square or a circle keeps its box square; Scale inside says
+// a closed path offers no ends, and its run is told and timed round to its
+// start; a follower gone from the canvas is shown as missing; a square or a
+// circle keeps its box square by its kind, held; Scale inside says
 // what it scales on each; what the Chain's Design table writes stays
 // within the same ranges; and
 // every control of the three, pressed or set, changes what it says in one
@@ -226,6 +227,55 @@ void main() {
       expect(_dropdown(_look, "End"), findsOneWidget);
       expect(_number(_look, "End size"), findsOneWidget);
     });
+
+    group("followed", () {
+      // Ten frames a side; round to the start again by frame 30.
+      final followed = PathElement(
+          const ElementBase(id: "p", x: 100, y: 300, width: 300, height: 200),
+          nodes: [
+            for (var (i, n) in PathElement.defaultNodes(frames: 96).indexed)
+              n.copyWith(frame: i * 10),
+          ],
+          closed: true,
+          follow: const PathFollow(elementId: "f"));
+      const runner = TextElement(ElementBase(id: "f", name: "Runner"));
+
+      testWidgets("its run is said to end back at its start", (tester) async {
+        await _panel(tester, followed, beside: [runner]);
+        expect(find.textContaining("frames 0–30"), findsOneWidget);
+        expect(
+            tester.widget<CanvasNumberField>(_keyed("pathEndFrame")).value, 30);
+      });
+
+      testWidgets("a run longer than the scene is said to end with it",
+          (tester) async {
+        // Its last point on the scene's last frame: no frames to go round.
+        var late = followed.copyWith(nodes: [
+          for (var (i, n) in followed.nodes.indexed)
+            n.copyWith(frame: const [0, 48, 95][i]),
+        ]);
+        await _panel(tester, late, beside: [runner]);
+        expect(find.textContaining("frames 0–95"), findsOneWidget);
+        expect(
+            tester.widget<CanvasNumberField>(_keyed("pathEndFrame")).value, 95);
+      });
+
+      testWidgets("its last point is not called the end of the run",
+          (tester) async {
+        await _panel(tester, followed, beside: [runner]);
+        expect(tester.widget<CanvasNumberField>(_keyed("node-frame-2-p")).label,
+            "Frame");
+      });
+
+      testWidgets("its last point offers a point after it", (tester) async {
+        await _panel(tester, followed, beside: [runner]);
+        expect(
+            tester
+                .widget<CanvasIconButton>(_nodeButton(2, Icons.add))
+                .onPressed,
+            isNotNull);
+      });
+    });
   });
 
   group("a follower no longer on the canvas", () {
@@ -410,8 +460,9 @@ void main() {
       expect(
           Offset(s.x + s.width / 2, s.y + s.height / 2), const Offset(200, 160),
           reason: "about its middle");
-      expect(s.base.lockAspect, isTrue, reason: "and held square");
-      expect(s.keepsAspect, isTrue, reason: "which the handles honour");
+      expect(s.keepsAspect, isTrue, reason: "held square by its kind");
+      expect(s.base.lockAspect, isFalse,
+          reason: "with nothing saved: the person did not hold it");
     }
 
     for (var kind in ShapeKind.values.where((k) => k.isRegular)) {
@@ -423,7 +474,21 @@ void main() {
     test("another kind after it leaves the box and lets it go", () {
       var other = oblong.withKind(ShapeKind.circle).withKind(ShapeKind.ellipse);
       expect((other.width, other.height), (120.0, 120.0));
-      expect(other.base.lockAspect, isFalse);
+      expect(other.keepsAspect, isFalse);
+    });
+
+    test("a hold the person set is kept through a circle and back", () {
+      var held = oblong.withBase(lockAspect: true) as ShapeElement;
+      var back = held.withKind(ShapeKind.circle).withKind(ShapeKind.ellipse);
+      expect(back.base.lockAspect, isTrue);
+      expect(back.keepsAspect, isTrue);
+    });
+
+    test("one saved held by its kind reads held, as the person's hold", () {
+      var saved = oblong.withKind(ShapeKind.circle).withBase(lockAspect: true)
+          as ShapeElement;
+      var read = ShapeElement.fromJson(saved.toJson(), saved.base);
+      expect(read.base.lockAspect, isTrue);
     });
 
     test("one regular kind after another keeps it held", () {
@@ -449,7 +514,7 @@ void main() {
       var round = made.withKind(ShapeKind.circle);
       expect((round.x, round.y, round.width, round.height),
           (made.x, made.y, made.width, made.height));
-      expect(round.base.lockAspect, isTrue);
+      expect(round.keepsAspect, isTrue);
     });
 
     testWidgets("picked from the tiles", (tester) async {
@@ -466,6 +531,40 @@ void main() {
           .onChanged(ShapeKind.square);
       await tester.pumpAndSettle();
       expectSquared(c.document.elementById("s") as ShapeElement);
+    });
+
+    /// lock is the button that holds the proportions, or lets them go.
+    Finder lock() => _widget<CanvasIconButton>(
+        _layout, (w) => w.icon == Icons.link || w.icon == Icons.link_off);
+
+    testWidgets("a circle's proportions show held and cannot be let go",
+        (tester) async {
+      await _panel(tester, oblong.withKind(ShapeKind.circle));
+      var button = tester.widget<CanvasIconButton>(lock());
+      expect(button.icon, Icons.link);
+      expect(button.active, isTrue);
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets("a rectangle's can still be held and let go", (tester) async {
+      var c = await _panel(tester, oblong);
+      expect(tester.widget<CanvasIconButton>(lock()).onPressed, isNotNull);
+      await _press(tester, lock());
+      expect(c.document.elementById("s")!.base.lockAspect, isTrue);
+    });
+
+    testWidgets("a circle's width set sets its height, its outline kept",
+        (tester) async {
+      // A circle saved square by an earlier choice, nothing held.
+      const round = ShapeElement(
+          ElementBase(id: "s", x: 100, y: 100, width: 120, height: 120),
+          shape: ShapeKind.circle,
+          strokeWidth: 6);
+      var c = await _panel(tester, round);
+      await _set(tester, _stepper(_layout, "W"), 200);
+      var s = c.document.elementById("s") as ShapeElement;
+      expect((s.width, s.height), (200.0, 200.0));
+      expect(s.strokeWidth, 6);
     });
   });
 
@@ -679,6 +778,11 @@ List<_Row> _rows() {
       const ElementBase(id: "f", x: 40, y: 40, width: 80, height: 40),
       text: "Runner");
   final followed = path.copyWith(follow: const PathFollow(elementId: "f"));
+  // Closed and timed ten frames a side but the first, which is three.
+  final loop = path.copyWith(closed: true, nodes: [
+    for (var (i, n) in path.nodes.indexed)
+      n.copyWith(frame: const [0, 3, 13][i]),
+  ]);
 
   ShapeElement shapeIn(CanvasDocument d) => d.elementById("s") as ShapeElement;
   LineElement lineIn(CanvasDocument d) => d.elementById("l") as LineElement;
@@ -1008,5 +1112,31 @@ List<_Row> _rows() {
         (d) => expect(pathIn(d).nodes, hasLength(4))),
     row("a path's point's remove", path, _pressed(_nodeButton(1, Icons.close)),
         (d) => expect(pathIn(d).nodes, hasLength(2))),
+
+    // A closed path: its run goes round to the start again, on frame 23.
+    row("a closed path's run Start", loop, _key("pathStartFrame", 5), (d) {
+      expect(pathIn(d).firstFrame, 5);
+      expect(pathIn(d).endFrame, 23, reason: "its end where it was");
+    }),
+    row("a closed path's run End", loop, _key("pathEndFrame", 60), (d) {
+      expect(pathIn(d).endFrame, 60);
+      expect(pathIn(d).firstFrame, 0);
+    }),
+    row(
+        "a closed path's Space the points evenly",
+        loop,
+        _pressed(_keyed("pathSpread")),
+        (d) => expect([for (var n in pathIn(d).nodes) n.frame], [0, 7, 15])),
+    row("a closed path's last point's add", loop,
+        _pressed(_nodeButton(2, Icons.add)), (d) {
+      expect(pathIn(d).nodes, hasLength(4));
+      expect(pathIn(d).nodes[3].frame, 18, reason: "half-way back");
+      expect(pathIn(d).endFrame, 23);
+    }),
+    row(
+        "a closed path's added last point's remove",
+        loop.insertAfter(2),
+        _pressed(_nodeButton(3, Icons.close)),
+        (d) => expect(pathIn(d).nodes, hasLength(3))),
   ];
 }

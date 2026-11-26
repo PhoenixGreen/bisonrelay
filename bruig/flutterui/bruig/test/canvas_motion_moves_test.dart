@@ -122,6 +122,29 @@ void main() {
     expect(pose(none, 48).dx, 0, reason: "no path, nowhere to go");
   });
 
+  test("follow path rides a closed path all the way round", () {
+    // A right triangle: across, down, and back along the diagonal.
+    var loop = PathElement(
+        const ElementBase(id: "line", x: 0, y: 0, width: 100, height: 100),
+        nodes: const [
+          PathNode(x: 0, y: 0),
+          PathNode(x: 1, y: 0),
+          PathNode(x: 1, y: 1),
+        ],
+        closed: true);
+    var d = doc(const [
+      MotionDevice(MotionDeviceKind.followPath,
+          target: "line", values: {"lap": 4})
+    ], more: [
+      loop
+    ]);
+    var e = d.elementById("a")!;
+    // Seven-eighths of a lap is most of the way back along the diagonal.
+    var back = e.boundsWith(pose(d, 84)).center;
+    expect(back.dx, closeTo(back.dy, 0.5), reason: "on the diagonal");
+    expect(back.dx, lessThan(50), reason: "past its middle, nearly home");
+  });
+
   // Ember Vale's bat: over a chasm and back, not snapped to its start.
   test("follow path there and back, facing the way it goes", () {
     var line = LineElement(

@@ -480,6 +480,14 @@ extension StageDrag on CanvasStageState {
     var keep = several
         ? !_shiftHeld
         : ((first?.keepsAspect ?? false) ? !_shiftHeld : _shiftHeld);
+    // A hold the person asks for scales what is inside. One its kind keeps
+    // (a square or a circle) Shift cannot let go, so there Shift is the
+    // other thing a held resize could do: scale the inside, or not.
+    var inside = keep;
+    if (!several && (first?.keepsAspectByKind ?? false)) {
+      keep = true;
+      inside = first!.base.lockAspect != _shiftHeld;
+    }
     if (keep && group.height > 0) {
       var aspect = group.width / group.height;
       if ((right - left).abs() > (bottom - top).abs() * aspect) {
@@ -518,10 +526,10 @@ extension StageDrag on CanvasStageState {
       var (x, y) = _restingAfterResize(element, real, start.posed[entry.key],
           left, top, group, sx, sy, width, height);
 
-      // Keeping proportions scales everything inside (type, spacing, a chip's
-      // padding), from the element at the drag's start.
+      // Proportions the person keeps scale everything inside (type,
+      // spacing, a chip's padding), from the element at the drag's start.
       var from = start.elements[entry.key] ?? element;
-      element = keep ? from.scaledBy(sx) : element;
+      element = inside ? from.scaledBy(sx) : element;
       next = next.withElement(element.withBase(
         x: x,
         y: y,
@@ -530,7 +538,7 @@ extension StageDrag on CanvasStageState {
         // The scale applied inside the box, kept where the shape switch reads
         // it (see ElementBase.typeScale), so a shape change does not undo the
         // drag by the wrong amount.
-        typeScale: keep ? from.base.typeScale * sx : null,
+        typeScale: inside ? from.base.typeScale * sx : null,
       ));
     }
     controller.apply(next, transient: true);

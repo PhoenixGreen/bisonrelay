@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -625,6 +626,170 @@ void main() {
       expect(path.nodes[1].frame, 3, reason: "untouched");
       expect(path.nodes[2].frame, 20);
       expect(path.nodes[3].frame, greaterThan(20));
+    });
+  });
+
+  group("a closed path", () {
+    // A right triangle round its box: across the top, down the right side,
+    // and back along the diagonal to the start, ten frames a side.
+    PathElement triangle({bool closed = true, List<int>? frames}) {
+      var f = frames ?? const [0, 10, 20];
+      return PathElement(
+        const ElementBase(id: "p", x: 0, y: 0, width: 100, height: 100),
+        nodes: [
+          PathNode(x: 0, y: 0, frame: f[0]),
+          PathNode(x: 1, y: 0, frame: f[1]),
+          PathNode(x: 1, y: 1, frame: f[2]),
+        ],
+        closed: closed,
+        follow: const PathFollow(elementId: "s"),
+      );
+    }
+
+    /// baked is the follower's track once [path] is baked, in a scene of
+    /// [frames].
+    ElementTrack baked(PathElement path, {int frames = 60}) {
+      var shape = ShapeElement(
+          const ElementBase(id: "s", x: 0, y: 0, width: 20, height: 20));
+      var controller = CanvasController(
+          CanvasDocument(frames: frames).addElement(shape).addElement(path));
+      addTearDown(controller.dispose);
+      controller.applyPathFollow(path);
+      return controller.document.elementById("s")!.track!;
+    }
+
+    test("its follower rides the closing piece back to the first point", () {
+      var path = triangle();
+      expect(path.closingFrames, 10, reason: "as long as the piece before");
+      expect(path.endFrame, 30);
+      // Half-way along the diagonal from the last point to the first.
+      expect(path.positionAtFrame(25), offsetCloseTo(const Offset(50, 50), 1));
+      expect(path.positionAtFrame(30), offsetCloseTo(Offset.zero));
+      expect(path.positionAtFrame(45), offsetCloseTo(Offset.zero),
+          reason: "and holds there, at the start, after its run");
+    });
+
+    test("up to its last point it rides as an open one does", () {
+      var open = triangle(closed: false), closed = triangle();
+      for (var f = -5; f <= 20; f++) {
+        expect(closed.positionAtFrame(f), open.positionAtFrame(f),
+            reason: "frame $f");
+      }
+    });
+
+    test("an open path's run still ends on its last point", () {
+      var open = triangle(closed: false);
+      expect(open.closingFrames, 0);
+      expect(open.endFrame, 20);
+      expect(open.positionAtFrame(25), const Offset(100, 100));
+    });
+
+    test("baked, its run is the whole outline", () {
+      var track = baked(triangle());
+      expect(track.keys.first.frame, 0);
+      expect(track.keys.last.frame, 30, reason: "a key on every frame round");
+      // Measured from the follower's centre, as an open run is.
+      expect(track.at(25).dx, closeTo(40, 1));
+      expect(track.at(25).dy, closeTo(40, 1));
+      expect(track.at(30).dx, closeTo(-10, 1e-9));
+      expect(track.at(30).dy, closeTo(-10, 1e-9));
+    });
+
+    test("baked, its keys up to the last point are an open path's", () {
+      var open = baked(triangle(closed: false)).keys;
+      var closed = baked(triangle()).keys;
+      expect(closed.length, greaterThan(open.length));
+      for (var i = 0; i < open.length; i++) {
+        var a = open[i], b = closed[i];
+        expect((
+          b.frame,
+          b.dx,
+          b.dy,
+          b.scale,
+          b.rotate,
+          b.opacity
+        ), (
+          a.frame,
+          a.dx,
+          a.dy,
+          a.scale,
+          a.rotate,
+          a.opacity
+        ), reason: "frame ${a.frame}");
+      }
+    });
+
+    test("a run that would go past the scene stops at its last frame", () {
+      var track = baked(triangle(), frames: 26);
+      expect(track.keys.last.frame, 25);
+      expect(track.at(25).dx, closeTo(40, 1), reason: "on the way back");
+    });
+
+    test("a point added after the last splits the closing piece", () {
+      var path = triangle();
+      var split = path.insertAfter(2);
+      expect(split.nodes, hasLength(4));
+      expect(split.nodes[3].point, offsetCloseTo(const Offset(0.5, 0.5)),
+          reason: "on the diagonal");
+      expect(split.nodes[3].frame, 25, reason: "half-way through its time");
+      expect(split.endFrame, 30, reason: "and the run ends where it did");
+      // The outline drawn is the one it was.
+      var was = path.curvePoints, now = split.curvePoints;
+      for (var p in now) {
+        expect(_fromCurve(was, p), lessThan(0.5));
+      }
+      for (var p in was) {
+        expect(_fromCurve(now, p), lessThan(0.5));
+      }
+      expect(split.withoutNode(3).endFrame, 30,
+          reason: "and taken off again, the run is as long as it was");
+    });
+
+    test("an open path has nothing after its last point to split", () {
+      var open = triangle(closed: false);
+      expect(open.insertAfter(2), same(open));
+    });
+
+    test("a point keyed on the way back splits the closing piece", () {
+      var made = triangle().insertAtFrame(24);
+      expect([for (var n in made.nodes) n.frame], [0, 10, 20, 24]);
+      expect(triangle().insertAtFrame(30).nodes, hasLength(3),
+          reason: "the run's end is the first point, which is there");
+    });
+
+    test("spaced evenly, every piece round it is timed alike", () {
+      var even = triangle(frames: const [0, 3, 20]).spreadRun(0, 30);
+      expect([for (var n in even.nodes) n.frame], [0, 10, 20]);
+      expect(even.endFrame, 30);
+      var odd = triangle().spreadRun(0, 31);
+      expect(odd.endFrame, 31, reason: "ending where it is asked to");
+      var gaps = [
+        for (var i = 1; i < odd.nodes.length; i++)
+          odd.nodes[i].frame - odd.nodes[i - 1].frame,
+        odd.closingFrames,
+      ];
+      expect(gaps.reduce(math.max) - gaps.reduce(math.min), lessThan(2));
+    });
+
+    test("an open path spaced evenly is spaced as its points are", () {
+      var open = triangle(closed: false, frames: const [0, 3, 20]);
+      expect([for (var n in open.spreadRun(0, 30).nodes) n.frame],
+          [for (var n in open.spreadFrames(0, 30).nodes) n.frame]);
+    });
+
+    test("carried on, its run goes on round from the new point", () {
+      var on = triangle().appendNode(maxFrame: 95);
+      expect([for (var n in on.nodes) n.frame], [0, 10, 20, 30]);
+      expect(on.endFrame, 40);
+    });
+
+    test("the Chain's Follow path is given the closing piece too", () {
+      var curve = curveOfElement(triangle())!;
+      expect(curve.first, offsetCloseTo(Offset.zero));
+      expect(curve.last, offsetCloseTo(Offset.zero),
+          reason: "drawn back to where it starts");
+      expect(_fromCurve(curve, const Offset(50, 50)), lessThan(0.5),
+          reason: "along the diagonal");
     });
   });
 

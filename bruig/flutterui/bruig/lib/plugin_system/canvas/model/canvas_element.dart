@@ -866,8 +866,16 @@ abstract class CanvasElement {
   double opacityAt(int frame) =>
       (opacity * poseAt(frame).opacity).clamp(0.0, 1.0);
 
-  /// keepsAspect is whether a resize holds proportions without Shift.
-  bool get keepsAspect => base.lockAspect;
+  /// keepsAspect is whether a resize holds proportions without Shift: held
+  /// by the person (ElementBase.lockAspect), or by what it is
+  /// ([keepsAspectByKind]).
+  bool get keepsAspect => base.lockAspect || keepsAspectByKind;
+
+  /// keepsAspectByKind is whether what it is keeps its proportions, so
+  /// nothing lets them go: a square or a circle is drawn square. A hold of
+  /// this kind alone leaves what is inside its size as it is resized; only a
+  /// hold the person asks for scales it (scaledBy).
+  bool get keepsAspectByKind => false;
 
   double get rotationRadians => rotation * math.pi / 180;
 

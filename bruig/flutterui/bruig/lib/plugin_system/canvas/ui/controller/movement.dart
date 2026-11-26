@@ -149,7 +149,7 @@ extension CanvasMovement on CanvasController {
   }
 
   /// applyPathFollow bakes [path]'s route into its follower's keyframes, one
-  /// per frame from the first node to the last, sampled by arc length.
+  /// per frame of its run (PathElement.endFrame), sampled by arc length.
   /// Baked rather than live, so the renderer, the GIF encoder and a
   /// published canvas play it like any track and cannot disagree.
   void applyPathFollow(PathElement path) {
@@ -160,7 +160,7 @@ extension CanvasMovement on CanvasController {
     if (target == null) return;
 
     var from = path.firstFrame;
-    var to = path.lastFrame;
+    var to = path.endFrameIn(_document.frames - 1);
     if (to <= from) return;
 
     var index = follow.playerIndex;

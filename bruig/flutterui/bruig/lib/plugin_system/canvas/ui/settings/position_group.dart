@@ -95,14 +95,14 @@ class _Placing {
     ));
   }
 
-  /// resize writes width or height, keeping proportions where asked
-  /// (ElementBase.lockAspect) by scaling the other side. Fields show the
+  /// resize writes width or height, keeping proportions where they are held
+  /// (CanvasElement.keepsAspect) by scaling the other side. Fields show the
   /// posed size but edit the resting one: a pose scales evenly.
   void resize({double? width, double? height}) {
     // The undo step, as moveTo opens one.
     begin();
     var scale = pose.scale == 0 ? 1.0 : pose.scale;
-    if (!e.base.lockAspect) {
+    if (!e.keepsAspect) {
       write(e.withBase(
         width: width == null ? null : width / scale,
         height: height == null ? null : height / scale,
@@ -231,20 +231,27 @@ Widget _opacityField(_Placing p) => CanvasStepper(
       onCommit: p.commit,
     );
 
-/// _lockButton holds the width and height together, or lets them go.
+/// _lockButton holds the width and height together, or lets them go. What
+/// keeps them by its kind (a square or a circle) shows them held, with
+/// nothing to let go.
 Widget _lockButton(_Placing p) {
-  var held = p.e.base.lockAspect;
+  var byKind = p.e.keepsAspectByKind;
+  var held = byKind || p.e.base.lockAspect;
   return CanvasIconButton(
     icon: held ? Icons.link : Icons.link_off,
-    tooltip: held
-        ? "Proportions are held — the width and the height move together"
-        : "Width and height are free of each other",
+    tooltip: byKind
+        ? "Always square — the width and the height move together"
+        : held
+            ? "Proportions are held — the width and the height move together"
+            : "Width and height are free of each other",
     active: held,
-    onPressed: () {
-      p.begin();
-      p.write(p.e.withProportionsKept(!held));
-      p.commit();
-    },
+    onPressed: byKind
+        ? null
+        : () {
+            p.begin();
+            p.write(p.e.withProportionsKept(!held));
+            p.commit();
+          },
   );
 }
 

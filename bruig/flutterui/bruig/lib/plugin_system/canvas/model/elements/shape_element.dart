@@ -451,27 +451,27 @@ class ShapeElement extends CanvasElement {
         clearRoom: true);
   }
 
+  /// keepsAspectByKind is true of a square or a circle, which is drawn
+  /// square in the middle of its box (shapeBox): held square, what is drawn
+  /// stays the whole box.
+  @override
+  bool get keepsAspectByKind => shape.isRegular;
+
   /// withKind is this shape as [kind], wherever it is chosen. A square or a
   /// circle is drawn square in the middle of its box (shapeBox), so its box
-  /// is made square on its shorter side, about its middle, and held so as
-  /// it is resized: what is drawn is then the whole box. Another kind after
-  /// one of those leaves the box as it is and lets its proportions go, since
-  /// a square or a circle held them; a box held for any other reason is
-  /// left held. Only choosing does this: a saved oblong square or circle is
-  /// read and drawn as it was.
+  /// is made square on its shorter side, about its middle; its kind then
+  /// keeps it square ([keepsAspectByKind]). Whether the person holds its
+  /// proportions is theirs, and no kind changes it. Only choosing squares a
+  /// box: a saved oblong square or circle is read and drawn as it was.
   ShapeElement withKind(ShapeKind kind) {
     var next = copyWith(shape: kind);
-    if (!kind.isRegular) {
-      if (!shape.isRegular || !base.lockAspect) return next;
-      return next.withBase(lockAspect: false) as ShapeElement;
-    }
+    if (!kind.isRegular) return next;
     var side = math.min(width, height);
     return next.withBase(
         x: x + (width - side) / 2,
         y: y + (height - side) / 2,
         width: side,
-        height: side,
-        lockAspect: true) as ShapeElement;
+        height: side) as ShapeElement;
   }
 
   /// withOutline is this shape with its outline coloured [color], faded to

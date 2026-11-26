@@ -331,7 +331,8 @@ class PathElement extends StrokedElement {
   final List<PathNode> nodes;
 
   /// closed joins the last node back to the first with one more piece of
-  /// curve, which a follower does not ride; a closed path draws no ends.
+  /// curve, which a follower rides too (see [closingFrames]); a closed path
+  /// draws no ends.
   final bool closed;
 
   /// guide draws the curve only while editing, never published; on once a
@@ -407,9 +408,29 @@ class PathElement extends StrokedElement {
     return Offset((p.dx - x) / w, (p.dy - y) / h);
   }
 
-  /// firstFrame and lastFrame are when the follower sets off and arrives.
+  /// firstFrame and lastFrame are when the follower sets off and reaches
+  /// the last node, which is where an open path's run ends.
   int get firstFrame => nodes.isEmpty ? 0 : nodes.first.frame;
   int get lastFrame => nodes.isEmpty ? 0 : nodes.last.frame;
+
+  /// closingFrames is how long a follower takes over the piece that closes
+  /// a closed path, from the last node back to the first: as long as over
+  /// the piece before it. The nodes' frames are all a path keeps, and the
+  /// piece before is the nearest timed one; and a node added half-way round
+  /// the closing piece then leaves the run ending where it did. None on an
+  /// open path, which has no such piece.
+  int get closingFrames => !closed || nodes.length < 2
+      ? 0
+      : math.max(0, lastFrame - nodes[nodes.length - 2].frame);
+
+  /// endFrame is when the follower's run ends: on the last node, or back on
+  /// the first round a closed path.
+  int get endFrame => lastFrame + closingFrames;
+
+  /// endFrameIn is where the run ends as it plays in a scene whose last
+  /// frame is [last]: the way back round a closed path stops with the
+  /// scene, while a node past it is the person's own and is kept.
+  int endFrameIn(int last) => math.min(endFrame, math.max(lastFrame, last));
 
   /// segments is the curve pieces: nodes less one, or one each if closed.
   int get segments =>
@@ -449,8 +470,9 @@ class PathElement extends StrokedElement {
       ];
 
   /// positionAtFrame is where a follower is on [frame], on the page: along
-  /// each segment by distance, holding at the nearer end before the first
-  /// node and after the last.
+  /// each segment by distance, holding at the first node before the run and
+  /// where the run ends after it (the last node, or the first again round a
+  /// closed path: see [closingFrames]).
   Offset? positionAtFrame(int frame) {
     var inBox = _positionInBox(frame);
     return inBox == null ? null : onPage(inBox);
@@ -460,6 +482,11 @@ class PathElement extends StrokedElement {
     if (nodes.isEmpty) return null;
     if (nodes.length == 1) return pointOf(nodes.first);
     if (frame <= nodes.first.frame) return pointOf(nodes.first);
+    var closing = closingFrames;
+    if (closing > 0 && frame > lastFrame) {
+      if (frame >= lastFrame + closing) return pointOf(nodes.first);
+      return segment(nodes.length - 1).along((frame - lastFrame) / closing);
+    }
     if (frame >= nodes.last.frame) return pointOf(nodes.last);
 
     for (var i = 0; i < nodes.length - 1; i++) {
@@ -484,6 +511,31 @@ class PathElement extends StrokedElement {
     ]);
   }
 
+  /// spreadRun times the run evenly from [from] to [to]: the Start and End
+  /// fields and "Space the points evenly". On an open path that is
+  /// [spreadFrames]; round a closed path the closing piece is one of the
+  /// pieces shared out, and the last two pieces take the same time, so the
+  /// run ends on [to] (a frame short only where two nodes would need half a
+  /// frame each).
+  PathElement spreadRun(int from, int to) {
+    var n = nodes.length;
+    if (!closed || n < 2) return spreadFrames(from, to);
+    var span = math.max(0, to - from);
+    if (n == 2) {
+      return copyWith(nodes: [
+        nodes[0].copyWith(frame: from),
+        nodes[1].copyWith(frame: from + span ~/ 2),
+      ]);
+    }
+    var last = (span / n).round();
+    var rest = span - 2 * last;
+    return copyWith(nodes: [
+      for (var i = 0; i < n - 1; i++)
+        nodes[i].copyWith(frame: from + (rest * i / (n - 2)).round()),
+      nodes[n - 1].copyWith(frame: to - last),
+    ]);
+  }
+
   /// withNode replaces one node, keeping the frames in order: clamped between
   /// its neighbours, not sorted, since sorting would reorder the curve.
   PathElement withNode(int index, PathNode node) {
@@ -496,18 +548,26 @@ class PathElement extends StrokedElement {
   }
 
   /// insertAfter splits the segment after [index] without changing the
-  /// curve: de Casteljau gives two cubics exactly the original.
+  /// curve: de Casteljau gives two cubics exactly the original. After the
+  /// last node of a closed path that is the closing piece, and the new node
+  /// is the last, timed half-way through that piece's frames.
   PathElement insertAfter(int index, {int maxFrame = 1 << 30}) {
-    if (index < 0 || index >= nodes.length - 1) return this;
+    var last = nodes.length - 1;
+    if (index < 0 || index > last || (index == last && segments <= last)) {
+      return this;
+    }
     var a = nodes[index];
-    var b = nodes[index + 1];
+    var bIndex = (index + 1) % nodes.length;
+    var b = nodes[bIndex];
 
     // In the element's own fractional space, which is what the nodes store.
     var (before, after) =
         CubicSegment(a.point, a.outHandle, b.inHandle, b.point).split(0.5);
     var mid = before.p3;
 
-    var frame = (a.frame + b.frame) ~/ 2;
+    var frame = index == last
+        ? math.min(maxFrame, a.frame + closingFrames ~/ 2)
+        : (a.frame + b.frame) ~/ 2;
     var made = PathNode(
       x: mid.dx,
       y: mid.dy,
@@ -521,8 +581,7 @@ class PathElement extends StrokedElement {
     var next = [...nodes];
     next[index] =
         a.copyWith(outDx: before.c1.dx - a.x, outDy: before.c1.dy - a.y);
-    next[index + 1] =
-        b.copyWith(inDx: after.c2.dx - b.x, inDy: after.c2.dy - b.y);
+    next[bIndex] = b.copyWith(inDx: after.c2.dx - b.x, inDy: after.c2.dy - b.y);
     next.insert(index + 1, made);
     // Two neighbours a single frame apart leave no whole frame between them,
     // so the halved frame lands on one of them.
@@ -576,11 +635,16 @@ class PathElement extends StrokedElement {
   }
 
   /// insertAtFrame adds a point at [frame], splitting whichever segment spans
-  /// it without changing its shape (see [insertAfter]).
+  /// it without changing its shape (see [insertAfter]): round a closed path,
+  /// the closing piece too.
   PathElement insertAtFrame(int frame) {
     for (var i = 0; i < nodes.length - 1; i++) {
       if (frame <= nodes[i].frame || frame >= nodes[i + 1].frame) continue;
       return insertAfter(i).retimeNode(i + 1, frame);
+    }
+    if (frame > lastFrame && frame < endFrame) {
+      var last = nodes.length - 1;
+      return insertAfter(last).retimeNode(last + 1, frame);
     }
     return this;
   }

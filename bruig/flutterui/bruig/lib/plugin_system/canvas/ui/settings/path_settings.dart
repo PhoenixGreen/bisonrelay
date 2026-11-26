@@ -120,10 +120,13 @@ PanelBit _strokeBit(
 /// players: one decision. In More.
 PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
     void Function(PathElement) now, void Function(PathElement) relink) {
+  // Where the run ends as it plays: round a closed path, no further than
+  // the scene goes.
+  var end = e.endFrameIn(controller.document.frames - 1);
   var followed = e.follow == null
       ? "Nobody follows it"
       : "${controller.followerLabel(e.follow)} · "
-          "frames ${e.firstFrame}–${e.lastFrame}";
+          "frames ${e.firstFrame}–$end";
   var options = _followOptions(controller);
   // A follower that is none of the choices (no longer on the canvas, say)
   // is shown by the name the summary gives it, for as long as it is the
@@ -137,7 +140,9 @@ PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
       label: "The run",
       help: "What runs along the path -- anything on the canvas, or "
           "one player of a team -- and the frames the run starts and "
-          "ends on. The points between are timed in Points.",
+          "ends on. The points between are timed in Points. Round a "
+          "closed path the run ends back at its start, taking as long "
+          "over the last piece as over the one before it.",
       rule: false,
       children: [
         CanvasDropdown<PathFollow>(
@@ -171,23 +176,23 @@ PanelBit _runBit(CanvasController controller, PathElement e, VoidCallback begin,
           min: 0,
           max: (controller.document.frames - 1).toDouble(),
           width: 54,
-          onChanged: (v) => relink(e.spreadFrames(v.round(), e.lastFrame)),
+          onChanged: (v) => relink(e.spreadRun(v.round(), end)),
         ),
         CanvasNumberField(
           key: const ValueKey("pathEndFrame"),
           label: "End",
-          value: e.lastFrame.toDouble(),
+          value: end.toDouble(),
           min: 0,
           max: (controller.document.frames - 1).toDouble(),
           width: 54,
-          onChanged: (v) => relink(e.spreadFrames(e.firstFrame, v.round())),
+          onChanged: (v) => relink(e.spreadRun(e.firstFrame, v.round())),
         ),
         const CanvasLineBreak(),
         CanvasTextButton(
           key: const ValueKey("pathSpread"),
           icon: Icons.horizontal_distribute,
           label: "Space the points evenly",
-          onPressed: () => relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
+          onPressed: () => relink(e.spreadRun(e.firstFrame, end)),
         ),
         CanvasTextButton(
           key: const ValueKey("pathRelink"),
@@ -253,10 +258,11 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
               CanvasNumberField(
                 key: ValueKey("node-frame-$i-${e.id}"),
                 // The ends are named: the run is timed against them and the
-                // Start and End fields above set them.
+                // Start and End fields above set them. Round a closed path
+                // the run ends on the first point again, not the last.
                 label: i == 0
                     ? "Start"
-                    : i == e.nodes.length - 1
+                    : i == e.nodes.length - 1 && !e.closed
                         ? "End"
                         : "Frame",
                 value: e.nodes[i].frame.toDouble(),
@@ -293,9 +299,10 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
               CanvasIconButton(
                 icon: Icons.add,
                 tooltip: "Add a point after this one",
-                // Only between two points: past the last there is no segment
-                // to halve, which is what the run's Carry it on is for.
-                onPressed: i >= e.nodes.length - 1
+                // Only before a piece of the curve: past an open path's last
+                // point there is none to halve, which is what the run's Carry
+                // it on is for; a closed path's last has the closing piece.
+                onPressed: i >= e.segments
                     ? null
                     : () => relink(e.insertAfter(i,
                         maxFrame: controller.document.frames - 1)),

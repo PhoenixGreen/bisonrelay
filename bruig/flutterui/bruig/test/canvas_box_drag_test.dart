@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/score_samples.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_painter.dart';
@@ -31,6 +32,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/counter_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/canvas_audio_fake.dart';
@@ -44,6 +46,8 @@ import 'support/canvas_audio_fake.dart';
 // the element if it travels and clicks it if it does not. Each of those is
 // held here three ways: let go where it began, it clicks; dragged, it does
 // not; cancelled, it does not, and nothing of the press is left behind.
+// A square or a circle resized stays square because of what it is, its
+// outline and words their size unless the person holds its proportions.
 
 const _viewport = Size(1200, 800);
 
@@ -668,6 +672,107 @@ void main() {
       expect(c.pickedCopiesOf("a"), {"i1"});
       expect(c.document.elementById("a")!.y, 100);
       settled(stage, c, "clicked");
+    });
+  });
+
+  group("a square or a circle resized", () {
+    // Outlined, rounded, padded and worded, so a resize that scaled its
+    // inside would show in each.
+    ShapeElement regular(ShapeKind kind, {bool held = false}) => ShapeElement(
+        ElementBase(
+            id: "s", x: 400, y: 200, width: 200, height: 200, lockAspect: held),
+        shape: kind,
+        strokeWidth: 6,
+        cornerRadius: 10,
+        padding: 8,
+        text: "Hi",
+        textSpec: const TextSpec(fontSize: 20));
+
+    /// resized pulls [e]'s bottom-right corner 100 right and 20 down, with
+    /// Shift held where [shift] says, and hands back what it is then.
+    Future<ShapeElement> resized(WidgetTester tester, ShapeElement e,
+        {bool shift = false}) async {
+      var c = CanvasController(CanvasDocument(
+          guides: const CanvasGuides(snap: false), elements: [e]));
+      addTearDown(c.dispose);
+      c.selectOnly("s");
+      var stage = await pump(tester, c);
+      if (shift) await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      var scale = stage.pageRect.width / c.document.size.width;
+      await drag(tester, stage.handleAt(StageHandle.bottomRight),
+          const Offset(100, 20) * scale);
+      if (shift) await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      settled(stage, c, "resized");
+      return c.document.elementById("s") as ShapeElement;
+    }
+
+    void expectInsideAsItWas(ShapeElement s) {
+      expect(s.strokeWidth, 6, reason: "its outline its own weight");
+      expect(s.cornerRadius, 10);
+      expect(s.padding, 8);
+      expect(s.textSpec.fontSize, 20);
+    }
+
+    void expectInsideScaled(ShapeElement s) {
+      var by = s.width / 200;
+      expect(by, greaterThan(1.1), reason: "it grew");
+      expect(s.strokeWidth, closeTo(6 * by, 1e-6));
+      expect(s.cornerRadius, closeTo(10 * by, 1e-6));
+      expect(s.padding, closeTo(8 * by, 1e-6));
+      expect(s.textSpec.fontSize, closeTo(20 * by, 1e-6));
+    }
+
+    for (var kind in [ShapeKind.square, ShapeKind.circle]) {
+      testWidgets("a ${kind.name} stays square, its inside its own size",
+          (tester) async {
+        var s = await resized(tester, regular(kind));
+        expect(s.width, greaterThan(250), reason: "it grew");
+        expect(s.height, closeTo(s.width, 1e-6), reason: "and stayed square");
+        expectInsideAsItWas(s);
+      });
+
+      testWidgets("a ${kind.name} with Shift held stays square, inside scaled",
+          (tester) async {
+        var s = await resized(tester, regular(kind), shift: true);
+        expect(s.height, closeTo(s.width, 1e-6), reason: "square still");
+        expectInsideScaled(s);
+      });
+
+      testWidgets("a ${kind.name} the person holds scales its inside",
+          (tester) async {
+        var s = await resized(tester, regular(kind, held: true));
+        expect(s.height, closeTo(s.width, 1e-6));
+        expectInsideScaled(s);
+      });
+
+      testWidgets(
+          "a ${kind.name} the person holds, with Shift, keeps its inside",
+          (tester) async {
+        var s = await resized(tester, regular(kind, held: true), shift: true);
+        expect(s.height, closeTo(s.width, 1e-6), reason: "square still");
+        expectInsideAsItWas(s);
+      });
+    }
+
+    testWidgets("a rectangle the person holds still scales its inside",
+        (tester) async {
+      var s = await resized(tester, regular(ShapeKind.rectangle, held: true));
+      expect(s.height, closeTo(s.width, 1e-6));
+      expectInsideScaled(s);
+    });
+
+    testWidgets("a rectangle let go is stretched, its inside its own size",
+        (tester) async {
+      var s = await resized(tester, regular(ShapeKind.rectangle));
+      expect(s.width - s.height, greaterThan(50), reason: "pulled oblong");
+      expectInsideAsItWas(s);
+    });
+
+    testWidgets("a rectangle let go, with Shift, is held and scaled inside",
+        (tester) async {
+      var s = await resized(tester, regular(ShapeKind.rectangle), shift: true);
+      expect(s.height, closeTo(s.width, 1e-6));
+      expectInsideScaled(s);
     });
   });
 

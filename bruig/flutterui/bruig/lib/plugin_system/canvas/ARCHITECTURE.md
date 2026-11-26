@@ -306,11 +306,17 @@ whole trail, and a cloud's lumps reach the body's edge and no further.
 
 A kind is chosen through `ShapeElement.withKind`, wherever it is chosen (the
 tiles, the quick strip, a game's stand-ins): a square or a circle makes its
-box square on its shorter side, about its middle, and holds it so
-(`lockAspect`, which the stage's handles and the size fields honour), so
-what is drawn is the whole box; another kind after one of those lets the
-box go. A canvas saved with an oblong square or circle reads and draws as
-it was: only choosing squares a box. A colour or a fade given to an outline
+box square on its shorter side, about its middle, so what is drawn is the
+whole box. Its kind then keeps it square (`keepsAspectByKind`, part of
+`CanvasElement.keepsAspect`, which the stage's handles and the size fields
+ask), and nothing saved says so: whether the person holds the proportions
+(`lockAspect`) stays theirs through any change of kind, and the panel shows
+a square's or a circle's held, with nothing to let go. A resize held only by
+the kind leaves the outline, corners, padding and words their size; one the
+person holds (`lockAspect`, or Shift on a shape not held) scales them, as
+on any element. Shift cannot let a square or a circle go, so on one it
+turns that scaling over instead. A canvas saved with an oblong square or
+circle reads and draws as it was: only choosing squares a box. A colour or a fade given to an outline
 with no width gives it one (`withOutline`), from the panel and the Colour
 panel alike. On another page shape a shape's words, outline, corners and
 padding are sized with the page (`scaledBy`), as a text's type is; what its
@@ -449,6 +455,16 @@ next its own way stays, as the frames after it show; one the bake added
 eases straight to a key a frame on and has no frames between. A key that
 held nothing but a place goes, whoever keyed it, since a place keyed by hand
 and a place baked over it are one value on one key.
+
+The run is timed by the nodes' frames, from the first to the last. Round a
+closed path it goes on over the closing piece, back to the first node, in as
+many frames as the piece before it took (`closingFrames`; the run ends on
+`endFrame`), so nothing more is saved for it; it is baked no further than
+the scene's last frame. A node added half-way round the closing piece
+(`insertAfter` on the last node) is timed half-way through it, and leaves
+the run ending where it did, to a frame where that piece's frames are odd.
+The run's Start and End fields and "Space the points evenly" share the run
+out with the closing piece as one of its pieces (`spreadRun`).
 
 ## The editor
 
