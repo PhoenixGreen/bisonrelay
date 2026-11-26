@@ -6,7 +6,8 @@ part of 'canvas_stage.dart';
 // gutter's edge to widen the gutter.
 // Double-clicked, the cell under the pointer is picked (its settings
 // show); a picked Free cell has the selection's handles, to move, size and
-// turn it. Delete takes the picked cell out (in Panels, merges it).
+// turn it. Delete takes the picked cell out (in Panels, merges it). The
+// seven drags are cases of StageGesture, at the foot.
 // Every mark, press and drag is on the layout as it is drawn on this frame,
 // turned, slanted and moved by its motion: its geometry in its own box laid
 // out by its place there and taken back by the same place (LayoutFrame,
@@ -129,20 +130,16 @@ extension StageLayouts on CanvasStageState {
     );
   }
 
-  /// _cutKnobAt is the cut of [frame]'s layout whose knob is drawn at
-  /// document point [doc], and the drag that knob begins, or null.
-  (LayoutCutLine, _DragMode)? _cutKnobAt(LayoutFrame frame, Offset doc) {
+  /// _cutKnobAt is the drag begun by the knob of [frame]'s layout drawn at
+  /// document point [doc], or null: the ring tilts its cut, the square
+  /// widens its gutter.
+  _CutDrag? _cutKnobAt(LayoutFrame frame, Offset doc) {
+    bool at(Offset knob) => (doc - frame.toPage(knob)).distance <= 8 / _scale;
     for (var line in frame.geometry.cuts) {
       var k = _cutKnobs(frame, line);
       if (k == null) continue;
-      for (var (at, mode) in [
-        (k.turn, _DragMode.layoutCutTurn),
-        (k.gutter, _DragMode.layoutCutGutter),
-      ]) {
-        if ((doc - frame.toPage(at)).distance <= 8 / _scale) {
-          return (line, mode);
-        }
-      }
+      if (at(k.turn)) return _CutTilt(frame.layout, doc, line);
+      if (at(k.gutter)) return _CutGutter(frame.layout, doc, line);
     }
     return null;
   }
@@ -187,8 +184,19 @@ extension StageLayouts on CanvasStageState {
       }
       controller.finishReadingOrder();
     }
+    var drag = _layoutDragAt(stage, doc);
+    if (drag == null) return false;
+    _gesture = drag;
+    controller.beginInteraction();
+    return true;
+  }
+
+  /// _layoutDragAt is the drag a press at [stage] begins on the selected
+  /// Layout, or null: on a picked Free cell's handles or inside it, on a
+  /// cut's knob, or on a cut or Grid line.
+  _LayoutDrag? _layoutDragAt(Offset stage, Offset doc) {
     var e = _oneLayout;
-    if (e == null) return false;
+    if (e == null) return null;
     // A picked Free cell: its handles size and turn it, inside moves it.
     // Its middle, and where the pointer is, are taken in the layout's own
     // box, where a cell is placed and turned.
@@ -196,166 +204,47 @@ extension StageLayouts on CanvasStageState {
       var r = freeCellRect(l, l.bounds, c);
       var handle = _hitHandle(stage);
       if (handle != null) {
-        _beginLayoutDrag(
-            l,
-            handle == StageHandle.rotate
-                ? _DragMode.layoutCellTurn
-                : _DragMode.layoutCellSize);
-        _layoutMiddle = r.center;
-        return true;
+        return handle == StageHandle.rotate
+            ? _FreeCellTurn(l, doc, c, r.center)
+            : _FreeCellSize(l, doc, c, r.center);
       }
       var local = BoxFrame(c.turn, 0, 0)
               .unplace(_layoutFrame(l).fromPage(doc), r.center) -
           r.center;
       if (local.dx.abs() <= r.width / 2 && local.dy.abs() <= r.height / 2) {
-        _beginLayoutDrag(l, _DragMode.layoutCellMove);
-        return true;
+        return _FreeCellMove(l, doc, c);
       }
     }
     // The layout's own handles first: a cut half way meets the middle one.
-    if (_hitHandle(stage) != null) return false;
+    if (_hitHandle(stage) != null) return null;
     var frame = _layoutFrame(e);
     var reach = 10 / _scale;
     // A cut's knobs before its line, as they sit on or beside it.
-    if (_cutKnobAt(frame, doc) case (var line, var mode)?) {
-      _beginLayoutDrag(e, mode);
-      _layoutCut = line;
-      return true;
-    }
+    if (_cutKnobAt(frame, doc) case var knob?) return knob;
     // Each line as it is drawn on the page.
     double away(Offset from, Offset to) =>
         _toSegment(doc, frame.toPage(from), frame.toPage(to));
     for (var line in frame.geometry.cuts) {
-      if (away(line.from, line.to) <= reach) {
-        _beginLayoutDrag(e, _DragMode.layoutCut);
-        _layoutCut = line;
-        return true;
-      }
+      if (away(line.from, line.to) <= reach) return _CutMove(e, doc, line);
     }
     for (var line in frame.geometry.tracks) {
-      if (away(line.from, line.to) <= reach) {
-        _beginLayoutDrag(e, _DragMode.layoutTrack);
-        _layoutTrack = line;
-        return true;
-      }
+      if (away(line.from, line.to) <= reach) return _TrackDrag(e, doc, line);
     }
-    return false;
+    return null;
   }
 
-  void _beginLayoutDrag(LayoutElement e, _DragMode mode) {
-    _mode = mode;
-    _layoutStart = e;
-    controller.beginInteraction();
-  }
-
-  /// _applyLayout moves what was pressed as the pointer goes to [doc]:
-  /// the pointer taken into the layout's own box by where it is drawn, so
-  /// what is dragged stays under it.
-  void _applyLayout(Offset doc) {
-    var start = _layoutStart;
-    if (start == null) return;
-    var frame = _layoutFrame(start);
-    var local = frame.fromPage(doc);
-    var from = frame.fromPage(_dragStart);
-    switch (_mode) {
-      case _DragMode.layoutCut:
-        var line = _layoutCut;
-        if (line == null) return;
-        var node = start.root.nodeAt(line.path);
-        if (node == null || node.isLeaf) return;
-        var at = cutAtPoint(node, line.box, local);
-        controller.setLayout(
-            start.copyWith(
-                root: start.root.replaced(line.path, node.withCut(at: at))),
-            transient: true);
-      case _DragMode.layoutCutTurn || _DragMode.layoutCutGutter:
-        var line = _layoutCut;
-        if (line == null) return;
-        var node = start.root.nodeAt(line.path);
-        if (node == null || node.isLeaf) return;
-        LayoutNode next;
-        if (_mode == _DragMode.layoutCutTurn) {
-          // Turned by as much as the pointer has gone round the pivot.
-          var pivot = cutPivot(node, line.box);
-          var a = from - pivot, b = local - pivot;
-          var swept =
-              (math.atan2(b.dy, b.dx) - math.atan2(a.dy, a.dx)) * 180 / math.pi;
-          swept = (swept + 540) % 360 - 180;
-          var tilt = node.tilt + swept;
-          tilt = _shiftHeld
-              ? (tilt / 5).round() * 5.0
-              : (tilt.abs() < 0.75 ? 0.0 : (tilt * 10).round() / 10);
-          next = node.withCut(tilt: tilt);
-        } else {
-          // Widened by twice how far the pointer has gone across the cut,
-          // as the gutter grows on both sides of it.
-          var along = line.to - line.from;
-          var length = along.distance;
-          if (length < 1e-6) return;
-          var normal = Offset(-along.dy, along.dx) / length;
-          var by =
-              (local - from).dx * normal.dx + (local - from).dy * normal.dy;
-          var gutter = (cutGutter(start, node) + by * 2).clamp(0.0, 400.0);
-          next = node.withCut(
-              gutter: _shiftHeld
-                  ? (gutter / 10).round() * 10.0
-                  : gutter.roundToDouble());
-        }
-        controller.setLayout(
-            start.copyWith(root: start.root.replaced(line.path, next)),
-            transient: true);
-      case _DragMode.layoutTrack:
-        var line = _layoutTrack;
-        if (line == null) return;
-        var inner = layoutInner(start, start.bounds);
-        var by = line.column ? local.dx - from.dx : local.dy - from.dy;
-        controller.setLayout(
-            line.column
-                ? start.copyWith(
-                    columns: tracksMoved(start.columns, line.index, by,
-                        inner.width, start.gutter))
-                : start.copyWith(
-                    rows: tracksMoved(start.rows, line.index, by, inner.height,
-                        start.rowGutter)),
-            transient: true);
-      case _DragMode.layoutCellMove ||
-            _DragMode.layoutCellSize ||
-            _DragMode.layoutCellTurn:
-        var id = controller.layoutCell(start.id);
-        var c = id == null ? null : start.cellById(id);
-        if (c == null) return;
-        var inner = layoutInner(start, start.bounds);
-        LayoutCell moved;
-        if (_mode == _DragMode.layoutCellMove) {
-          var d = local - from;
-          if (_shiftHeld) {
-            d = d.dx.abs() >= d.dy.abs() ? Offset(d.dx, 0) : Offset(0, d.dy);
-          }
-          moved = c.copyWith(
-              x: c.x + d.dx / inner.width, y: c.y + d.dy / inner.height);
-        } else if (_mode == _DragMode.layoutCellTurn) {
-          var was = from - _layoutMiddle, to = local - _layoutMiddle;
-          var swept = (math.atan2(to.dy, to.dx) - math.atan2(was.dy, was.dx)) *
-              180 /
-              math.pi;
-          var turn = c.turn + swept;
-          if (_shiftHeld) turn = steppedTurn(turn);
-          moved = c.copyWith(turn: (turn + 180) % 360 - 180);
-        } else {
-          var was = from - _layoutMiddle, to = local - _layoutMiddle;
-          var along = was.distanceSquared;
-          if (along < 1e-6) return;
-          var f = ((to.dx * was.dx + to.dy * was.dy) / along).clamp(0.05, 20.0);
-          var w = c.width * f, h = c.height * f;
-          moved = c.copyWith(
-              x: c.x + (c.width - w) / 2,
-              y: c.y + (c.height - h) / 2,
-              width: w,
-              height: h);
-        }
-        controller.setLayout(start.withCell(moved), transient: true);
-      default:
-    }
+  /// _applyLayout is [drag] with the pointer at [doc]: the pointer and the
+  /// press taken into the layout's own box by where it is drawn, so what is
+  /// dragged stays under it. It changes the layout as the document has it
+  /// now, so a cell taken out meanwhile stays out; once what it holds has
+  /// gone, it does nothing.
+  void _applyLayout(_LayoutDrag drag, Offset doc) {
+    var now = document.elementById(drag.start.id);
+    if (now is! LayoutElement) return;
+    var frame = _layoutFrame(drag.start);
+    var next = drag._moved(
+        this, now, frame.fromPage(drag.pressed), frame.fromPage(doc));
+    if (next != null) controller.setLayout(next, transient: true);
   }
 
   /// _doubleClickLayout picks the cell of [e] under [doc]; none where it is
@@ -365,5 +254,233 @@ extension StageLayouts on CanvasStageState {
     var place = _layoutFrame(e).cellAt(doc);
     controller.pickLayoutCell(e.id, place?.cell.id);
     return true;
+  }
+}
+
+/// _LayoutDrag is a Layout's line or picked Free cell dragged. Each is one
+/// undo step, opened as it begins (_pressLayout), and works from the layout
+/// as the press found it, so that rounding does not build up.
+sealed class _LayoutDrag extends StageGesture {
+  _LayoutDrag(this.start, this.pressed);
+
+  /// start is the layout as it was when it was pressed.
+  final LayoutElement start;
+
+  /// pressed is where the press landed, in the document.
+  final Offset pressed;
+
+  @override
+  bool get opensUndoStep => true;
+
+  @override
+  bool get waitsToTravel => true;
+
+  @override
+  void move(CanvasStageState stage, Offset at, Offset doc) =>
+      stage._applyLayout(this, doc);
+
+  /// _moved is [now], the layout as the document has it, with the pointer
+  /// gone from [from] to [to] in the layout's own box, worked out from
+  /// [start]; or null to leave it as it is.
+  LayoutElement? _moved(
+      CanvasStageState stage, LayoutElement now, Offset from, Offset to);
+
+  @override
+  void release(CanvasStageState stage, Offset at,
+      {required bool travelled, required bool clicked}) {}
+
+  @override
+  void cancel(CanvasStageState stage) {}
+}
+
+/// _CutDrag is a Panels cut taken: its line moved, or tilted or widened by
+/// a knob.
+sealed class _CutDrag extends _LayoutDrag {
+  _CutDrag(super.start, super.pressed, this.line);
+
+  /// line is the cut taken, as the press found it.
+  final LayoutCutLine line;
+
+  /// was is the cut in [start].
+  LayoutNode? get was => start.root.nodeAt(line.path);
+
+  /// _cutIn is [now] with the cut made [next] of itself, or null when [now]
+  /// no longer has that cut between the same cells.
+  LayoutElement? _cutIn(
+      LayoutElement now, LayoutNode Function(LayoutNode) next) {
+    var cut = now.root.nodeAt(line.path), before = was;
+    if (cut == null || cut.isLeaf || before == null || before.isLeaf) {
+      return null;
+    }
+    if (!listEquals(cut.cells, before.cells)) return null;
+    return now.copyWith(root: now.root.replaced(line.path, next(cut)));
+  }
+}
+
+/// _CutMove is a cut's line dragged to where the pointer is.
+class _CutMove extends _CutDrag {
+  _CutMove(super.start, super.pressed, super.line);
+
+  @override
+  LayoutElement? _moved(
+          CanvasStageState stage, LayoutElement now, Offset from, Offset to) =>
+      _cutIn(now, (cut) => cut.withCut(at: cutAtPoint(cut, line.box, to)));
+}
+
+/// _CutTilt is a cut tilted by its ring knob, by as much as the pointer has
+/// gone round the point it turns about; in 5-degree steps with Shift.
+class _CutTilt extends _CutDrag {
+  _CutTilt(super.start, super.pressed, super.line);
+
+  @override
+  LayoutElement? _moved(
+      CanvasStageState stage, LayoutElement now, Offset from, Offset to) {
+    var before = was;
+    if (before == null || before.isLeaf) return null;
+    var pivot = cutPivot(before, line.box);
+    var a = from - pivot, b = to - pivot;
+    var swept =
+        (math.atan2(b.dy, b.dx) - math.atan2(a.dy, a.dx)) * 180 / math.pi;
+    swept = (swept + 540) % 360 - 180;
+    var tilt = before.tilt + swept;
+    tilt = stage._shiftHeld
+        ? (tilt / 5).round() * 5.0
+        : (tilt.abs() < 0.75 ? 0.0 : (tilt * 10).round() / 10);
+    return _cutIn(now, (cut) => cut.withCut(tilt: tilt));
+  }
+}
+
+/// _CutGutter is a cut's gutter widened by its square knob, by twice how
+/// far the pointer has gone across the cut, as the gutter grows on both
+/// sides of it; in steps of 10 with Shift.
+class _CutGutter extends _CutDrag {
+  _CutGutter(super.start, super.pressed, super.line);
+
+  @override
+  LayoutElement? _moved(
+      CanvasStageState stage, LayoutElement now, Offset from, Offset to) {
+    var before = was;
+    if (before == null || before.isLeaf) return null;
+    var along = line.to - line.from;
+    var length = along.distance;
+    if (length < 1e-6) return null;
+    var normal = Offset(-along.dy, along.dx) / length;
+    var by = (to - from).dx * normal.dx + (to - from).dy * normal.dy;
+    var gutter = (cutGutter(start, before) + by * 2).clamp(0.0, 400.0);
+    gutter = stage._shiftHeld
+        ? (gutter / 10).round() * 10.0
+        : gutter.roundToDouble();
+    return _cutIn(now, (cut) => cut.withCut(gutter: gutter));
+  }
+}
+
+/// _TrackDrag is a Grid's line between two tracks dragged, widening one
+/// and narrowing the other.
+class _TrackDrag extends _LayoutDrag {
+  _TrackDrag(super.start, super.pressed, this.line);
+
+  /// line is the line taken, as the press found it.
+  final LayoutTrackLine line;
+
+  @override
+  LayoutElement? _moved(
+      CanvasStageState stage, LayoutElement now, Offset from, Offset to) {
+    if (now.columns.length != start.columns.length ||
+        now.rows.length != start.rows.length) {
+      return null;
+    }
+    var inner = layoutInner(start, start.bounds);
+    var by = line.column ? to.dx - from.dx : to.dy - from.dy;
+    return line.column
+        ? now.copyWith(
+            columns: tracksMoved(
+                start.columns, line.index, by, inner.width, start.gutter))
+        : now.copyWith(
+            rows: tracksMoved(
+                start.rows, line.index, by, inner.height, start.rowGutter));
+  }
+}
+
+/// _FreeCellDrag is the picked Free cell taken by its own box: moved from
+/// inside, sized by a corner or side, or turned by the round handle. It
+/// goes on while the cell is in the layout and still the one picked.
+sealed class _FreeCellDrag extends _LayoutDrag {
+  _FreeCellDrag(super.start, super.pressed, this.cell);
+
+  /// cell is the cell as the press found it.
+  final LayoutCell cell;
+
+  @override
+  LayoutElement? _moved(
+      CanvasStageState stage, LayoutElement now, Offset from, Offset to) {
+    if (stage.controller.layoutCell(start.id) != cell.id ||
+        now.cellById(cell.id) == null) {
+      return null;
+    }
+    var moved = _cellMoved(stage, from, to);
+    return moved == null ? null : now.withCell(moved);
+  }
+
+  /// _cellMoved is [cell] with the pointer gone from [from] to [to] in the
+  /// layout's own box, or null to leave it as it is.
+  LayoutCell? _cellMoved(CanvasStageState stage, Offset from, Offset to);
+}
+
+/// _FreeCellMove is the cell moved by the drag, along one axis with Shift.
+class _FreeCellMove extends _FreeCellDrag {
+  _FreeCellMove(super.start, super.pressed, super.cell);
+
+  @override
+  LayoutCell _cellMoved(CanvasStageState stage, Offset from, Offset to) {
+    var inner = layoutInner(start, start.bounds);
+    var d = to - from;
+    if (stage._shiftHeld) {
+      d = d.dx.abs() >= d.dy.abs() ? Offset(d.dx, 0) : Offset(0, d.dy);
+    }
+    return cell.copyWith(
+        x: cell.x + d.dx / inner.width, y: cell.y + d.dy / inner.height);
+  }
+}
+
+/// _FreeCellSize is the cell sized about its middle, by how much farther
+/// from it the pointer is along the line pressed on.
+class _FreeCellSize extends _FreeCellDrag {
+  _FreeCellSize(super.start, super.pressed, super.cell, this.middle);
+
+  /// middle is the cell's middle in the layout's own box at the press.
+  final Offset middle;
+
+  @override
+  LayoutCell? _cellMoved(CanvasStageState stage, Offset from, Offset to) {
+    var was = from - middle, now = to - middle;
+    var along = was.distanceSquared;
+    if (along < 1e-6) return null;
+    var f = ((now.dx * was.dx + now.dy * was.dy) / along).clamp(0.05, 20.0);
+    var w = cell.width * f, h = cell.height * f;
+    return cell.copyWith(
+        x: cell.x + (cell.width - w) / 2,
+        y: cell.y + (cell.height - h) / 2,
+        width: w,
+        height: h);
+  }
+}
+
+/// _FreeCellTurn is the cell turned by the angle swept about its middle, in
+/// 15-degree steps with Shift.
+class _FreeCellTurn extends _FreeCellDrag {
+  _FreeCellTurn(super.start, super.pressed, super.cell, this.middle);
+
+  /// middle is the cell's middle in the layout's own box at the press.
+  final Offset middle;
+
+  @override
+  LayoutCell _cellMoved(CanvasStageState stage, Offset from, Offset to) {
+    var was = from - middle, now = to - middle;
+    var swept = (math.atan2(now.dy, now.dx) - math.atan2(was.dy, was.dx)) *
+        180 /
+        math.pi;
+    var turn = cell.turn + swept;
+    if (stage._shiftHeld) turn = steppedTurn(turn);
+    return cell.copyWith(turn: (turn + 180) % 360 - 180);
   }
 }

@@ -759,6 +759,11 @@ dragged and tab carried, and a press left to a live preview, in
 `stage_element_controls.dart`; a text's picture piece moved, sized or
 turned by its own box in `stage_text_pieces.dart` (three cases of one sealed
 `_PieceDrag`, sharing the piece and its middle as the press found them); a
+Layout's cut moved, tilted or widened, a Grid line moved, and a picked Free
+cell moved, sized or turned in `stage_layouts.dart` (seven cases of one
+sealed `_LayoutDrag`, sharing the layout and the press as it found them,
+each step changing the layout as the document has it then, so a cell taken
+out with Delete partway stays out); a
 team's player in `stage_team_players.dart`; the retouching stroke in
 `stage_retouch.dart`; a 3D stage's camera orbited
 or panned, parallax scenery panned and the gizmo dragged in
@@ -770,8 +775,8 @@ Not every kind is a case yet. The rest still run through the State's
 `_DragMode _mode` and the fields read under it: begun in their press steps,
 stepped in the `switch` in `stage_drag.dart`, and ended by the branches
 and the hand-kept lists of modes in `stage_release.dart`, which close
-their undo steps. These are the vector tools, the picture tools and warp,
-and Layouts, in their own parts. So both
+their undo steps. These are the vector tools, and the picture tools and
+warp, in their own parts. So both
 exist for now: a press sets one or the other, never both. A press that
 opens a Run panel's preview live is neither: `_liveTapPending` replays its
 tap into the app on release.

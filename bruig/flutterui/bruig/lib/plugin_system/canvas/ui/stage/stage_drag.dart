@@ -108,14 +108,6 @@ extension StageDrag on CanvasStageState {
     var doc = _toDocument(event.localPosition);
 
     switch (_mode) {
-      case _DragMode.layoutCut ||
-            _DragMode.layoutCutTurn ||
-            _DragMode.layoutCutGutter ||
-            _DragMode.layoutTrack ||
-            _DragMode.layoutCellMove ||
-            _DragMode.layoutCellSize ||
-            _DragMode.layoutCellTurn:
-        _applyLayout(doc);
       case _DragMode.warpMove ||
             _DragMode.warpScale ||
             _DragMode.warpTurn ||

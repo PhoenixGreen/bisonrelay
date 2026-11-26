@@ -7,7 +7,8 @@ part of 'canvas_stage.dart';
 // that belong with their subject sit in its part: a synth module's
 // (stage_synth_controls.dart), a Code panel's (stage_code_controls.dart), a
 // counter's piece (stage_element_controls.dart), a text's picture piece
-// (stage_text_pieces.dart), a team's player (stage_team_players.dart), the
+// (stage_text_pieces.dart), a Layout's lines and Free cell
+// (stage_layouts.dart), a team's player (stage_team_players.dart), the
 // retouching stroke (stage_retouch.dart), a 3D stage's camera, parallax
 // scenery's and the gizmo (stage_3d_view.dart). The kinds not yet made
 // cases still run through _DragMode, in the switch in stage_drag.dart and

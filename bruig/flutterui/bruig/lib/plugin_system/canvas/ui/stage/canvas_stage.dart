@@ -120,6 +120,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage/stage_keys.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/in_place_edit.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_scroll.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_transform.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
@@ -155,22 +156,10 @@ part 'stage_layouts.dart';
 // more than once; handles stay in stage space, one size at any zoom.
 
 /// _DragMode is what the pointer is currently doing, for the kinds of
-/// gesture not yet cases of StageGesture: the vector tools, the picture
-/// tools and warp, and Layouts.
+/// gesture not yet cases of StageGesture: the vector tools, and the picture
+/// tools and warp.
 enum _DragMode {
   none,
-
-  /// layoutCut and layoutTrack drag a Layout's cut or grid line, and
-  /// layoutCutTurn and -Gutter a cut's tilt and gutter by its knobs;
-  /// layoutCellMove, -Size and -Turn a picked Free cell. See
-  /// stage_layouts.dart.
-  layoutCut,
-  layoutCutTurn,
-  layoutCutGutter,
-  layoutTrack,
-  layoutCellMove,
-  layoutCellSize,
-  layoutCellTurn,
 
   /// warpMove, warpScale and warpTurn move, size or turn a warp grid's
   /// picked points; warpMarquee picks points with a box.
@@ -587,15 +576,6 @@ class CanvasStageState extends State<CanvasStage>
   /// the app on release (_replayTap).
   bool _liveTapPending = false;
   int _replayPointer = 0x7FFF0000;
-
-  /// _layoutStart is a Layout as it was when one of its lines or cells was
-  /// pressed, and _layoutCut, _layoutTrack and _layoutMiddle what was
-  /// pressed (stage_layouts.dart): _layoutMiddle a Free cell's middle in the
-  /// layout's own box.
-  LayoutElement? _layoutStart;
-  LayoutCutLine? _layoutCut;
-  LayoutTrackLine? _layoutTrack;
-  Offset _layoutMiddle = Offset.zero;
 
   VectorPart _vectorPart = VectorPart.point;
 
