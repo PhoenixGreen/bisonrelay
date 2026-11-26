@@ -419,6 +419,100 @@ void main() {
         reason: "inside the layer and nowhere else");
   });
 
+  // A book's press for a button is the box it rests in, never turned: one
+  // drawn turned is pressed where it would be upright (on a page laid out
+  // as layers, a button that moves carries that box with its move). The
+  // editor presses where it is drawn. See button_actions.dart.
+  testWidgets("a turned button is pressed in the book where it rests upright",
+      (tester) async {
+    var secret = ShapeElement(
+        const ElementBase(
+            id: "secret", x: 200, y: 20, width: 60, height: 60, visible: false),
+        fill: const Color(0xFF0000FF));
+    const show =
+        ButtonAction(kind: ButtonActionKind.toggleElement, elementId: "secret");
+    String? pressed(ButtonElement b, Uint8List bytes) =>
+        pageOf(bytes, 0).findAllElements("button").single.getAttribute("style");
+    var upright = button("s", 10, show);
+    var turned = upright.withBase(rotation: 40) as ButtonElement;
+    var flat = await publish(tester, book([secret, upright]));
+    var round = await publish(tester, book([secret, turned]));
+    expect(pressed(turned, round), pressed(upright, flat));
+    expect(pressed(turned, round), isNot(contains("rotate")));
+  });
+
+  // The playhead's buttons are made only on a page that moves: on a still
+  // one there is no playhead, and no press.
+  testWidgets("a still page has no press for a playhead's button",
+      (tester) async {
+    var bytes = await publish(
+        tester,
+        book([
+          button("p", 10, const ButtonAction(kind: ButtonActionKind.play)),
+          button("t", 100,
+              const ButtonAction(kind: ButtonActionKind.playToFrame, frame: 6)),
+        ]));
+    expect(pageOf(bytes, 0).findAllElements("button"), isEmpty);
+  });
+
+  // A Play to frame aimed past the page's end stops on its last frame, as
+  // in the editor: the frame it is given is held to the page.
+  testWidgets("a Play to frame past the page's end stops on its last frame",
+      (tester) async {
+    var bytes = await publish(
+        tester,
+        book([
+          sliding(),
+          button(
+              "t",
+              100,
+              const ButtonAction(
+                  kind: ButtonActionKind.playToFrame, frame: 500)),
+          button("g", 200,
+              const ButtonAction(kind: ButtonActionKind.goToFrame, frame: -4)),
+        ]));
+    var frames = {
+      for (var b in pageOf(bytes, 0).findAllElements("button"))
+        if (b.getAttribute("data-act") case "playto" || "goto")
+          b.getAttribute("data-act"): b.getAttribute("data-frame"),
+    };
+    expect(frames, {"playto": "11", "goto": "0"});
+  });
+
+  // The master's buttons are pressed on the pages that show the master, and
+  // only those, whichever page was open when the book was made.
+  for (var open in [0, 1]) {
+    testWidgets(
+        "a master's button is on the pages that show it, page $open open",
+        (tester) async {
+      var doc = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+        frameRate: 12,
+        masterOn: true,
+        master: CanvasScene(id: "master", elements: [
+          button(
+              "home",
+              10,
+              const ButtonAction(
+                  kind: ButtonActionKind.goToScene, elementId: "end")),
+        ]),
+        scenes: const [
+          CanvasScene(id: "one"),
+          CanvasScene(id: "bare", masterOff: true),
+          CanvasScene(id: "end"),
+        ],
+      ).goToScene(open);
+      var bytes = await publish(tester, doc);
+      List<String?> links(int page) => [
+            for (var a in pageOf(bytes, page).findAllElements("a"))
+              a.getAttribute("href"),
+          ];
+      expect(links(0), ["page2.xhtml"], reason: "the master is on it");
+      expect(links(1), isEmpty, reason: "the master is off this page");
+      expect(links(2), isEmpty, reason: "no link to its own page");
+    });
+  }
+
   testWidgets("a moving background holds still, and a still page is a picture",
       (tester) async {
     var bytes = await publish(

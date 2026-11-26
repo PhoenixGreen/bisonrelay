@@ -67,8 +67,11 @@ class ButtonAction {
   final ButtonActionKind kind;
   final int frame;
 
-  /// elementId is the element an action targets, or the scene (id or name)
-  /// of [ButtonActionKind.goToScene]. Naming nothing, the button does nothing.
+  /// elementId is what the action is done to, saved as "element" whatever it
+  /// names: an element's id for showing, hiding or a sound; but for
+  /// [ButtonActionKind.goToScene] not an element at all, a scene, by its id
+  /// or its name, which CanvasDocument.sceneIndexNamed finds either way (by
+  /// id first). Naming nothing, the button does nothing.
   final String elementId;
 
   final String url;

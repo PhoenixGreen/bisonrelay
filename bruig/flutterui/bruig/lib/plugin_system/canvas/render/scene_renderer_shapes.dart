@@ -5,9 +5,8 @@ part of 'scene_renderer.dart';
 // on the page (strokeOnPage, curveOfElement), which the selection box, the
 // press, text riding it and Follow path all ask. With them, where any
 // element is drawn (visualBoundsOf, hasOwnGeometry), since a stroke, text on
-// a line and an element on a stage are where that is not its box. A
-// button's painter
-// is here too, for want of a file of its own. Part of scene_renderer.dart.
+// a line and an element on a stage are where that is not its box. Part of
+// scene_renderer.dart.
 
 /// visualBoundsOf is where [element] is drawn, which differs from its moved
 /// box on a stage, for a line or a path (round its curve as drawn, with
@@ -232,20 +231,4 @@ Rect labelRoom(ShapeElement e, Rect rect) {
 void _paintStroked(ui.Canvas canvas, StrokedElement e, bool editing) {
   if (e is PathElement && e.guide && !editing) return;
   paintStroke(canvas, e.curve, e.drawnStroke);
-}
-
-void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
-    CanvasImageSource? images) {
-  var box = e.box;
-  if (hovered && e.hoverFill.a > 0) box = box.copyWith(fill: e.hoverFill);
-  paintBox(canvas, bounds, box, images);
-
-  var spec = e.textSpec;
-  if (hovered && e.hoverTextColor.a > 0) {
-    spec = spec.copyWith(color: e.hoverTextColor);
-  }
-  var inner = e.box.inner(bounds);
-  if (inner.width <= 0 || inner.height <= 0) return;
-  // As typed: the layout puts the words in their case.
-  paintTextInBox(canvas, e.label, spec, inner, clip: true);
 }

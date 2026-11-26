@@ -12,6 +12,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_rulers.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
+    show MetronomeShow;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -153,6 +156,8 @@ void main() {
         counterValue: NotCompared((CounterElement e) => 0.0),
         counterRunning: NotCompared((CounterElement e) => false),
         counterTick: pick("live.counterTick", 0, 1),
+        metronomeShow:
+            NotCompared((MetronomeElement e) => const MetronomeShow()),
         audioState: NotCompared((AudioElement e) => throw UnimplementedError()),
         videoShow: NotCompared((VideoElement e) => throw UnimplementedError()),
         audioRevision: pick("live.audioRevision", 0, 1),

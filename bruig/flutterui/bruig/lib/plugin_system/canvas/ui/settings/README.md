@@ -68,15 +68,17 @@ its sections' bits are named pieces (`_kindBit`, `_lookBit`, `_wordsBit`,
 A control in the quick strip is the twin of one in a section. Build the two
 with one function that is told which it is (`quick:`), so their range, what
 they offer and what they write cannot part: the shape's `_outlineWidth`,
-a counter's From, To and Written (`_end`, `_written`), and a stroke's
-controls in `stroke_controls.dart`. Take every range from
+a counter's From, To and Written (`_end`, `_written`), a metronome's tempo
+(`_tempo`), a button's label and what it does (`_label`, and `actionDoes`
+in `button_action_controls.dart`, which a game element's press shares),
+and a stroke's controls in `stroke_controls.dart`. Take every range from
 the model (`StrokeRange`, `SpeechBubbleSpec.maxTailLength`), never a number
 written in the panel.
 
-Seven kinds still hand the frame whole sections of their own (a team, a 3D
-character, a sprite, a tile map, a camera, a 3D object, a background). Those
-are placed by name through `_placed` in `ui/element_settings.dart`. New
-panels use `PanelBit`s. Pictures go through `elementPanel`
+Six kinds still hand the frame whole sections of their own (a team, a 3D
+character, a sprite, a tile map, a 3D object, a background). Those are
+placed by name through `_placed` in `ui/element_settings.dart`. New panels
+use `PanelBit`s. Pictures go through `elementPanel`
 (`image_sections.dart`), and so does text (`text_settings.dart`), which
 uses the two things below that only it needs so far.
 
@@ -165,6 +167,7 @@ Do not build any of this again for an element:
 | `box_group.dart` | `boxGroup`, and the side and corner fields it is made of | a text's box, a counter's two, a button, a chart's card, audio, video, a picture's frame, sheet music, a Layout's cells |
 | `fill_controls.dart` | `fillBits`: a picture or a pattern as a fill | a text's letters, a box, a shape |
 | `type_parts.dart` | how words are set, a control at a time, and `typeGroups` | wherever words are drawn |
+| `button_action_controls.dart` | what a press does and what it does it to (`buttonActionControls`, `actionDoes`) | a button; a game element's press |
 | `stroke_controls.dart` | a stroke's colour, width, cap, ends and dash, each built once, writing through `withStroke`; `fadedColour` and `widthField` | a line, a path, a shape's outline |
 
 A control only one panel uses lives with that panel: a text's cutting

@@ -14,9 +14,10 @@ import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 /// between, as a clockwork one's.
 const metronomeSlowest = 30.0, metronomeFastest = 240.0;
 
-/// metronomeBeats are the bars it counts, as its beats button steps through
-/// them: 1 is every beat alike.
-const metronomeBeats = [1, 2, 3, 4, 6];
+/// metronomeBeats are the bars it counts, as its settings offer them and
+/// its beats button steps through them: 1 is every beat alike. Whatever it
+/// holds is one of these.
+const metronomeBeats = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 class MetronomeElement extends CanvasElement {
   final double bpm;
@@ -53,7 +54,8 @@ class MetronomeElement extends CanvasElement {
           bpm: (bpm ?? this.bpm)
               .clamp(metronomeSlowest, metronomeFastest)
               .roundToDouble(),
-          beats: (beats ?? this.beats).clamp(1, 12),
+          beats: (beats ?? this.beats)
+              .clamp(metronomeBeats.first, metronomeBeats.last),
           body: body ?? this.body,
           accent: accent ?? this.accent);
 

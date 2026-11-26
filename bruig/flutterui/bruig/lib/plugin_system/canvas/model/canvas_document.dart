@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/element_reading.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -54,6 +55,23 @@ int defaultRateFor(CanvasRatio ratio, CanvasKind kind) =>
 /// _bareMasters are masters with their elements taken off, as a cover shows
 /// them: one each, so a cover's master keeps its identity across frames.
 final _bareMasters = Expando<CanvasScene>("bareMaster");
+
+/// stackedWithMaster is a page's elements with the master's under them,
+/// except its page numbers, which go over so a full-page picture cannot
+/// hide them; the renderer and the EPUB layers share this order. With
+/// [over], all of the master goes over the page (a game's HUD).
+List<CanvasElement> stackedWithMaster(
+        List<CanvasElement> master, List<CanvasElement> page,
+        {bool over = false}) =>
+    over
+        ? [...page, ...master]
+        : [
+            for (var e in master)
+              if (!(e is CounterElement && e.isPageNumber)) e,
+            ...page,
+            for (var e in master)
+              if (e is CounterElement && e.isPageNumber) e,
+          ];
 
 /// CanvasDocument is a whole canvas: its page, its scenes and what is on
 /// them, its sound, its data and its game. Immutable: every edit is a new
@@ -541,6 +559,12 @@ class CanvasDocument {
     }
     return m;
   }
+
+  /// masterSceneOf is [masterScene] as scene [index] has it, whichever scene
+  /// is open: what each page of a book, made from every scene, shows of the
+  /// master.
+  CanvasScene? masterSceneOf(int index) =>
+      index == at ? masterScene : goToScene(index).masterScene;
 
   /// pageFields is what the fields of a text on the shown canvas are filled
   /// from (text_fields.dart): its page number and values, the words of the

@@ -68,6 +68,7 @@ void paintStageContents(Canvas canvas, CanvasDocument document, int frame,
       liveMotion: motion ?? live.liveMotion.value,
       counterPressed: (e) => e.id == hover.id ? hover.button : -1,
       counterRunning: live.counterRunning.value,
+      metronomeShow: live.metronomeShow.value,
       audioState: live.audioState.value,
       videoShow: live.videoShow.value,
       // Kept while design and size hold still: the editor repaints on
@@ -192,7 +193,8 @@ void _paintRun(Canvas canvas, CanvasDocument document, int at,
         audioState: live.audioState.value,
         videoShow: live.videoShow.value,
         liveMotion: live.liveMotion.value,
-        counterValue: live.counterValue.value);
+        counterValue: live.counterValue.value,
+        metronomeShow: live.metronomeShow.value);
   }
 }
 

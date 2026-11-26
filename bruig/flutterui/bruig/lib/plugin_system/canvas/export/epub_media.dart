@@ -77,7 +77,8 @@ class EpubMediaBuilder {
   Future<EpubPageMedia> page(CanvasDocument document, int index, double pixels,
       {int? width, int? height}) async {
     var scene = document.allScenes[index];
-    var master = document.masterScene;
+    // The master as this page shows it, not as the scene open does.
+    var master = document.masterSceneOf(index);
     var elements = [...?master?.elements, ...scene.elements];
     var backdrop = document.backgroundOf(index);
 
@@ -336,22 +337,15 @@ class EpubMediaBuilder {
     for (var e in elements) {
       if (e is! ButtonElement || !e.visible) continue;
       var action = e.action;
-      if (!action.kind.needsSound || !targets.contains(action.elementId)) {
-        continue;
-      }
+      var act = _soundAct(action.kind);
+      if (act == null || !targets.contains(action.elementId)) continue;
       var box = e.bounds;
       actions.add(EpubAction(
         x: box.left * pixels,
         y: box.top * pixels,
         width: box.width * pixels,
         height: box.height * pixels,
-        act: switch (action.kind) {
-          ButtonActionKind.playSound => "play",
-          ButtonActionKind.pauseSound => "pause",
-          ButtonActionKind.stopSound => "stop",
-          ButtonActionKind.muteSound => "mute",
-          _ => "toggle",
-        },
+        act: act,
         target: action.elementId,
         element: e.id,
       ));
@@ -378,7 +372,9 @@ class EpubMediaBuilder {
       ));
     }
 
-    // The playhead's buttons, aimed at the page's layers: its playhead.
+    // The playhead's buttons, aimed at the page's layers: its playhead, on a
+    // frame of the page, as the editor's playhead is held to the scene.
+    var last = math.max(1, scene.frames) - 1;
     if (stage?.animates ?? false) {
       for (var e in elements) {
         if (e is! ButtonElement || !e.visible) continue;
@@ -393,7 +389,7 @@ class EpubMediaBuilder {
           height: box.height * pixels,
           act: act,
           target: filmTarget,
-          frame: action.frame,
+          frame: action.frame.clamp(0, last).toInt(),
           element: e.id,
         ));
       }
@@ -580,7 +576,8 @@ class EpubMediaBuilder {
 }
 
 /// _playheadAct is what a button that moves the playhead is called in the
-/// page's script, or null for one that does something else.
+/// page's script, or null for one that does something else. Every action
+/// is named, so a new one is placed here or in [_soundAct] by the compiler.
 String? _playheadAct(ButtonActionKind kind) => switch (kind) {
       ButtonActionKind.play => "play",
       ButtonActionKind.pause => "pause",
@@ -589,7 +586,37 @@ String? _playheadAct(ButtonActionKind kind) => switch (kind) {
       ButtonActionKind.goToFrame => "goto",
       ButtonActionKind.playFrom => "playfrom",
       ButtonActionKind.playToFrame => "playto",
-      _ => null,
+      ButtonActionKind.toggleElement ||
+      ButtonActionKind.goToScene ||
+      ButtonActionKind.openLink ||
+      ButtonActionKind.playSound ||
+      ButtonActionKind.pauseSound ||
+      ButtonActionKind.toggleSound ||
+      ButtonActionKind.stopSound ||
+      ButtonActionKind.muteSound =>
+        null,
+    };
+
+/// _soundAct is what a button that plays, holds, stops or mutes a sound or
+/// a video is called in the page's script, or null for one that does
+/// something else.
+String? _soundAct(ButtonActionKind kind) => switch (kind) {
+      ButtonActionKind.playSound => "play",
+      ButtonActionKind.pauseSound => "pause",
+      ButtonActionKind.toggleSound => "toggle",
+      ButtonActionKind.stopSound => "stop",
+      ButtonActionKind.muteSound => "mute",
+      ButtonActionKind.goToFrame ||
+      ButtonActionKind.playFrom ||
+      ButtonActionKind.playToFrame ||
+      ButtonActionKind.play ||
+      ButtonActionKind.pause ||
+      ButtonActionKind.togglePlay ||
+      ButtonActionKind.restart ||
+      ButtonActionKind.toggleElement ||
+      ButtonActionKind.goToScene ||
+      ButtonActionKind.openLink =>
+        null,
     };
 
 /// cssBlend is [b] as CSS's mix-blend-mode, or null for normal.

@@ -8,11 +8,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline/track_curves.dart'
+    show keyframeLanesOf;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -283,4 +287,83 @@ void main() {
     expect(cam.focus, 0, reason: "the setting itself left as it was");
     expect(cameraLookAt(cam, 10, c.document).focus, closeTo(0.5, 0.01));
   });
+
+  // The four lens values a key holds are saved by name in the keyframe's
+  // values, as they always were, and the Chain's keyframe lanes show each.
+  testWidgets("its focus, blur, vignette and how far it aims are keyed by name",
+      (tester) async {
+    var c = await _lensPanel(tester);
+    for (var k in ["focus", "blur", "vignette", "aim"]) {
+      await tester.ensureVisible(find.byKey(ValueKey("cameraKey-$k")));
+      await tester.tap(find.byKey(ValueKey("cameraKey-$k")));
+      await tester.pumpAndSettle();
+    }
+    var cam = c.document.elementById("c") as CameraElement;
+    var saved = (cam.toJson()["track"]["keys"] as List)
+        .map((k) => (k as Map)["v"])
+        .whereType<Map>()
+        .expand((v) => v.keys)
+        .toSet();
+    expect(saved, {"focus", "blur", "vignette", "aim"});
+    var back = elementFromJson(cam.toJson()) as CameraElement;
+    expect(back.track!.keyAt(0)!.values,
+        {"focus": 0, "blur": 6, "vignette": 0, "aim": 1});
+    // Changed later, each is a key there, and the lanes show the four.
+    c.frame = 20;
+    await tester.pumpAndSettle();
+    await typeNumber(tester, "cameraBlur", "30");
+    await typeNumber(tester, "cameraVignette", "50");
+    await typeNumber(tester, "cameraAimMix", "40");
+    cam = c.document.elementById("c") as CameraElement;
+    expect(cam.track!.keyAt(20)!.values,
+        {"blur": 30, "vignette": 0.5, "aim": closeTo(0.4, 1e-9)});
+    expect(keyframeLanesOf(cam.track!).map((l) => l.$1),
+        containsAll(["blur", "vignette", "aim"]));
+  });
+
+  // A value keyed in the panel is a key of that value alone, as every other
+  // panel's ◆ makes: it does not also pin, where it lands, the camera's move
+  // or the other lens values as they happen to be there.
+  testWidgets("a lens value keyed between two keys pins only itself",
+      (tester) async {
+    var c = await _lensPanel(tester,
+        track: ElementTrack(const [
+          Keyframe(frame: 0, scale: 1, values: {"focus": 0}),
+          Keyframe(frame: 40, scale: 2, values: {"focus": 1}),
+        ]));
+    c.frame = 20;
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey("cameraKey-blur")));
+    await tester.tap(find.byKey(const ValueKey("cameraKey-blur")));
+    await tester.pumpAndSettle();
+    var key = (c.document.elementById("c") as CameraElement).track!.keyAt(20)!;
+    expect(key.values, {"blur": 6});
+    expect(key.pins, 0, reason: "neither its place, size, turn nor fade");
+  });
+}
+
+/// _lensPanel is a Camera on the page beside a square and a chart, with
+/// [track], selected, its settings shown.
+Future<CanvasController> _lensPanel(WidgetTester tester,
+    {ElementTrack? track}) async {
+  var chart = newElement(ElementKind.chart, page([])) as ChartElement;
+  var c = CanvasController(page([
+    square("a", const Rect.fromLTWH(30, 50, 80, 80)),
+    chart,
+    CameraElement(ElementBase(id: "c", width: 320, height: 180, track: track),
+        blur: 6, aim: chart.id),
+  ], frames: 48));
+  addTearDown(c.dispose);
+  c.selectOnly("c");
+  setTestScreen(tester, const Size(800, 3000));
+  await tester.pumpWidget(canvasApp(SizedBox(
+      width: 340,
+      child: SingleChildScrollView(
+          child: ListenableBuilder(
+              listenable: c,
+              builder: (context, _) => Column(
+                  children: elementSettings(
+                      context, c, c.document.elementById("c")!)))))));
+  await tester.pumpAndSettle();
+  return c;
 }

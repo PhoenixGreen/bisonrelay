@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -12,192 +11,329 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
 import 'package:bruig/plugin_system/canvas/render/camera_aim.dart'
     show aimChoices;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show cameraFraming, cameraLookAt, isStageScene, poseAimAt;
+    show
+        CameraLook,
+        cameraFraming,
+        cameraLookAt,
+        isStageScene,
+        poseAimAt,
+        stageCameraOf;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 
-// camera_settings.dart is a 2D Camera's framing and lens: zoom, roll,
-// focus, depth of field, parallax, vignette, motion blur. Focus, blur and
-// vignette key with ◆, and once keyed a change keys the playhead (a focus
-// pull); zoom and roll are the moving camera's pose, as a drag is.
+// camera_settings.dart is a Camera's panel: looking through it, and on the
+// page its framing and lens (zoom, roll, focus, depth of field, parallax, an
+// aim at a chart, vignette, motion blur), or on a 3D stage where it stands;
+// then the moves that can be put on the timeline. Focus, blur, vignette and
+// how far it turns to its aim key with ◆ (KeyframeChannel), as every panel's
+// values do; once keyed a change keys the playhead (a focus pull). Zoom and
+// roll are the moving camera's pose, as a drag is.
 
-List<Widget> cameraLensGroups(
-    CanvasController controller,
-    CameraElement e,
-    void Function(CanvasElement) write,
-    VoidCallback begin,
-    VoidCallback commit) {
-  var doc = controller.document;
-  var frame = controller.frame;
-  CameraElement now() => doc.elementById(e.id) is CameraElement
-      ? controller.document.elementById(e.id) as CameraElement
-      : e;
-  var (zoom, _) = cameraFraming(e, frame, doc);
-  var look = cameraLookAt(e, frame, doc);
-  var track = e.track ?? ElementTrack.empty;
+/// cameraPanel is a Camera's settings in the frame every element's are in:
+/// its own straight in Content, and its moves folded under them.
+Widget cameraPanel(
+        BuildContext context,
+        CanvasController controller,
+        CameraElement e,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit) =>
+    elementPanel(context, controller, e, write, begin, commit,
+        contentOpen: true,
+        bits: [
+          PanelBit(PanelSection.content,
+              summary: controller.cameraView
+                  ? "Looking through it"
+                  : "Its frame is what is shown",
+              children: [
+                _lookGroup(controller),
+                // On a 3D stage it stands in the scene: where, and its lens.
+                // Its clips move it from here.
+                if (isStageScene(controller.document))
+                  _camera3dGroup(controller, e, write, begin, commit)
+                else
+                  // On the page: how close and turned, and its lens.
+                  ..._lensGroups(_Lens(controller, e, write, begin, commit)),
+              ]),
+          PanelBit(PanelSection.content,
+              children: [_movesSection(controller, e)]),
+        ]);
+
+/// _lookGroup is looking through the Camera rather than at the page.
+Widget _lookGroup(CanvasController controller) => CanvasControlGroup(
+        label: "Camera",
+        help: "What plays and what is exported is this frame, filled out to "
+            "the page. Draw it in or move it, or give it clips: push in, "
+            "follow, pull back, shake.",
+        children: [
+          CanvasToggle(
+            key: const ValueKey("cameraLook"),
+            label: "Look through it",
+            value: controller.cameraView,
+            onChanged: (v) => controller.cameraView = v,
+          ),
+        ]);
+
+/// _movesSection is the moves a Camera can be given: one put on the
+/// timeline at the playhead and opened to be shaped, the quickest way to a
+/// push in.
+Widget _movesSection(CanvasController controller, CameraElement e) =>
+    section(e, "cameraMoves",
+        icon: Icons.movie_filter_outlined,
+        title: "Moves",
+        summary: "${e.base.motion.placed.length} on the timeline",
+        children: [
+          Wrap(spacing: 4, runSpacing: 4, children: [
+            for (var p in presetsFor(MotionKind.camera))
+              ActionChip(
+                key: ValueKey("cameraMove-${p.name}"),
+                visualDensity: VisualDensity.compact,
+                label: Text(p.name, style: const TextStyle(fontSize: 11.5)),
+                onPressed: () {
+                  var target = controller.document.elements
+                      .where((x) => x.id != e.id && x is! CameraElement)
+                      .map((x) => x.id)
+                      .lastOrNull;
+                  controller.beginInteraction();
+                  var clip = controller.newClip(e.id,
+                      preset: p, target: p.aims ? target ?? "" : "");
+                  var placed = controller.placeClip(e.id, clip,
+                      seconds: controller.secondsAt(controller.frame));
+                  controller.endInteraction();
+                  controller.pickMotion(e.id, clip, placement: placed);
+                  controller.animationOpen = true;
+                },
+              ),
+          ]),
+        ]);
+
+/// _Lens is what a Camera's framing and lens groups are built from: the
+/// Camera as shown, the playhead, how it looks there, and how to write it.
+class _Lens {
+  final CanvasController controller;
+  final CameraElement e;
+  final SettingsWrite write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+  final CanvasDocument doc;
+  final int frame;
+  final CameraLook look;
+  final ElementTrack track;
+
+  _Lens(this.controller, this.e, this.write, this.begin, this.commit)
+      : doc = controller.document,
+        frame = controller.frame,
+        look = cameraLookAt(e, controller.frame, controller.document),
+        track = e.track ?? ElementTrack.empty;
+
+  /// current is the Camera as the document has it now, which a change
+  /// made earlier in the same drag has already written.
+  CameraElement current() => switch (controller.document.elementById(e.id)) {
+        CameraElement now => now,
+        _ => e,
+      };
 
   /// keyed is whether [channel] has any keyframes.
   bool keyed(String channel) =>
       track.keys.any((k) => k.values.containsKey(channel));
 
-  /// keyHere is a key for [channel] at the playhead, holding [v].
-  CameraElement keyHere(CameraElement cam, String channel, double v) {
-    var t = (cam.track ?? ElementTrack.empty).seededFor(frame);
-    return cam.withBase(
-            track: t.withKey(
-                t.at(frame).copyWith(frame: frame).withValue(channel, v)))
-        as CameraElement;
-  }
+  /// keyedHere is [cam] with [channel] keyed to [v] at the playhead.
+  CameraElement keyedHere(CameraElement cam, String channel, double v) =>
+      cam.withBase(
+          track: (cam.track ?? ElementTrack.empty)
+              .withValueKey(channel, v, frame)) as CameraElement;
+}
 
-  /// set writes [channel]: keyed at the playhead where it is keyed, else
-  /// the setting itself by [rest].
-  void set(
-      String channel, double v, CameraElement Function(CameraElement) rest) {
-    begin();
-    var cam = now();
-    write(keyed(channel) ? keyHere(cam, channel, v) : rest(cam));
-  }
+/// _lensGroups are a Camera's framing and lens on the page.
+List<Widget> _lensGroups(_Lens l) => [
+      _framingGroup(l),
+      _depthGroup(l),
+      _parallaxGroup(l),
+      _aimGroup(l),
+      _vignetteGroup(l),
+    ];
 
-  /// keyButton keys [channel] at the playhead, holding [v]; lit where a key
-  /// already stands.
-  Widget keyButton(String channel, double v) => CanvasIconButton(
-        key: ValueKey("cameraKey-$channel"),
-        icon: Icons.diamond_outlined,
-        tooltip: "Key it here: changed at the playhead from then on",
-        active: track.keyAt(frame)?.values.containsKey(channel) ?? false,
-        onPressed: () {
-          begin();
-          write(keyHere(now(), channel, v));
-          commit();
+/// _keyed is a lens value a key can hold: its stepper, showing [shown] (the
+/// value [per] times over), and the ◆ that keys it at the playhead, lit
+/// where a key already stands. Where [channel] is keyed, a change keys the
+/// playhead; else it is the Camera's own setting, by [setting]. Without a
+/// [setting] a change is always a key.
+List<(Widget, {int flex, double? width, double min})> _keyed(
+  _Lens l, {
+  required String key,
+  required String label,
+  required String channel,
+  required double shown,
+  required double min,
+  required double max,
+  required double step,
+  required double dragStep,
+  required double defaultValue,
+  int decimals = 0,
+  String suffix = "",
+  double per = 1,
+  CameraElement Function(CameraElement cam, double v)? setting,
+}) =>
+    [
+      cell(CanvasStepper(
+        key: ValueKey(key),
+        label: label,
+        value: shown * per,
+        min: min,
+        max: max,
+        step: step,
+        dragStep: dragStep,
+        decimals: decimals,
+        defaultValue: defaultValue,
+        suffix: suffix,
+        width: 104,
+        onChanged: (v) {
+          l.begin();
+          var cam = l.current();
+          l.write(setting == null || l.keyed(channel)
+              ? l.keyedHere(cam, channel, v / per)
+              : setting(cam, v / per));
         },
-      );
-
-  // How far it is turned to its aim here: keyed, or all the way.
-  var aimMix =
-      (track.keyAt(frame)?.values["aim"] ?? poseAimAt(e, frame, doc)) ?? 1.0;
-
-  var others = [
-    for (var x in doc.elements)
-      if (x is! CameraElement) x,
-  ];
-
-  return [
-    CanvasControlGroup(
-        label: "Framing",
-        help: "How close it is and how far it is turned, at the playhead: on "
-            "a camera that moves, a key there.",
-        children: [
-          panelRow([
-            cell(CanvasStepper(
-              key: const ValueKey("cameraZoom"),
-              label: "Zoom",
-              value: zoom,
-              min: 1,
-              max: 8,
-              decimals: 2,
-              step: 0.25,
-              dragStep: 0.01,
-              defaultValue: 1,
-              suffix: "×",
-              width: 104,
-              onChanged: (v) {
-                begin();
-                var cam = now();
-                var (z, _) = cameraFraming(cam, frame, controller.document);
-                write(controller.cameraZoomed(cam, v / z));
-              },
-              onCommit: commit,
-            )),
-            cell(CanvasStepper(
-              key: const ValueKey("cameraRoll"),
-              label: "Roll",
-              value: look.roll,
-              min: -180,
-              max: 180,
-              step: 5,
-              dragStep: 0.5,
-              decimals: 1,
-              defaultValue: 0,
-              suffix: "°",
-              width: 104,
-              onChanged: (v) {
-                begin();
-                var cam = now();
-                if (!controller.posesRatherThanMoves(cam)) {
-                  write(cam.withBase(rotation: v));
-                  return;
-                }
-                var t = (cam.track ?? ElementTrack.empty).seededFor(frame);
-                write(cam.withBase(
-                    track: t.withKey(t
-                        .at(frame)
-                        .copyWith(frame: frame, rotate: v - cam.rotation))));
-              },
-              onCommit: commit,
-            )),
-          ]),
-        ]),
-    CanvasControlGroup(
-        label: "Depth of field",
-        help: "What is sharp, and how soft the rest is by how far it is from "
-            "it: each element's Depth (in its Layout) says how far. Key the "
-            "focus at two moments for a focus pull.",
-        children: [
-          CanvasDropdown<String>(
-            key: const ValueKey("cameraFocusOn"),
-            label: "Focus on",
-            value: others.any((x) => x.id == e.focusOn) ? e.focusOn : "",
-            options: [
-              ("", "A depth"),
-              for (var x in others)
-                (x.id, x.base.name.isEmpty ? x.kind.label : x.base.name),
-            ],
-            onChanged: (id) {
-              begin();
-              write(now().copyWith(focusOn: id));
-              commit();
+        onCommit: l.commit,
+      )),
+      cell(
+          CanvasIconButton(
+            key: ValueKey("cameraKey-$channel"),
+            icon: Icons.diamond_outlined,
+            tooltip: "Key it here: changed at the playhead from then on",
+            active:
+                l.track.keyAt(l.frame)?.values.containsKey(channel) ?? false,
+            onPressed: () {
+              l.begin();
+              l.write(l.keyedHere(l.current(), channel, shown));
+              l.commit();
             },
           ),
-          if (e.focusOn.isEmpty)
-            panelRow([
-              cell(CanvasStepper(
-                key: const ValueKey("cameraFocus"),
-                label: "Focus",
-                value: look.focus * 100,
-                min: -100,
-                max: 100,
-                step: 10,
-                dragStep: 1,
-                defaultValue: 0,
-                width: 104,
-                onChanged: (v) => set(
-                    "focus", v / 100, (cam) => cam.copyWith(focus: v / 100)),
-                onCommit: commit,
-              )),
-              cell(keyButton("focus", look.focus), width: 36),
-            ]),
-          panelRow([
-            cell(CanvasStepper(
-              key: const ValueKey("cameraBlur"),
-              label: "Blur",
-              value: look.blur,
-              min: 0,
-              max: 60,
-              step: 2,
-              dragStep: 0.5,
-              decimals: 1,
-              defaultValue: 0,
-              width: 104,
-              onChanged: (v) => set("blur", v, (cam) => cam.copyWith(blur: v)),
-              onCommit: commit,
-            )),
-            cell(keyButton("blur", look.blur), width: 36),
-          ]),
+          width: 36),
+    ];
+
+/// _framingGroup is how close the Camera is and how far it is rolled.
+Widget _framingGroup(_Lens l) {
+  var (zoom, _) = cameraFraming(l.e, l.frame, l.doc);
+  return CanvasControlGroup(
+      label: "Framing",
+      help: "How close it is and how far it is turned, at the playhead: on "
+          "a camera that moves, a key there.",
+      children: [
+        panelRow([
+          cell(CanvasStepper(
+            key: const ValueKey("cameraZoom"),
+            label: "Zoom",
+            value: zoom,
+            min: 1,
+            max: 8,
+            decimals: 2,
+            step: 0.25,
+            dragStep: 0.01,
+            defaultValue: 1,
+            suffix: "×",
+            width: 104,
+            onChanged: (v) {
+              l.begin();
+              var cam = l.current();
+              var (z, _) = cameraFraming(cam, l.frame, l.controller.document);
+              l.write(l.controller.cameraZoomed(cam, v / z));
+            },
+            onCommit: l.commit,
+          )),
+          cell(CanvasStepper(
+            key: const ValueKey("cameraRoll"),
+            label: "Roll",
+            value: l.look.roll,
+            min: -180,
+            max: 180,
+            step: 5,
+            dragStep: 0.5,
+            decimals: 1,
+            defaultValue: 0,
+            suffix: "°",
+            width: 104,
+            onChanged: (v) {
+              l.begin();
+              var cam = l.current();
+              if (!l.controller.posesRatherThanMoves(cam)) {
+                l.write(cam.withBase(rotation: v));
+                return;
+              }
+              var t = (cam.track ?? ElementTrack.empty).seededFor(l.frame);
+              l.write(cam.withBase(
+                  track: t.withKey(t
+                      .at(l.frame)
+                      .copyWith(frame: l.frame, rotate: v - cam.rotation))));
+            },
+            onCommit: l.commit,
+          )),
         ]),
-    CanvasControlGroup(
+      ]);
+}
+
+/// _depthGroup is what is sharp, and how soft the rest is.
+Widget _depthGroup(_Lens l) {
+  var e = l.e;
+  var others = [
+    for (var x in l.doc.elements)
+      if (x is! CameraElement) x,
+  ];
+  return CanvasControlGroup(
+      label: "Depth of field",
+      help: "What is sharp, and how soft the rest is by how far it is from "
+          "it: each element's Depth (in its Layout) says how far. Key the "
+          "focus at two moments for a focus pull.",
+      children: [
+        CanvasDropdown<String>(
+          key: const ValueKey("cameraFocusOn"),
+          label: "Focus on",
+          value: others.any((x) => x.id == e.focusOn) ? e.focusOn : "",
+          options: [
+            ("", "A depth"),
+            for (var x in others)
+              (x.id, x.base.name.isEmpty ? x.kind.label : x.base.name),
+          ],
+          onChanged: (id) {
+            l.begin();
+            l.write(l.current().copyWith(focusOn: id));
+            l.commit();
+          },
+        ),
+        if (e.focusOn.isEmpty)
+          panelRow(_keyed(l,
+              key: "cameraFocus",
+              label: "Focus",
+              channel: KeyframeChannel.focus,
+              shown: l.look.focus,
+              per: 100,
+              min: -100,
+              max: 100,
+              step: 10,
+              dragStep: 1,
+              defaultValue: 0,
+              setting: (cam, v) => cam.copyWith(focus: v))),
+        panelRow(_keyed(l,
+            key: "cameraBlur",
+            label: "Blur",
+            channel: KeyframeChannel.blur,
+            shown: l.look.blur,
+            min: 0,
+            max: 60,
+            step: 2,
+            dragStep: 0.5,
+            decimals: 1,
+            defaultValue: 0,
+            setting: (cam, v) => cam.copyWith(blur: v))),
+      ]);
+}
+
+/// _parallaxGroup is how much less the far moves than the near.
+Widget _parallaxGroup(_Lens l) => CanvasControlGroup(
         label: "Parallax",
         help: "As it pans and zooms, the far moves less and the near more, "
             "by each element's Depth: a flat page given room.",
@@ -205,7 +341,7 @@ List<Widget> cameraLensGroups(
           CanvasStepper(
             key: const ValueKey("cameraParallax"),
             label: "Parallax",
-            value: e.parallax * 100,
+            value: l.e.parallax * 100,
             min: 0,
             max: 100,
             step: 10,
@@ -214,116 +350,118 @@ List<Widget> cameraLensGroups(
             suffix: "%",
             width: 104,
             onChanged: (v) {
-              begin();
-              write(now().copyWith(parallax: v / 100));
+              l.begin();
+              l.write(l.current().copyWith(parallax: v / 100));
             },
-            onCommit: commit,
+            onCommit: l.commit,
           ),
-        ]),
-    // Part of a chart framed and followed through a race (camera_aim.dart).
-    CanvasControlGroup(
-        key: const ValueKey("cameraAim"),
-        label: "Aim at a chart",
-        help: "Frames part of a chart -- one club, the top three, whoever "
-            "leads -- where it is drawn on each frame. Key \"How far\" to "
-            "move in from its own framing and back out.",
-        children: [
+        ]);
+
+/// _aimGroup is part of a chart framed and followed through a race
+/// (camera_aim.dart): which chart, what of it, how much of the frame it
+/// fills and how far the Camera turns to it.
+Widget _aimGroup(_Lens l) {
+  var e = l.e;
+  // How far it is turned to its aim here: keyed, or all the way.
+  var aimMix = (l.track.keyAt(l.frame)?.values[KeyframeChannel.aimMix] ??
+          poseAimAt(e, l.frame, l.doc)) ??
+      1.0;
+  return CanvasControlGroup(
+      key: const ValueKey("cameraAim"),
+      label: "Aim at a chart",
+      help: "Frames part of a chart -- one club, the top three, whoever "
+          "leads -- where it is drawn on each frame. Key \"How far\" to "
+          "move in from its own framing and back out.",
+      children: [
+        CanvasDropdown<String>(
+          key: const ValueKey("cameraAimChart"),
+          label: "Chart",
+          value: l.doc.elementById(e.aim) is ChartElement ? e.aim : "",
+          options: [
+            ("", "None"),
+            for (var x in l.doc.elements)
+              if (x is ChartElement) (x.id, x.name.isEmpty ? "Chart" : x.name),
+          ],
+          onChanged: (id) {
+            l.begin();
+            l.write(l.current().copyWith(aim: id, aimAt: ""));
+            l.commit();
+          },
+        ),
+        if (l.doc.elementById(e.aim) case ChartElement chart) ...[
           CanvasDropdown<String>(
-            key: const ValueKey("cameraAimChart"),
-            label: "Chart",
-            value: doc.elementById(e.aim) is ChartElement ? e.aim : "",
-            options: [
-              ("", "None"),
-              for (var x in doc.elements)
-                if (x is ChartElement)
-                  (x.id, x.name.isEmpty ? "Chart" : x.name),
-            ],
-            onChanged: (id) {
-              begin();
-              write(now().copyWith(aim: id, aimAt: ""));
-              commit();
+            key: const ValueKey("cameraAimAt"),
+            label: "Frames",
+            value: aimChoices(chart).any((c) => c.$1 == e.aimAt) ? e.aimAt : "",
+            options: aimChoices(chart),
+            onChanged: (v) {
+              l.begin();
+              l.write(l.current().copyWith(aimAt: v));
+              l.commit();
             },
           ),
-          if (doc.elementById(e.aim) case ChartElement chart) ...[
-            CanvasDropdown<String>(
-              key: const ValueKey("cameraAimAt"),
-              label: "Frames",
-              value:
-                  aimChoices(chart).any((c) => c.$1 == e.aimAt) ? e.aimAt : "",
-              options: aimChoices(chart),
+          panelRow([
+            cell(CanvasStepper(
+              key: const ValueKey("cameraAimFill"),
+              label: "Fills",
+              value: e.aimFill * 100,
+              min: 20,
+              max: 95,
+              step: 5,
+              dragStep: 1,
+              defaultValue: 60,
+              suffix: "%",
+              width: 104,
               onChanged: (v) {
-                begin();
-                write(now().copyWith(aimAt: v));
-                commit();
+                l.begin();
+                l.write(l.current().copyWith(aimFill: v / 100));
               },
-            ),
-            panelRow([
-              cell(CanvasStepper(
-                key: const ValueKey("cameraAimFill"),
-                label: "Fills",
-                value: e.aimFill * 100,
-                min: 20,
-                max: 95,
-                step: 5,
-                dragStep: 1,
-                defaultValue: 60,
-                suffix: "%",
-                width: 104,
-                onChanged: (v) {
-                  begin();
-                  write(now().copyWith(aimFill: v / 100));
-                },
-                onCommit: commit,
-              )),
-              cell(CanvasStepper(
-                key: const ValueKey("cameraAimMix"),
+              onCommit: l.commit,
+            )),
+            // How far has no setting of its own: unkeyed the Camera turns
+            // all the way, so any change to it is a key at the playhead.
+            ..._keyed(l,
+                key: "cameraAimMix",
                 label: "How far",
-                value: aimMix * 100,
+                channel: KeyframeChannel.aimMix,
+                shown: aimMix,
+                per: 100,
                 min: 0,
                 max: 100,
                 step: 10,
                 dragStep: 1,
                 defaultValue: 100,
-                suffix: "%",
-                width: 104,
-                onChanged: (v) => set("aim", v / 100, (cam) {
-                  // Unkeyed: all the way; keyed: at the playhead.
-                  return keyHere(cam, "aim", v / 100);
-                }),
-                onCommit: commit,
-              )),
-              cell(keyButton("aim", aimMix), width: 36),
-            ]),
-          ],
-        ]),
-    CanvasControlGroup(
+                suffix: "%"),
+          ]),
+        ],
+      ]);
+}
+
+/// _vignetteGroup is the lens's own marks: its corners darkened, and the
+/// picture smeared along the Camera's fast moves.
+Widget _vignetteGroup(_Lens l) => CanvasControlGroup(
         label: "Lens",
         help: "Corners darkened, as a lens does, and the picture smeared "
             "along the camera's own fast moves.",
         children: [
-          panelRow([
-            cell(CanvasStepper(
-              key: const ValueKey("cameraVignette"),
+          panelRow(_keyed(l,
+              key: "cameraVignette",
               label: "Vignette",
-              value: look.vignette * 100,
+              channel: KeyframeChannel.vignette,
+              shown: l.look.vignette,
+              per: 100,
               min: 0,
               max: 100,
               step: 10,
               dragStep: 1,
               defaultValue: 0,
               suffix: "%",
-              width: 104,
-              onChanged: (v) => set("vignette", v / 100,
-                  (cam) => cam.copyWith(vignette: v / 100)),
-              onCommit: commit,
-            )),
-            cell(keyButton("vignette", look.vignette), width: 36),
-          ]),
+              setting: (cam, v) => cam.copyWith(vignette: v))),
           panelRow([
             cell(CanvasStepper(
               key: const ValueKey("cameraVignetteSoft"),
               label: "Softness",
-              value: e.vignetteSoft * 100,
+              value: l.e.vignetteSoft * 100,
               min: 0,
               max: 100,
               step: 10,
@@ -332,15 +470,15 @@ List<Widget> cameraLensGroups(
               suffix: "%",
               width: 104,
               onChanged: (v) {
-                begin();
-                write(now().copyWith(vignetteSoft: v / 100));
+                l.begin();
+                l.write(l.current().copyWith(vignetteSoft: v / 100));
               },
-              onCommit: commit,
+              onCommit: l.commit,
             )),
             cell(CanvasStepper(
               key: const ValueKey("cameraMotionBlur"),
               label: "Motion blur",
-              value: e.motionBlur * 100,
+              value: l.e.motionBlur * 100,
               min: 0,
               max: 100,
               step: 10,
@@ -349,108 +487,19 @@ List<Widget> cameraLensGroups(
               suffix: "%",
               width: 104,
               onChanged: (v) {
-                begin();
-                write(now().copyWith(motionBlur: v / 100));
+                l.begin();
+                l.write(l.current().copyWith(motionBlur: v / 100));
               },
-              onCommit: commit,
+              onCommit: l.commit,
             )),
           ]),
-        ]),
-  ];
-}
-
-/// cameraSettings is a Camera's own sections: looking through it, where it
-/// stands (on a 3D stage) or how close and turned it is (on the page), and
-/// the moves that can be put on the timeline.
-///
-/// A camera is its frame, moved by its clips: here is only the way to see
-/// what it sees while the scene stands still.
-List<Widget> cameraSettings(
-  BuildContext context,
-  CanvasController controller,
-  CameraElement e,
-  void Function(CanvasElement) write,
-  VoidCallback begin,
-  VoidCallback commit,
-) =>
-    [
-      section(e, "camera",
-          icon: Icons.videocam_outlined,
-          title: "Camera",
-          summary: controller.cameraView
-              ? "Looking through it"
-              : "Its frame is what is shown",
-          children: [
-            CanvasControlGroup(
-                label: "Camera",
-                help: "What plays and what is exported is this frame, "
-                    "filled out to the page. Draw it in or move it, or "
-                    "give it clips: push in, follow, pull back, shake.",
-                children: [
-                  CanvasToggle(
-                    key: const ValueKey("cameraLook"),
-                    label: "Look through it",
-                    value: controller.cameraView,
-                    onChanged: (v) => controller.cameraView = v,
-                  ),
-                ]),
-            // On a 3D stage it stands in the scene: where, and its
-            // lens. Its clips move it from here.
-            if (isStageScene(controller.document))
-              _camera3dGroup(controller, e, write, begin, commit)
-            else
-              // On the page: how close and turned, and its lens.
-              ...cameraLensGroups(controller, e, write, begin, commit),
-          ]),
-      // A move put on the timeline at the playhead and opened to be
-      // shaped: the quickest way to a push in.
-      section(e, "cameraMoves",
-          icon: Icons.movie_filter_outlined,
-          title: "Moves",
-          summary: "${e.base.motion.placed.length} on the timeline",
-          children: [
-            Wrap(spacing: 4, runSpacing: 4, children: [
-              for (var p in presetsFor(MotionKind.camera))
-                ActionChip(
-                  key: ValueKey("cameraMove-${p.name}"),
-                  visualDensity: VisualDensity.compact,
-                  label: Text(p.name, style: const TextStyle(fontSize: 11.5)),
-                  onPressed: () {
-                    var target = controller.document.elements
-                        .where((x) => x.id != e.id && x is! CameraElement)
-                        .map((x) => x.id)
-                        .lastOrNull;
-                    controller.beginInteraction();
-                    var clip = controller.newClip(e.id,
-                        preset: p, target: p.aims ? target ?? "" : "");
-                    var placed = controller.placeClip(e.id, clip,
-                        seconds: controller.secondsAt(controller.frame));
-                    controller.endInteraction();
-                    controller.pickMotion(e.id, clip, placement: placed);
-                    controller.animationOpen = true;
-                  },
-                ),
-            ]),
-          ]),
-    ];
+        ]);
 
 /// _camera3dGroup is where a Camera stands on a 3D stage, and its lens.
-Widget _camera3dGroup(
-    CanvasController controller,
-    CameraElement e,
-    void Function(CanvasElement) write,
-    VoidCallback begin,
-    VoidCallback commit) {
-  var doc = controller.document;
-  var view = e.view ??
-      (doc.drawnBackground.isStage
-              ? doc.drawnBackground.stageOn(doc.size.rect)
-              : doc.elements
-                  .whereType<BackgroundElement>()
-                  .where((b) => b.isStage)
-                  .first
-                  .staged)
-          .ownCameraAt(0);
+Widget _camera3dGroup(CanvasController controller, CameraElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var view =
+      e.view ?? stageCameraOf(controller.document) ?? const StageCamera();
   Widget field(String key, String label, double value, double min, double max,
           StageCamera Function(double v) set,
           {String suffix = "", int decimals = 1}) =>

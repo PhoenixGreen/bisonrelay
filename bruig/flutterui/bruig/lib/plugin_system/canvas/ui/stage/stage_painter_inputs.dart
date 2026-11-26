@@ -17,10 +17,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
+    show MetronomeShow;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -180,6 +183,10 @@ typedef StageLive = ({
   NotCompared<bool Function(CounterElement)> counterRunning,
   int counterTick,
 
+  /// metronomeShow is how each metronome is going: session state, for which
+  /// keysTick stands in (it rises as one swings).
+  NotCompared<MetronomeShow Function(MetronomeElement)> metronomeShow,
+
   /// audioState is each speaker's sound and videoShow each video's frame;
   /// audioRevision changes with either, and stands in for both.
   NotCompared<AudioState Function(AudioElement)> audioState,
@@ -187,8 +194,9 @@ typedef StageLive = ({
   int audioRevision,
 
   /// keysTick is the controller's keysHeld, changing as a key is pressed or
-  /// let go and as a synth's screens tick while a note sounds, which the
-  /// renderer reads from the controller rather than from here.
+  /// let go, as a synth's screens tick while a note sounds (which the
+  /// renderer reads from the controller rather than from here) and as a
+  /// metronome swings.
   int keysTick,
 
   /// spritePaintTick changes with each stroke on a sprite being painted,

@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart'
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/button_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/button_action_controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/game_controls_settings.dart'
     show keyLabel;
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';

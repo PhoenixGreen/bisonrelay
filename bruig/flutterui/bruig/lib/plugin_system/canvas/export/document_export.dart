@@ -590,9 +590,10 @@ EpubSide _sideOf(
 List<EpubLink> _linksOn(
     CanvasDocument document, CanvasScene scene, int index, double pixels) {
   var links = <EpubLink>[];
-  // The master's buttons too: drawn on every page, a book's navigation.
+  // The master's buttons too, on each page that shows the master: a book's
+  // navigation.
   for (var element in [
-    ...?document.masterScene?.elements,
+    ...?document.masterSceneOf(index)?.elements,
     ...scene.elements,
   ]) {
     if (element is! ButtonElement || !element.visible) continue;

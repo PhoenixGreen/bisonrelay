@@ -731,20 +731,3 @@ String _asTime(double value, int places, CounterSeparator separator) {
   if (places > 0) out.write(".${fraction.toString().padLeft(places, "0")}");
   return negative ? "-$out" : out.toString();
 }
-
-/// stackedWithMaster is a page's elements with the master's under them,
-/// except its page numbers, which go over so a full-page picture cannot
-/// hide them; the renderer and the EPUB layers share this order. With
-/// [over], all of the master goes over the page (a game's HUD).
-List<CanvasElement> stackedWithMaster(
-        List<CanvasElement> master, List<CanvasElement> page,
-        {bool over = false}) =>
-    over
-        ? [...page, ...master]
-        : [
-            for (var e in master)
-              if (!(e is CounterElement && e.isPageNumber)) e,
-            ...page,
-            for (var e in master)
-              if (e is CounterElement && e.isPageNumber) e,
-          ];

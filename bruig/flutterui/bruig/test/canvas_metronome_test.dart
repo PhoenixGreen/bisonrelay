@@ -3,6 +3,7 @@ import 'support/canvas_app.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
@@ -12,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/render/score_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
@@ -76,7 +79,8 @@ void main() {
       expect(now().bpm, 120);
       expect(engine.clicks.last, (0.5, 4), reason: "going on at the new speed");
       c.cycleMetronomeBeats(now());
-      expect(now().beats, 6);
+      expect(now().beats, 5);
+      c.setMetronome(now().copyWith(beats: 12));
       c.cycleMetronomeBeats(now());
       expect(now().beats, 1, reason: "round to every beat alike");
       for (var t in [10.0, 10.75, 11.5, 12.25]) {
@@ -146,6 +150,188 @@ void main() {
         File(path).writeAsBytesSync(png!.buffer.asUint8List());
       }
     });
+  });
+
+  group("a metronome going", () {
+    // A metronome started, its click heard [heard] seconds in: the voice the
+    // engine plays it on stands there, as a real one's would have got to.
+    Future<(CanvasController, FakeEngine, MetronomeElement Function())> going(
+        {double heard = 1.5}) async {
+      var engine = FakeEngine({});
+      var c = CanvasController(const CanvasDocument(), audioEngine: engine);
+      addTearDown(c.dispose);
+      var m = newElement(ElementKind.metronome, c.document) as MetronomeElement;
+      c.addElement(m);
+      MetronomeElement now() =>
+          c.document.elementById(m.id) as MetronomeElement;
+      c.toggleMetronome(now());
+      await settle();
+      engine.voices.last.at = heard;
+      return (c, engine, now);
+    }
+
+    test("its swing is where its click has been heard to", () async {
+      var (c, _, now) = await going(heard: 3);
+      expect(c.metronomeShowFor(now()).beats, closeTo(5, 1e-9),
+          reason: "three seconds at 100 a minute");
+    });
+
+    test("until its click is first heard, it waits on its first beat",
+        () async {
+      var engine = FakeEngine({});
+      var c = CanvasController(const CanvasDocument(), audioEngine: engine);
+      addTearDown(c.dispose);
+      var m = newElement(ElementKind.metronome, c.document) as MetronomeElement;
+      c.addElement(m);
+      c.toggleMetronome(m);
+      // The sound is still getting ready: nothing heard, nothing swung.
+      sleep(const Duration(milliseconds: 30));
+      expect(c.metronomeShowFor(m).beats, 0);
+      await settle();
+      expect(c.metronomeShowFor(m).beats, 0, reason: "heard from its start");
+      engine.voices.last.at = 0.3;
+      expect(c.metronomeShowFor(m).beats, closeTo(0.5, 1e-9));
+    });
+
+    test("with no sound to be had, it swings by the clock alone", () async {
+      var engine = FakeEngine({})..works = false;
+      var c = CanvasController(const CanvasDocument(), audioEngine: engine);
+      addTearDown(c.dispose);
+      var m = newElement(ElementKind.metronome, c.document) as MetronomeElement;
+      c.addElement(m);
+      c.toggleMetronome(m);
+      await settle();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      var show = c.metronomeShowFor(m);
+      expect(show.going, isTrue);
+      expect(show.beats, greaterThan(0.15));
+    });
+
+    test("a colour changed leaves its swing and its click alone", () async {
+      var (c, engine, now) = await going();
+      var voice = engine.voices.last;
+      var clicks = engine.clicks.length;
+      c.setMetronome(now().copyWith(
+          body: const Color(0xFF225588), accent: const Color(0xFF33AA66)));
+      await settle();
+      expect(engine.voices.last, same(voice), reason: "the same click");
+      expect(voice.alive, isTrue);
+      expect(voice.at, 1.5, reason: "not sent back to the start");
+      expect(engine.clicks, hasLength(clicks));
+      expect(c.metronomeShowFor(now()).beats, closeTo(2.5, 1e-9));
+    });
+
+    test("a change of tempo goes on from the beat it is on", () async {
+      var (c, engine, now) = await going();
+      c.metronomeStep(now(), 20);
+      await settle();
+      expect(engine.clicks.last, (0.5, 4));
+      expect(engine.voices.last.at, closeTo(2.5 * 0.5, 1e-9),
+          reason: "two and a half beats in, at the new tempo");
+      expect(c.metronomeShowFor(now()).beats, closeTo(2.5, 1e-9));
+    });
+
+    test("a change of beats in a bar goes on from the beat it is on", () async {
+      var (c, engine, now) = await going();
+      c.cycleMetronomeBeats(now());
+      await settle();
+      expect(engine.clicks.last, (0.6, 5));
+      expect(engine.voices.last.at, closeTo(1.5, 1e-9));
+      expect(c.metronomeShowFor(now()).beats, closeTo(2.5, 1e-9));
+    });
+
+    // What is drawn of a metronome going is asked of the window it goes
+    // in: an export, and a canvas drawn after its editor has gone, draw it
+    // at rest.
+    Future<List<int>> drawn(CanvasDocument doc) async {
+      var image = await renderFrame(doc);
+      var raw = (await image.toByteData())!.buffer.asUint8List().toList();
+      image.dispose();
+      return raw;
+    }
+
+    test("an export draws it at rest while it goes", () async {
+      var (c, _, now) = await going();
+      c.toggleMetronome(now());
+      var still = await drawn(c.document);
+      c.toggleMetronome(now());
+      await settle();
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(c.metronomeGoing(now().id), isTrue);
+      expect(await drawn(c.document), still);
+    });
+
+    test("drawn once its editor has gone, it is at rest", () async {
+      var engine = FakeEngine({});
+      var c = CanvasController(const CanvasDocument(), audioEngine: engine);
+      var m = newElement(ElementKind.metronome, c.document) as MetronomeElement;
+      c.addElement(m);
+      var doc = c.document;
+      var still = await drawn(doc);
+      c.toggleMetronome(m);
+      await settle();
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      c.dispose();
+      expect(await drawn(doc), still);
+    });
+  });
+
+  group("beats in a bar", () {
+    test("its beats button steps through every number it can hold", () {
+      var c =
+          CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      var m =
+          (newElement(ElementKind.metronome, c.document) as MetronomeElement)
+              .copyWith(beats: 5);
+      c.addElement(m);
+      MetronomeElement now() =>
+          c.document.elementById(m.id) as MetronomeElement;
+      c.cycleMetronomeBeats(now());
+      expect(now().beats, 6, reason: "on from five, not back to one");
+      c.setMetronome(now().copyWith(beats: 12));
+      c.cycleMetronomeBeats(now());
+      expect(now().beats, 1, reason: "round from the most it holds");
+    });
+
+    for (var scale in [0.65, 1.0, 1.5]) {
+      testWidgets("its settings offer every number it can hold, at $scale",
+          (tester) async {
+        var c = CanvasController(const CanvasDocument(),
+            audioEngine: FakeEngine({}));
+        addTearDown(c.dispose);
+        var m =
+            (newElement(ElementKind.metronome, c.document) as MetronomeElement)
+                .copyWith(beats: 5);
+        c.addElement(m);
+        setTestScreen(tester, const Size(800, 3000));
+        await tester.pumpWidget(canvasApp(MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+          child: SizedBox(
+              width: 300,
+              child: SingleChildScrollView(
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => Column(
+                          children: elementSettings(
+                              context, c, c.document.elementById(m.id)!))))),
+        )));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        var beats = tester.widget<CanvasDropdown<int>>(
+            find.byKey(const ValueKey("metronomeBeats")));
+        expect([for (var (b, _) in beats.options) b],
+            [for (var b = 1; b <= 12; b++) b]);
+        expect(beats.value, 5);
+        expect(
+            find.descendant(
+                of: find.byKey(const ValueKey("metronomeBeats")),
+                matching: find.text("5")),
+            findsOneWidget,
+            reason: "a five received is shown, not a blank");
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
   });
 
   group("a sheet's speed and click", () {

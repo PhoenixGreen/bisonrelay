@@ -143,7 +143,7 @@ import 'package:bruig/plugin_system/canvas/render/code_painter.dart' show CodeSh
 import 'package:bruig/plugin_system/canvas/render/code_run_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
-import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart' show MetronomeShow, metronomeShowOf;
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart' show MetronomeShow;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart' show cameraFraming, designedNow, cameraHalfExtents, cameraLookAt, LiveMotion, MotionPreview, MovedElement, PointerLive, cameraOf, facesPointer, isStageScene, motionSoundPeaks, placedPlaying, poseWithMotion, sceneFraming, settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
@@ -309,7 +309,6 @@ class CanvasController extends ChangeNotifier {
     sheetPlaying = () => playing;
     // The synth modules on the stage: their keys held, their time.
     synthShowOf = synthShowFor;
-    metronomeShowOf = metronomeShowFor;
     codeShowOf = codeShowFor;
     codeRunShowOf = codeRunShowFor;
     codeTaskShowOf = codeTaskShowFor;
@@ -1214,9 +1213,11 @@ class CanvasController extends ChangeNotifier {
   /// All of it is held live, so it is made anew when that is let go of.
   _InstrumentState _instruments = _InstrumentState();
 
-  /// _metroStarted is when each running metronome started on _metroClock,
-  /// by id; _metroTick redraws them; _metroTaps are each one's last taps.
-  final Map<String, double> _metroStarted = {};
+  /// _metroStarted is each running metronome's last start, by id: when on
+  /// _metroClock, and the beat it started from (0, or the beat it was on
+  /// when its tempo or bar changed). _metroTick redraws them; _metroTaps
+  /// are each one's last taps.
+  final Map<String, ({double at, double from})> _metroStarted = {};
   final Stopwatch _metroClock = Stopwatch();
   Timer? _metroTick;
   final Map<String, List<double>> _metroTaps = {};

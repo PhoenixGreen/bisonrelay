@@ -547,6 +547,41 @@ page (`CounterElement.drawnBox`); the renderer, the selection box
 (`visualBoundsOf`) and the press (`StageHitTest.drawn`) all ask it, and a
 move drag takes it the way the pointer goes.
 
+### A camera, a metronome and a button
+
+A scene is framed by one of two things. A Camera element shown on it
+(`cameraOf`, the first shown in the scene's order: a second is drawn on the
+canvas but frames nothing) takes over; else the scene's own slow move
+(`SceneCamera`, named by `CameraMove`, both in `model/scene_camera.dart`),
+set on the scene's Camera card. `sceneFraming` (`render/motion_document.dart`)
+is that rule, and the scene's chain asks the same question: while a Camera
+frames the scene its card says so in place of the slow move's controls,
+which come back, as they were set, when the Camera is hidden or taken away.
+On a 3D stage the Camera is the stage's camera instead: `isStageScene` says
+whether a scene is one, and `sceneStageOf`, `stageCameraOf` beside it are
+the stage and where its camera stands, which a new Camera starts from. What
+a Camera keys of its lens (focus, blur, vignette and how far it turns to its
+aim) are `KeyframeChannel`s, keyed through `ElementTrack.withValueKey`, the
+one way every panel's ◆ keys a value: a new key there pins nothing else.
+
+Whether a metronome is going is the editor's, not the document's
+(`controller/metronomes.dart`). How it swings is handed to the renderer as
+a live counter's value is (`paintCanvasDocument`'s `metronomeShow`, from the
+stage's `StageLive`), so an export, and anything drawn without the editor,
+draws it at rest. The swing is taken from where its click has been heard to
+(`AudioRuntime.metronomeHeard`), held on its first beat while the sound gets
+ready, and timed by the clock alone where there is no sound. A change of its
+tempo or of its beats in a bar goes on from the beat it is on
+(`setMetronome`); its colours are written as any element's are and leave it
+going as it was. Its beats in a bar are one list, `metronomeBeats`, which
+the panel offers and its beats button steps through.
+
+A button's painter is `render/scene_renderer_button.dart`. What it does is
+`controller/button_actions.dart`, whose head is the table of each action in
+the editor and in a book, and where the two differ; its controls
+(`ui/settings/button_action_controls.dart`) are shared with a game
+element's press.
+
 ## The editor
 
 `CanvasController` (`ui/canvas_controller.dart`) is the editing session. One

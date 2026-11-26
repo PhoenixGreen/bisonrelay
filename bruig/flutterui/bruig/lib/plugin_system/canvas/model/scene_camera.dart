@@ -131,3 +131,57 @@ class SceneCamera {
     );
   }
 }
+
+/// CameraMove is a [SceneCamera] by name: the slow moves the scene card
+/// offers (still, a push in, a pull out, a drift, an orbit), each at a
+/// strength, and which one a saved camera is.
+enum CameraMove {
+  still("Still"),
+  pushIn("Push in"),
+  pullOut("Pull out"),
+  driftLeft("Drift left"),
+  driftRight("Drift right"),
+  driftUp("Drift up"),
+  orbit("Orbit");
+
+  final String label;
+  const CameraMove(this.label);
+
+  /// camera is this move at [strength], the zoom as a fraction (0.12: 12%).
+  SceneCamera? camera(double strength) {
+    var z = 1 + strength;
+    var d = strength / 2;
+    return switch (this) {
+      still => null,
+      pushIn => SceneCamera(fromZoom: 1, toZoom: z),
+      pullOut => SceneCamera(fromZoom: z, toZoom: 1),
+      driftLeft =>
+        SceneCamera(fromZoom: z, toZoom: z, fromX: 0.5 + d, toX: 0.5 - d),
+      driftRight =>
+        SceneCamera(fromZoom: z, toZoom: z, fromX: 0.5 - d, toX: 0.5 + d),
+      driftUp =>
+        SceneCamera(fromZoom: z, toZoom: z, fromY: 0.5 + d, toY: 0.5 - d),
+      orbit => SceneCamera(
+          fromZoom: z, toZoom: z, fromX: 0.5 + d, toX: 0.5 + d, orbit: true),
+    };
+  }
+
+  /// of is which move [c] is, as near as can be said.
+  static CameraMove of(SceneCamera? c) {
+    if (c == null) return still;
+    if (c.orbit) return orbit;
+    if (c.toZoom > c.fromZoom + 0.001) return pushIn;
+    if (c.fromZoom > c.toZoom + 0.001) return pullOut;
+    if (c.toX < c.fromX) return driftLeft;
+    if (c.toX > c.fromX) return driftRight;
+    if (c.toY < c.fromY) return driftUp;
+    return still;
+  }
+
+  /// strengthOf is how strong [c] is: how far it is zoomed beyond the page.
+  static double strengthOf(SceneCamera? c) {
+    if (c == null) return 0.12;
+    var most = c.fromZoom > c.toZoom ? c.fromZoom : c.toZoom;
+    return (most - 1).clamp(0.02, 1.0);
+  }
+}

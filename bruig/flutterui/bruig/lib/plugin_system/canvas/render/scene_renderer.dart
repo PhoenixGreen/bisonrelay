@@ -102,6 +102,7 @@ import 'package:flutter/painting.dart';
 part 'scene_renderer_backdrop.dart';
 part 'scene_renderer_text.dart';
 part 'scene_renderer_shapes.dart';
+part 'scene_renderer_button.dart';
 part 'scene_renderer_image.dart';
 part 'scene_renderer_image_layers.dart';
 part 'scene_renderer_in_turn.dart';
@@ -202,6 +203,11 @@ void paintCanvasDocument(
   LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
+
+  /// metronomeShow is how each metronome is going (its swing and lamp), asked
+  /// of the window where it was started; null in an export, and wherever none
+  /// goes, so each is drawn at rest.
+  MetronomeShow Function(MetronomeElement)? metronomeShow,
 
   /// audioState is how each sound is doing, for its icon; null in an export.
   AudioState Function(AudioElement)? audioState,
@@ -347,6 +353,7 @@ void paintCanvasDocument(
           liveMotion: liveMotion,
           counterPressed: counterPressed,
           counterRunning: counterRunning,
+          metronomeShow: metronomeShow,
           audioState: audioState,
           videoShow: videoShow,
           previewing: previewing,
@@ -386,6 +393,7 @@ void paintCanvasDocument(
       liveMotion: liveMotion,
       counterPressed: counterPressed,
       counterRunning: counterRunning,
+      metronomeShow: metronomeShow,
       audioState: audioState,
       videoShow: videoShow,
       previewing: previewing,
@@ -409,6 +417,7 @@ void _paintScene(
   LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
+  MetronomeShow Function(MetronomeElement)? metronomeShow,
   AudioState Function(AudioElement)? audioState,
   VideoShow Function(VideoElement)? videoShow,
   ({String id, int frame})? previewing,
@@ -467,6 +476,7 @@ void _paintScene(
         liveMotion: liveMotion,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
+        metronomeShow: metronomeShow,
         audioState: audioState,
         videoShow: videoShow,
         backgrounds: backgrounds,
@@ -634,6 +644,7 @@ void paintElement(
   LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
+  MetronomeShow Function(MetronomeElement)? metronomeShow,
   AudioState Function(AudioElement)? audioState,
   VideoShow Function(VideoElement)? videoShow,
 
@@ -673,6 +684,7 @@ void paintElement(
         liveMotion: liveMotion,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
+        metronomeShow: metronomeShow,
         audioState: audioState,
         videoShow: videoShow,
         poseOutside: poseOutside,
@@ -696,6 +708,7 @@ void paintElement(
           liveMotion: liveMotion,
           counterPressed: counterPressed,
           counterRunning: counterRunning,
+          metronomeShow: metronomeShow,
           audioState: audioState,
           videoShow: videoShow,
           poseOutside: poseOutside,
@@ -821,6 +834,7 @@ void paintElement(
             liveMotion: liveMotion,
             counterPressed: counterPressed,
             counterRunning: counterRunning,
+            metronomeShow: metronomeShow,
             audioState: audioState,
             videoShow: videoShow,
             poseOutside: poseOutside,
@@ -1046,7 +1060,7 @@ void paintElement(
             const ElementAnimation(),
             pose,
             () => paintMetronome(canvas, bounds, e,
-                show: metronomeShowOf?.call(e) ?? const MetronomeShow()));
+                show: metronomeShow?.call(e) ?? const MetronomeShow()));
       case CodeElement e:
         arriving(
             canvas,
@@ -1195,6 +1209,7 @@ void paintElement(
                           liveMotion: liveMotion,
                           counterPressed: counterPressed,
                           counterRunning: counterRunning,
+                          metronomeShow: metronomeShow,
                           audioState: audioState,
                           videoShow: videoShow)
                     );

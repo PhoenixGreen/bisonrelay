@@ -184,8 +184,10 @@ List<Widget> elementSettings(
         context, controller, element as TileMapElement, write, begin, commit)),
     ElementKind.object3d => shared(object3dSettings(
         context, controller, element as Object3dElement, write, begin, commit)),
-    ElementKind.camera => shared(cameraSettings(
-        context, controller, element as CameraElement, write, begin, commit)),
+    ElementKind.camera => [
+        cameraPanel(
+            context, controller, element as CameraElement, write, begin, commit)
+      ],
     // Scenery is never selected alone: it is set in its background's panel.
     ElementKind.parallax => shared(const []),
   };
@@ -234,7 +236,7 @@ const _placed = <String, (PanelSection, bool)>{
   "view": (PanelSection.layout, false),
   // A 3D object.
   "object3d": (PanelSection.content, true),
-  // A camera, and a stage's camera.
+  // A stage's camera.
   "camera": (PanelSection.content, true),
   "light": (PanelSection.look, false),
   // A sprite.

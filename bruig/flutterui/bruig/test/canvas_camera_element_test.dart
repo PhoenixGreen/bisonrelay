@@ -63,6 +63,33 @@ void main() {
     expect(sceneFraming(withCam, 0)!.$1, 3);
   });
 
+  // Of two Cameras shown, the first in the scene's order frames it; the
+  // second is drawn on the canvas, but plays and exports nothing.
+  test("of two Cameras shown, the first frames the scene", () {
+    const first = CameraElement(ElementBase(id: "a", width: 100, height: 100));
+    const second =
+        CameraElement(ElementBase(id: "b", x: 150, width: 150, height: 150));
+    var doc = square(const [first, second]);
+    expect(cameraOf(doc)?.id, "a");
+    expect(sceneFraming(doc, 0), cameraFraming(first, 0, doc));
+    var hidden = doc.withElement(first.withBase(visible: false));
+    expect(sceneFraming(hidden, 0), cameraFraming(second, 0, hidden),
+        reason: "the first hidden, the next shown frames it");
+  });
+
+  test("on a 3D stage, a new Camera stands where the stage's camera does", () {
+    var flat = square(const []);
+    expect(stageCameraOf(flat), isNull);
+    expect(
+        (newElement(ElementKind.camera, flat) as CameraElement).view, isNull);
+    var staged = flat.addElement(newElement(ElementKind.stage, flat));
+    expect(isStageScene(staged), isTrue);
+    var view = stageCameraOf(staged);
+    expect(view, isNotNull);
+    expect(
+        (newElement(ElementKind.camera, staged) as CameraElement).view, view);
+  });
+
   test("pushed in on something, it ends on it, closer", () {
     var c = CanvasController(square([
       red("t", const Rect.fromLTWH(200, 40, 40, 40)),

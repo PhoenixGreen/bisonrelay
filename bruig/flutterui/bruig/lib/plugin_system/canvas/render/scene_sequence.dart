@@ -7,10 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show sceneFraming, LiveMotion;
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/metronome_painter.dart'
+    show MetronomeShow;
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
@@ -120,11 +123,13 @@ void paintSequenceFrame(
   /// (see ExportBackdrop). Null draws each scene's own.
   ui.Image? backdrop,
 
-  /// liveMotion and counterValue are what plays from slots and what live
-  /// counters show, so a run of scenes is drawn as one scene is. Null in an
-  /// export, which plays the timeline alone.
+  /// liveMotion, counterValue and metronomeShow are what plays from slots,
+  /// what live counters show and how each metronome is going, so a run of
+  /// scenes is drawn as one scene is. Null in an export, which plays the
+  /// timeline alone.
   LiveMotion? liveMotion,
   double Function(CounterElement)? counterValue,
+  MetronomeShow Function(MetronomeElement)? metronomeShow,
 }) {
   var place = placeInSequence(doc, at);
   var scenes = doc.allScenes;
@@ -156,6 +161,7 @@ void paintSequenceFrame(
             backdrop: backdrop,
             liveMotion: liveMotion,
             counterValue: counterValue,
+            metronomeShow: metronomeShow,
             // Its Camera, which takes over, or its slow move.
             camera: sceneFraming(shown, frame, live: liveMotion)));
   }

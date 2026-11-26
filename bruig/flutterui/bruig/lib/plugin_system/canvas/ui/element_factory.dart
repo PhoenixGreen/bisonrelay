@@ -44,6 +44,8 @@ import 'package:bruig/plugin_system/canvas/model/synth_patch.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/code_task_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show stageCameraOf;
 import 'package:bruig/plugin_system/canvas/render/play_task_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
@@ -424,7 +426,6 @@ CanvasElement newElement(
     case ElementKind.camera:
       // Over the whole page (see CameraElement); on a 3D stage, where the
       // stage's camera is (see camera_3d.dart).
-      var drawn = document.drawnBackground;
       return CameraElement(
           base.copyWith(
               name: "Camera",
@@ -432,14 +433,7 @@ CanvasElement newElement(
               y: 0,
               width: size.width,
               height: size.height),
-          view: drawn.isStage
-              ? drawn.stageOn(document.size.rect).ownCameraAt(0)
-              : document.elements
-                  .whereType<BackgroundElement>()
-                  .where((b) => b.isStage)
-                  .firstOrNull
-                  ?.staged
-                  .ownCameraAt(0));
+          view: stageCameraOf(document));
 
     // The same for parallax scenery: a Background element showing it.
     case ElementKind.parallax:

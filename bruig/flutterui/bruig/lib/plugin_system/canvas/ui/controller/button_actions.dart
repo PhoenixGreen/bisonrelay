@@ -27,7 +27,22 @@ part of '../canvas_controller.dart';
 // | stopSound       | Stops it, back at its start.                            |
 // | muteSound       | Silences it, or brings it back.                         |
 //
+// Both hold the frame a button names to the scene's frames: past the end
+// is its last frame.
+//
 // Where the two still differ:
+// - Where a button is pressed: here, a selected button, where it is drawn,
+//   turned, slanted and moved (the file player presses any button in its
+//   moved box, upright); in the book, in the box it rests in, upright,
+//   which on a page laid out as layers moves with the button's own move.
+// - The playhead's actions (goToFrame, playFrom, playToFrame, play, pause,
+//   togglePlay, restart): the book makes their buttons only on a page that
+//   moves, so on a still page they are not there; here they act on any
+//   scene.
+// - The master's buttons: the book makes each on every page that shows the
+//   master; here they are not pressed from a scene, the master being edited
+//   on its own (the file player presses them on every scene that shows
+//   it).
 // - playToFrame: here, from the first frame when the playhead is on the
 //   frame or past it; the book starts again only from the very end, and
 //   from anywhere else past the frame plays on to the end.

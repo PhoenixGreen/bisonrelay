@@ -883,6 +883,7 @@ class CanvasStageState extends State<CanvasStage>
         motionTick: controller.motionTick,
         counterValue: NotCompared(controller.counterValue),
         counterRunning: NotCompared(controller.counterRunning),
+        metronomeShow: NotCompared(controller.metronomeShowFor),
         counterTick: controller.counterTicks,
         audioState: NotCompared(controller.audioState),
         videoShow: NotCompared(controller.videoShow),

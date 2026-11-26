@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/render/camera_aim.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show channelLevelAt;
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
@@ -1081,7 +1082,7 @@ CameraElement? cameraOf(CanvasDocument doc) =>
 
 /// poseAimAt is how far [cam] is keyed to turn to its aim, or null.
 double? poseAimAt(CameraElement cam, int frame, CanvasDocument doc) =>
-    poseWithMotion(cam, frame, doc).values["aim"];
+    poseWithMotion(cam, frame, doc).values[KeyframeChannel.aimMix];
 
 // The last aimed framing worked out: a frame asks for it more than once.
 ((CameraElement, int, CanvasDocument), (double, Offset))? _aimedLast;
@@ -1100,14 +1101,15 @@ double? poseAimAt(CameraElement cam, int frame, CanvasDocument doc) =>
       1.0, page.width / math.max(1.0, box.width) * math.max(0.01, pose.scale));
   var roll = cam.rotation + pose.rotate;
   var c = box.center + Offset(pose.dx, pose.dy);
-  // Turned to the part of a chart it aims at by its "aim" (camera_aim.dart).
+  // Turned to the part of a chart it aims at, as far as its keyed aimMix
+  // says (camera_aim.dart).
   if (cam.aim.isNotEmpty) {
     var key = (cam, frame, doc);
     if (_aimedLast?.$1 == key) {
       (zoom, c) = _aimedLast!.$2;
     } else {
-      (zoom, c) =
-          aimedFraming(cam, zoom, c, frame, doc, pose.values["aim"] ?? 1.0);
+      (zoom, c) = aimedFraming(
+          cam, zoom, c, frame, doc, pose.values[KeyframeChannel.aimMix] ?? 1.0);
       _aimedLast = (key, (zoom, c));
     }
   }
@@ -1143,7 +1145,8 @@ double cameraRollCover(double degrees, Size page) {
 }
 
 /// CameraLook is a camera's lens on one frame: its settings, with what its
-/// keyframes pin by name ("focus", "blur", "vignette"), and its roll.
+/// keyframes pin by name (KeyframeChannel's focus, blur and vignette), and
+/// its roll.
 class CameraLook {
   final double roll;
   final double focus;
@@ -1179,12 +1182,15 @@ CameraLook cameraLookAt(CameraElement cam, int frame, CanvasDocument doc,
     // What a key holds is read as any keyframe's value is, unbounded, so
     // it is held here, where it reaches a blur filter and its layer.
     focus: on?.base.depth ??
-        v("focus", cam.focus)
+        v(KeyframeChannel.focus, cam.focus)
             .clamp(-CameraElement.maxKeyedFocus, CameraElement.maxKeyedFocus)
             .toDouble(),
-    blur: v("blur", cam.blur).clamp(0.0, CameraElement.maxBlur).toDouble(),
+    blur: v(KeyframeChannel.blur, cam.blur)
+        .clamp(0.0, CameraElement.maxBlur)
+        .toDouble(),
     parallax: cam.parallax,
-    vignette: v("vignette", cam.vignette).clamp(0.0, 1.0).toDouble(),
+    vignette:
+        v(KeyframeChannel.vignette, cam.vignette).clamp(0.0, 1.0).toDouble(),
     vignetteSoft: cam.vignetteSoft,
     motionBlur: cam.motionBlur,
   );
@@ -1245,6 +1251,25 @@ double cameraMostZoom(CanvasDocument doc) {
 bool isStageScene(CanvasDocument doc) =>
     doc.drawnBackground.isStage ||
     doc.elements.any((e) => e is BackgroundElement && e.isStage);
+
+/// sceneStageOf is the 3D stage [doc]'s scene is played on, where
+/// [isStageScene]: its background's, stretched to the page, or else the
+/// first Background element showing one. Null on the page.
+StageElement? sceneStageOf(CanvasDocument doc) {
+  var drawn = doc.drawnBackground;
+  if (drawn.isStage) return drawn.stageOn(doc.size.rect);
+  return doc.elements
+      .whereType<BackgroundElement>()
+      .where((b) => b.isStage)
+      .firstOrNull
+      ?.staged;
+}
+
+/// stageCameraOf is where the camera of [doc]'s 3D stage stands at the
+/// start: where a Camera put on the scene stands until it is given a place
+/// of its own. Null on the page.
+StageCamera? stageCameraOf(CanvasDocument doc) =>
+    sceneStageOf(doc)?.ownCameraAt(0);
 
 /// modelPlaysAt is which of [e]'s model's own animations its clips play on
 /// [frame], how far into each and how much each counts: see ModelScene.

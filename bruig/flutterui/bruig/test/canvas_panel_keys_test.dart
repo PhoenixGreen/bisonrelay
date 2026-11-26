@@ -8,8 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/metronome_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -100,6 +102,47 @@ List<_State> _states() {
       id: text.id,
     ),
     ..._strokeStates(),
+    ..._lensStates(),
+  ];
+}
+
+/// _lensStates are what a Camera's and a metronome's panels show beyond the
+/// samples: a Camera on the page aimed at a chart, its focus, blur, vignette
+/// and how far it turns to its aim keyed (the sample stands on a 3D stage,
+/// where none of that is shown), and a metronome holding a number of beats
+/// its first dropdown did not offer.
+List<_State> _lensStates() {
+  var chart = (newElement(ElementKind.chart, _doc) as ChartElement)
+      .withBase(name: "League") as ChartElement;
+  var camera = (newElement(ElementKind.camera, _doc) as CameraElement)
+      .copyWith(aim: chart.id, aimAt: "leader", aimFill: 0.7)
+      .withBase(
+          track: ElementTrack(const [
+        Keyframe(frame: 0, values: {
+          KeyframeChannel.focus: 0.2,
+          KeyframeChannel.blur: 8,
+          KeyframeChannel.vignette: 0.3,
+          KeyframeChannel.aimMix: 0,
+        }),
+        Keyframe(frame: 48, values: {
+          KeyframeChannel.focus: -0.3,
+          KeyframeChannel.blur: 20,
+          KeyframeChannel.vignette: 0.6,
+          KeyframeChannel.aimMix: 1,
+        }),
+      ]));
+  var metronome = newElement(ElementKind.metronome, _doc) as MetronomeElement;
+  return [
+    (
+      name: "Camera, aimed at a chart with its lens keyed, on the page",
+      document: _doc.addElement(chart).addElement(camera),
+      id: camera.id,
+    ),
+    (
+      name: "Metronome, five beats to a bar",
+      document: _doc.addElement(metronome.copyWith(beats: 5)),
+      id: metronome.id,
+    ),
   ];
 }
 

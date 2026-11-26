@@ -544,6 +544,18 @@ class ElementTrack {
         curve: curve);
   }
 
+  /// withValueKey is this track with [channel] keyed to [value] on
+  /// [frame]: in the keyframe standing there, or in a new one that pins
+  /// nothing else. It is seeded first (see [seededFor]) unless [seed] is
+  /// false, so one key makes a movement. Every panel's key for a value goes
+  /// through here, so a key made in one is the same as a key made in any.
+  ElementTrack withValueKey(String channel, double value, int frame,
+      {bool seed = true}) {
+    var track = seed ? seededFor(frame) : this;
+    var into = track.keyAt(frame) ?? Keyframe(frame: frame, pins: 0);
+    return track.withKey(into.withValue(channel, value));
+  }
+
   /// withKey adds or replaces the keyframe at its own frame.
   ElementTrack withKey(Keyframe key) =>
       ElementTrack([...keys.where((k) => k.frame != key.frame), key]);
@@ -769,6 +781,18 @@ class KeyframeChannel {
   static const String loopSy = "loopSy";
   static const String loopPivotX = "loopPivotX";
   static const String loopPivotY = "loopPivotY";
+
+  /// focus, blur and vignette are a Camera's lens keyed (CameraLook): the
+  /// depth that is sharp, how soft the rest is, and how dark its corners
+  /// go, each as the Camera's own setting of that name holds it.
+  static const String focus = "focus";
+  static const String blur = "blur";
+  static const String vignette = "vignette";
+
+  /// aimMix is how far a Camera is turned from its own framing (0) to the
+  /// part of a chart it aims at (1): its "How far". Saved as "aim", which is
+  /// not the Camera's own aim (the chart's id).
+  static const String aimMix = "aim";
 }
 
 /// bounceOut is the four-stage bounce shared by keyframe and chart easing.

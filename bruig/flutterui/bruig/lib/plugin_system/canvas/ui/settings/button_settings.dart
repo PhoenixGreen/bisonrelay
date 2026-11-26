@@ -1,10 +1,8 @@
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/button_action_controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
     show typeSummary;
@@ -14,225 +12,155 @@ import 'package:bruig/plugin_system/canvas/ui/settings/box_group.dart';
 
 // button_settings.dart is a button's panel (see element_panel.dart): quick
 // strip, Content (words and action) and Look (type, box, hover colours).
+// Its label and what it does are each built once for the quick strip and
+// for Content (_label, actionDoes); its fill and its words' colour in the
+// quick strip stand for the box's and the type's own, in Look.
 
-Widget buttonPanel(
-    BuildContext context,
-    CanvasController controller,
-    ButtonElement e,
-    SettingsWrite write,
-    VoidCallback begin,
-    VoidCallback commit) {
-  var action = e.action;
+/// _Button is a button in its panel and how to write it: what each piece of
+/// the panel is handed.
+class _Button {
+  final BuildContext context;
+  final CanvasController controller;
+  final ButtonElement e;
+  final SettingsWrite write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+  const _Button(this.context, this.controller, this.e, this.write, this.begin,
+      this.commit);
+
+  /// now writes [next] as one step: a choice made in one press.
   void now(ButtonElement next) {
     begin();
     write(next);
     commit();
   }
+}
 
-  return elementPanel(context, controller, e, write, begin, commit,
-      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
-        panelRow([
-          cell(
-              CanvasTextField(
-                key: const ValueKey("quickButtonLabel"),
-                label: "Label",
-                value: e.label,
-                width: 150,
-                onChanged: (v) => write(e.copyWith(label: v)),
-                onCommit: commit,
-              ),
-              flex: 3,
-              min: 110),
-          cell(
-              CanvasColorButton(
-                key: const ValueKey("quickButtonFill"),
-                label: "Fill",
-                color: e.box.fill,
-                onChanged: (c) => now(e.copyWith(box: e.box.copyWith(fill: c))),
-              ),
-              width: 104),
-        ]),
-        const SizedBox(height: 8),
-        panelRow([
-          cell(
-              CanvasDropdown<ButtonActionKind>(
-                key: const ValueKey("quickButtonDoes"),
-                label: "Does",
-                value: action.kind,
-                options: [for (var k in ButtonActionKind.values) (k, k.label)],
-                onChanged: (k) =>
-                    now(e.copyWith(action: action.copyWith(kind: k))),
-              ),
-              flex: 3,
-              min: 120),
-          cell(
-              CanvasColorButton(
-                key: const ValueKey("quickButtonText"),
-                label: "Text",
-                color: e.textSpec.color,
-                onChanged: (c) =>
-                    now(e.copyWith(textSpec: e.textSpec.copyWith(color: c))),
-              ),
-              width: 104),
-        ]),
-      ]),
-      bits: [
-        PanelBit(PanelSection.content,
-            summary: "\"${e.label}\" · ${action.kind.label}",
-            children: [
-              CanvasControlGroup(
-                label: "What it says and does",
-                help: "The words on the button, and what pressing it does -- "
-                    "jump to a frame or a scene, play or stop a sound, show or "
-                    "hide an element, open a link.",
-                rule: false,
-                children: [
-                  CanvasTextField(
-                    label: "Label",
-                    value: e.label,
-                    width: 150,
-                    onChanged: (v) => write(e.copyWith(label: v)),
-                    onCommit: commit,
-                  ),
-                  ...buttonActionControls(controller, action, e.id, (next,
-                      {live = false}) {
-                    begin();
-                    write(e.copyWith(action: next));
-                    if (!live) commit();
-                  }, commit),
-                ],
-              ),
-            ]),
-        PanelBit(PanelSection.look,
-            summary: typeSummary(e.textSpec),
-            children: [
-              labelType(
-                  TypeEdit(
-                      e.textSpec,
-                      (spec) => write(e.copyWith(textSpec: spec)),
-                      begin,
-                      commit),
-                  remember: "buttonLabel"),
-              boxGroup(
-                  e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-                  remember: "button",
-                  rule: false,
-                  fillPickedIn: context,
-                  compact: true),
-              CanvasControlGroup(
-                label: "Under the pointer",
-                help: "The colours it turns while the pointer is over it, so a "
-                    "reader can tell it can be pressed.",
-                rule: false,
-                children: [
-                  CanvasColorButton(
-                    label: "Hover fill",
-                    color: e.hoverFill,
-                    onChanged: (c) => now(e.copyWith(hoverFill: c)),
-                  ),
-                  CanvasColorButton(
-                    label: "Hover text",
-                    color: e.hoverTextColor,
-                    onChanged: (c) => now(e.copyWith(hoverTextColor: c)),
-                  ),
-                ],
-              ),
-            ]),
+Widget buttonPanel(
+        BuildContext context,
+        CanvasController controller,
+        ButtonElement e,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit) =>
+    _panel(_Button(context, controller, e, write, begin, commit));
+
+Widget _panel(_Button b) =>
+    elementPanel(b.context, b.controller, b.e, b.write, b.begin, b.commit,
+        quick: _quick(b), bits: [_contentBit(b), _lookBit(b)]);
+
+/// _quick is the quick strip: its label and fill, what it does and the
+/// colour of its words.
+Widget _quick(_Button b) {
+  var e = b.e;
+  return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+    panelRow([
+      cell(_label(b, quick: true), flex: 3, min: 110),
+      cell(
+          CanvasColorButton(
+            key: const ValueKey("quickButtonFill"),
+            label: "Fill",
+            color: e.box.fill,
+            onChanged: (c) => b.now(e.copyWith(box: e.box.copyWith(fill: c))),
+          ),
+          width: 104),
+    ]),
+    const SizedBox(height: 8),
+    panelRow([
+      cell(
+          actionDoes(e.action.kind,
+              (k) => b.now(e.copyWith(action: e.action.copyWith(kind: k))),
+              quick: true, key: const ValueKey("quickButtonDoes")),
+          flex: 3,
+          min: 120),
+      cell(
+          CanvasColorButton(
+            key: const ValueKey("quickButtonText"),
+            label: "Text",
+            color: e.textSpec.color,
+            onChanged: (c) =>
+                b.now(e.copyWith(textSpec: e.textSpec.copyWith(color: c))),
+          ),
+          width: 104),
+    ]),
+  ]);
+}
+
+/// _label is the words on it: in the quick strip ([quick]) or in Content.
+Widget _label(_Button b, {required bool quick}) => CanvasTextField(
+      key: ValueKey(quick ? "quickButtonLabel" : "buttonLabel"),
+      label: "Label",
+      value: b.e.label,
+      width: 150,
+      onChanged: (v) => b.write(b.e.copyWith(label: v)),
+      onCommit: b.commit,
+    );
+
+/// _contentBit is what it says and what pressing it does.
+PanelBit _contentBit(_Button b) {
+  var e = b.e;
+  return PanelBit(PanelSection.content,
+      summary: "\"${e.label}\" · ${e.action.kind.label}",
+      children: [
+        CanvasControlGroup(
+          label: "What it says and does",
+          help: "The words on the button, and what pressing it does -- "
+              "jump to a frame or a scene, play or stop a sound, show or "
+              "hide an element, open a link.",
+          rule: false,
+          children: [
+            _label(b, quick: false),
+            ...buttonActionControls(b.controller, e.action, e.id, (next,
+                {live = false}) {
+              b.begin();
+              b.write(e.copyWith(action: next));
+              if (!live) b.commit();
+            }, b.commit, key: "button"),
+          ],
+        ),
       ]);
 }
 
-/// _playable is whether media actions can target [e]: a sound, or a file
-/// video. A linked video is another site's player, beyond our control.
-bool _playable(CanvasElement e) =>
-    e is AudioElement || (e is VideoElement && !e.isLink);
+/// _lookBit is how its words and its box are drawn, and the colours it
+/// turns under the pointer.
+PanelBit _lookBit(_Button b) {
+  var e = b.e;
+  return PanelBit(PanelSection.look,
+      summary: typeSummary(e.textSpec),
+      children: [
+        labelType(
+            TypeEdit(e.textSpec, (spec) => b.write(e.copyWith(textSpec: spec)),
+                b.begin, b.commit),
+            remember: "buttonLabel"),
+        boxGroup(
+            e.box, (box) => b.write(e.copyWith(box: box)), b.begin, b.commit,
+            remember: "button",
+            rule: false,
+            fillPickedIn: b.context,
+            compact: true),
+        _hoverGroup(b),
+      ]);
+}
 
-/// buttonActionControls are what a press does (a button's, or a game
-/// element's) and its target. [set] writes live, [commit] when the field is
-/// left; [key] keys the Does dropdown.
-List<Widget> buttonActionControls(
-    CanvasController controller,
-    ButtonAction action,
-    String selfId,
-    void Function(ButtonAction next, {bool live}) set,
-    VoidCallback commit,
-    {String? key}) {
-  return [
-    CanvasDropdown<ButtonActionKind>(
-      key: key == null ? null : ValueKey("$key-does"),
-      label: "Does",
-      value: action.kind,
-      width: 150,
-      options: [for (var k in ButtonActionKind.values) (k, k.label)],
-      onChanged: (v) => set(action.copyWith(kind: v)),
-    ),
-    if (action.kind.needsFrame)
-      CanvasNumberField(
-        label: "Frame",
-        value: action.frame.toDouble(),
-        min: 0,
-        max: (controller.document.frames - 1).toDouble(),
-        width: 54,
-        onChanged: (v) => set(action.copyWith(frame: v.round()), live: true),
-        onCommit: commit,
+/// _hoverGroup is the colours it turns while the pointer is over it.
+Widget _hoverGroup(_Button b) {
+  var e = b.e;
+  return CanvasControlGroup(
+    label: "Under the pointer",
+    help: "The colours it turns while the pointer is over it, so a "
+        "reader can tell it can be pressed.",
+    rule: false,
+    children: [
+      CanvasColorButton(
+        label: "Hover fill",
+        color: e.hoverFill,
+        onChanged: (c) => b.now(e.copyWith(hoverFill: c)),
       ),
-    // A sound is an Audio element on this canvas or the master under it, so
-    // a button on page three can pause the master's music.
-    if (action.kind.needsSound)
-      CanvasDropdown<String>(
-        key: const ValueKey("buttonSound"),
-        label: "Sound or video",
-        value: action.elementId,
-        width: 170,
-        options: [
-          ("", "Nothing"),
-          for (var other in controller.document.elements)
-            if (_playable(other)) (other.id, other.name),
-          if (!controller.document.editingMaster)
-            for (var other in controller.document.masterScene?.elements ??
-                const <CanvasElement>[])
-              if (_playable(other)) (other.id, "${other.name} (master)"),
-          // What the background plays: a stop-the-music button is most of
-          // what a music bed needs.
-          for (var other in controller.document.drawnBackground.media)
-            (other.id, other.name),
-        ],
-        onChanged: (v) => set(action.copyWith(elementId: v)),
+      CanvasColorButton(
+        label: "Hover text",
+        color: e.hoverTextColor,
+        onChanged: (c) => b.now(e.copyWith(hoverTextColor: c)),
       ),
-    if (action.kind.needsElement && !action.kind.needsSound)
-      CanvasDropdown<String>(
-        label: "Element",
-        value: action.elementId,
-        width: 150,
-        options: [
-          ("", "Nothing"),
-          for (var other in controller.document.elements)
-            if (other.id != selfId) (other.id, other.name),
-        ],
-        onChanged: (v) => set(action.copyWith(elementId: v)),
-      ),
-    // Which scene to show, held by id rather than order, so reordering the
-    // scenes cannot silently retarget the button.
-    if (action.kind.needsScene)
-      CanvasDropdown<String>(
-        key: const ValueKey("buttonScene"),
-        label: "Scene",
-        value: action.elementId,
-        width: 170,
-        options: [
-          ("", "Nothing"),
-          for (var (i, scene) in controller.document.allScenes.indexed)
-            (scene.id, controller.document.nameOf(i)),
-        ],
-        onChanged: (v) => set(action.copyWith(elementId: v)),
-      ),
-    if (action.kind.needsUrl)
-      CanvasTextField(
-        label: "Link",
-        value: action.url,
-        width: 220,
-        hint: "https://",
-        onChanged: (v) => set(action.copyWith(url: v), live: true),
-        onCommit: commit,
-      ),
-  ];
+    ],
+  );
 }

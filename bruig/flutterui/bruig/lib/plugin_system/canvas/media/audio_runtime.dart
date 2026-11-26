@@ -146,6 +146,7 @@ class AudioRuntime extends ChangeNotifier {
     var click = _clicks[key] ??= _Click();
     if (!on || _disposed) {
       click.generation++;
+      click.waiting = false;
       if (click.voice case var v?) engine.stop(v);
       click.voice = null;
       return;
@@ -164,12 +165,28 @@ class AudioRuntime extends ChangeNotifier {
       return;
     }
     var generation = ++click.generation;
+    click.waiting = true;
     () async {
-      if (!await _ready() || generation != click.generation) return;
+      var ready = await _ready();
+      if (generation != click.generation) return;
+      click.waiting = false;
+      if (!ready) return;
       var track = click.track ??= engine.metronome(secondsPerBeat, beatsPerBar);
       click.voice = engine.play(track, volume: 1, at: math.max(0, at));
     }();
   }
+
+  /// metronomeHeard is how far into its track click [key] has been heard, in
+  /// seconds: what a metronome's swing is drawn from, so that it keeps time
+  /// with what is heard. Null while it is not sounding.
+  double? metronomeHeard(String key) {
+    var v = _clicks[key]?.voice;
+    return v != null && engine.alive(v) ? engine.position(v) : null;
+  }
+
+  /// metronomeWaiting is whether click [key] has been asked for and the
+  /// sound is still getting ready to play it.
+  bool metronomeWaiting(String key) => _clicks[key]?.waiting ?? false;
 
   /// noteOn sounds [key] on channel [channel]'s instrument, live, reading
   /// the bank first where the part needs it.
@@ -882,4 +899,7 @@ class _Click {
   AudioVoice? voice;
   (double, int)? metre;
   int generation = 0;
+
+  /// waiting is a start asked for while the sound gets ready.
+  bool waiting = false;
 }

@@ -7,13 +7,23 @@ part of '../canvas_controller.dart';
 extension CanvasMetronomes on CanvasController {
   bool metronomeGoing(String id) => _metroStarted.containsKey(id);
 
-  /// metronomeShowFor is how metronome [e] is going: how many beats since it
-  /// was started, for its pendulum and lamp.
+  /// metronomeShowFor is how metronome [e] is going: how many beats it has
+  /// gone, for its pendulum and lamp. They keep time with its click: taken
+  /// from where the click has been heard to; held on the beat it starts
+  /// from while the sound gets ready, so the swing does not run ahead of
+  /// the first click; and by the clock alone where there is no sound.
   MetronomeShow metronomeShowFor(MetronomeElement e) {
-    var from = _metroStarted[e.id];
-    if (from == null) return const MetronomeShow();
-    var seconds = _metroClock.elapsedMicroseconds / 1e6 - from;
-    return MetronomeShow(going: true, beats: seconds * e.bpm / 60);
+    var started = _metroStarted[e.id];
+    if (started == null) return const MetronomeShow();
+    var perBeat = 60 / e.bpm;
+    if (audio.metronomeHeard(e.id) case var heard?) {
+      return MetronomeShow(going: true, beats: heard / perBeat);
+    }
+    if (audio.metronomeWaiting(e.id)) {
+      return MetronomeShow(going: true, beats: started.from);
+    }
+    var seconds = _metroClock.elapsedMicroseconds / 1e6 - started.at;
+    return MetronomeShow(going: true, beats: started.from + seconds / perBeat);
   }
 
   void toggleMetronome(MetronomeElement e) {
@@ -26,14 +36,19 @@ extension CanvasMetronomes on CanvasController {
     notifyListeners();
   }
 
-  void _metroStart(MetronomeElement e) {
+  /// _metroStart starts [e]'s swing and click from [beat] beats in: the
+  /// click track is played from there, so its next click falls on the next
+  /// beat, the bar's first as louder as ever.
+  void _metroStart(MetronomeElement e, {double beat = 0}) {
     if (!_metroClock.isRunning) _metroClock.start();
-    _metroStarted[e.id] = _metroClock.elapsedMicroseconds / 1e6;
+    _metroStarted[e.id] =
+        (at: _metroClock.elapsedMicroseconds / 1e6, from: beat);
+    var perBeat = 60 / e.bpm;
     audio.metronome(
         on: true,
         key: e.id,
-        at: 0,
-        secondsPerBeat: 60 / e.bpm,
+        at: beat * perBeat,
+        secondsPerBeat: perBeat,
         beatsPerBar: e.beats);
     _metroTicking();
   }
@@ -58,18 +73,24 @@ extension CanvasMetronomes on CanvasController {
     });
   }
 
-  /// setMetronome writes [e] over the one with its id; if it was going, it
-  /// goes on at the new speed from its next beat.
+  /// setMetronome writes [e] over the one with its id. If it was going and
+  /// its tempo or its beats in a bar changed, it goes on from the beat it
+  /// was on, at the new tempo and in the new bar; any other change (its
+  /// colours) leaves its swing and click as they were.
   void setMetronome(MetronomeElement e) {
+    var was = _document.elementById(e.id);
     replaceElement(e);
-    if (metronomeGoing(e.id)) _metroStart(e);
+    if (!metronomeGoing(e.id) || was is! MetronomeElement) return;
+    if (was.bpm == e.bpm && was.beats == e.beats) return;
+    _metroStart(e, beat: metronomeShowFor(was).beats);
   }
 
   /// metronomeStep makes [e] [by] beats a minute faster (or slower).
   void metronomeStep(MetronomeElement e, double by) =>
       setMetronome(e.copyWith(bpm: e.bpm + by));
 
-  /// cycleMetronomeBeats steps [e]'s bar on through metronomeBeats.
+  /// cycleMetronomeBeats steps [e]'s bar on through metronomeBeats, from the
+  /// most it holds round to one.
   void cycleMetronomeBeats(MetronomeElement e) {
     var i = metronomeBeats.indexOf(e.beats);
     setMetronome(

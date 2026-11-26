@@ -10,7 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 /// CameraElement is a Camera, with a lens: depth of field, parallax, a
 /// vignette and motion blur, drawn alike in the app, a video and a book.
 /// Its roll is its own angle plus its clips' turn. Focus, blur and vignette
-/// can be keyed: a keyframe's value of that name (see CameraLook) wins.
+/// can be keyed: a keyframe's value of that name (KeyframeChannel; see
+/// CameraLook) wins.
 class CameraElement extends CanvasElement {
   /// view is where it stands in 3D, or null for the stage's own camera.
   final StageCamera? view;
@@ -39,7 +40,8 @@ class CameraElement extends CanvasElement {
 
   /// aim is a framed chart's id, or ""; [aimAt] what of it ("" all,
   /// "item:Arsenal", "top:3", "leader"); [aimFill] how much of the frame,
-  /// 0.2..0.95. A keyed "aim" eases from its framing (0) to the aim (1).
+  /// 0.2..0.95. How far it turns from its framing (0) to the aim (1) is
+  /// keyed, as KeyframeChannel.aimMix.
   final String aim;
   final String aimAt;
   final double aimFill;

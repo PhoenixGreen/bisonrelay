@@ -80,26 +80,34 @@ class MetronomeShow {
   const MetronomeShow({this.going = false, this.beats = 0});
 }
 
-/// metronomeShowOf is how each metronome is going on the stage, set by the
-/// controller; null in an export, where each is still.
-MetronomeShow Function(MetronomeElement e)? metronomeShowOf;
-
 /// metronomeAngle is the pendulum's angle [beats] beats in, in radians: at
 /// one side on each beat, the other on the next.
 double metronomeAngle(double beats) => -0.42 * math.cos(math.pi * beats);
 
+/// paintMetronome draws [e] fitted to [box], going as [show] says: its
+/// body, its pendulum, its lamp and its base, in that order, each in the
+/// layout's units.
 void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
     {MetronomeShow show = const MetronomeShow()}) {
-  var l = metronomeLayout;
   var (s, at) = metronomeFit(box);
   canvas.save();
   canvas.translate(at.dx, at.dy);
   canvas.scale(s);
+  // The wood's shade, for its edges and its base.
+  var dark = Color.lerp(e.body, const Color(0xFF000000), 0.35)!;
+  _paintBody(canvas, e, dark);
+  _paintPendulum(canvas, e, show);
+  _paintLamp(canvas, e, show);
+  _paintBase(canvas, e, show, dark);
+  canvas.restore();
+}
 
+/// _paintBody is the wooden pyramid, its shadow and a grain of light
+/// across it, and the cream face with its scale.
+void _paintBody(ui.Canvas canvas, MetronomeElement e, Color dark) {
+  var l = metronomeLayout;
   var wood = e.body;
-  var dark = Color.lerp(wood, const Color(0xFF000000), 0.35)!;
   var light = Color.lerp(wood, const Color(0xFFFFFFFF), 0.18)!;
-  // Its shadow, and the wood with a grain of light across it.
   canvas.drawPath(
       l.body.shift(const Offset(0, 5)),
       Paint()
@@ -131,7 +139,12 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
     var half = i % 2 == 0 ? 9.0 : 5.0;
     canvas.drawLine(Offset(100 - half, y), Offset(100 + half, y), tick);
   }
-  // The pendulum: its arm, and the weight, nearer the pivot the faster.
+}
+
+/// _paintPendulum is its arm, swung as far as [show] has it, and the
+/// weight, nearer the pivot the faster it goes.
+void _paintPendulum(ui.Canvas canvas, MetronomeElement e, MetronomeShow show) {
+  var l = metronomeLayout;
   var angle = show.going ? metronomeAngle(show.beats) : 0.0;
   var dir = Offset(math.sin(angle), -math.cos(angle));
   var tip = l.pivot + dir * l.arm;
@@ -173,7 +186,12 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
         ..color = const Color(0xFF55585E));
   canvas.restore();
   canvas.drawCircle(l.pivot, 4.5, Paint()..color = const Color(0xFF55585E));
-  // The lamp: flashing on each beat, brightest on the bar's first.
+}
+
+/// _paintLamp is the lamp: flashing on each beat, brightest on the bar's
+/// first.
+void _paintLamp(ui.Canvas canvas, MetronomeElement e, MetronomeShow show) {
+  var l = metronomeLayout;
   var since = show.beats - show.beats.floorToDouble();
   var downbeat = e.beats > 1 && show.beats.floor() % e.beats == 0;
   var glow = show.going ? math.max(0.0, 1 - since * 3) : 0.0;
@@ -195,7 +213,13 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
             Color.lerp(lampColour, const Color(0xFF000000), 0.55)!,
             lampColour,
             glow)!);
+}
 
+/// _paintBase is the base: the tempo's readout and its word, and the
+/// buttons, play lit while it goes.
+void _paintBase(
+    ui.Canvas canvas, MetronomeElement e, MetronomeShow show, Color dark) {
+  var l = metronomeLayout;
   var baseRR = RRect.fromRectAndRadius(l.base, const Radius.circular(8));
   canvas.drawRRect(baseRR, Paint()..color = dark);
   canvas.drawRRect(
@@ -213,45 +237,48 @@ void paintMetronome(ui.Canvas canvas, Rect box, MetronomeElement e,
       l.readout.center + const Offset(0, 10), 7.5, const Color(0xAAF1E7D2),
       weight: FontWeight.w700);
   for (var MapEntry(key: p, value: r) in l.buttons.entries) {
-    var on = p == MetronomePart.play && show.going;
-    var rr = RRect.fromRectAndRadius(r, const Radius.circular(6));
-    canvas.drawRRect(
-        rr, Paint()..color = on ? e.accent : const Color(0xFFF1E7D2));
-    canvas.drawRRect(
-        rr,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = const Color(0x55000000));
-    var ink = on ? const Color(0xFFFFFFFF) : const Color(0xFF2A1F16);
-    switch (p) {
-      case MetronomePart.slower:
-        _text(canvas, "−", r.center, 18, ink, weight: FontWeight.w800);
-      case MetronomePart.faster:
-        _text(canvas, "+", r.center, 18, ink, weight: FontWeight.w800);
-      case MetronomePart.play:
-        if (on) {
-          canvas.drawRect(
-              Rect.fromCenter(center: r.center, width: 10, height: 10),
-              Paint()..color = ink);
-        } else {
-          canvas.drawPath(
-              Path()
-                ..moveTo(r.center.dx - 5, r.center.dy - 6)
-                ..lineTo(r.center.dx + 7, r.center.dy)
-                ..lineTo(r.center.dx - 5, r.center.dy + 6)
-                ..close(),
-              Paint()..color = ink);
-        }
-      case MetronomePart.tap:
-        _text(canvas, "TAP", r.center, 10, ink, weight: FontWeight.w800);
-      case MetronomePart.beats:
-        _text(
-            canvas, e.beats == 1 ? "1 BEAT" : "${e.beats}/4", r.center, 10, ink,
-            weight: FontWeight.w800);
-    }
+    _paintButton(canvas, e, p, r, on: p == MetronomePart.play && show.going);
   }
-  canvas.restore();
+}
+
+/// _paintButton is button [p] of [e], in [r], lit where [on].
+void _paintButton(ui.Canvas canvas, MetronomeElement e, MetronomePart p, Rect r,
+    {required bool on}) {
+  var rr = RRect.fromRectAndRadius(r, const Radius.circular(6));
+  canvas.drawRRect(
+      rr, Paint()..color = on ? e.accent : const Color(0xFFF1E7D2));
+  canvas.drawRRect(
+      rr,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = const Color(0x55000000));
+  var ink = on ? const Color(0xFFFFFFFF) : const Color(0xFF2A1F16);
+  switch (p) {
+    case MetronomePart.slower:
+      _text(canvas, "−", r.center, 18, ink, weight: FontWeight.w800);
+    case MetronomePart.faster:
+      _text(canvas, "+", r.center, 18, ink, weight: FontWeight.w800);
+    case MetronomePart.play:
+      if (on) {
+        canvas.drawRect(
+            Rect.fromCenter(center: r.center, width: 10, height: 10),
+            Paint()..color = ink);
+      } else {
+        canvas.drawPath(
+            Path()
+              ..moveTo(r.center.dx - 5, r.center.dy - 6)
+              ..lineTo(r.center.dx + 7, r.center.dy)
+              ..lineTo(r.center.dx - 5, r.center.dy + 6)
+              ..close(),
+            Paint()..color = ink);
+      }
+    case MetronomePart.tap:
+      _text(canvas, "TAP", r.center, 10, ink, weight: FontWeight.w800);
+    case MetronomePart.beats:
+      _text(canvas, e.beats == 1 ? "1 BEAT" : "${e.beats}/4", r.center, 10, ink,
+          weight: FontWeight.w800);
+  }
 }
 
 void _text(ui.Canvas canvas, String t, Offset c, double size, Color colour,

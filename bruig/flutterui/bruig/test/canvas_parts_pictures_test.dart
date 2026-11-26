@@ -1118,9 +1118,8 @@ void main() {
     await _font("RobotoMono", ["RobotoMono-VariableFont_wght.ttf"]);
   });
 
-  // What a metronome shows is asked of the controller that runs it; there
-  // is none here, as in an export, whatever a test before this one left.
-  setUp(() => metronomeShowOf = null);
+  // How a metronome is going is handed to the painter by the window that
+  // runs it; an export, as here, hands none, so each is drawn at rest.
 
   /// keep draws [state] as an export does, through its Camera where it has
   /// one, and compares the picture and numbers with those kept under its

@@ -264,14 +264,9 @@ extension CanvasMovement on CanvasController {
   /// space, and a count's first key holds for every frame before it anyway.
   void setValueKey(CanvasElement element, String channel, double value,
       {bool seed = true}) {
-    var track = seed
-        ? (element.track ?? ElementTrack.empty).seededFor(_frame)
-        : (element.track ?? ElementTrack.empty);
-    // The channel pinned here, beside what the frame's keyframe holds: a
-    // new keyframe pins nothing else.
-    var into = track.keyAt(_frame) ?? Keyframe(frame: _frame, pins: 0);
-    replaceElement(
-        element.withBase(track: track.withKey(into.withValue(channel, value))));
+    replaceElement(element.withBase(
+        track: (element.track ?? ElementTrack.empty)
+            .withValueKey(channel, value, _frame, seed: seed)));
   }
 
   /// clearValueKey unpins [channel] here, and the key if that was all of it.

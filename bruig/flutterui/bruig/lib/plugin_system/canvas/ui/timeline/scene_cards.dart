@@ -13,8 +13,6 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline/scene_transition_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart'
-    show CameraMove;
 import 'package:bruig/plugin_system/canvas/ui/sidebar/transition_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/scheduler.dart';
