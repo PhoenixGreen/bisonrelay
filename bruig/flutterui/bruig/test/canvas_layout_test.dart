@@ -320,7 +320,9 @@ void main() {
         "order": [1, null, "", "a", "a" * 500],
         "unread": 7
       }, _box);
-      expect(junk.order, ["a"]);
+      // An id too long is cut as a cell's own id is, so it still names the
+      // cell whose id was cut the same way; here it names none.
+      expect(junk.order, ["a", "a" * maxIdLength]);
       expect(junk.unread, isEmpty);
       expect(ids(junk), ["a", "b", "c"], reason: "a twice is read once");
     });

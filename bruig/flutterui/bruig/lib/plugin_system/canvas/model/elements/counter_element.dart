@@ -208,6 +208,12 @@ class CounterElement extends CanvasElement {
   /// field out.
   static const _defaults = CounterElement(ElementBase(id: ""));
 
+  /// maxGap and maxRate are the most its words' gap (in ems) and its rate
+  /// (a second) are set to, and read with; minButtonSize and maxButtonSize
+  /// bound a loose button's share of the box.
+  static const maxGap = 8.0, maxRate = 100000.0;
+  static const minButtonSize = 0.05, maxButtonSize = 1.0;
+
   @override
   ElementKind get kind => ElementKind.counter;
 
@@ -400,7 +406,9 @@ class CounterElement extends CanvasElement {
       };
 
   factory CounterElement.fromJson(Map<String, dynamic> json, ElementBase b) {
-    var raw = json["buttons"];
+    var size = json["buttonSize"];
+    double side(Object? v, double fallback) =>
+        jsonDouble(v, fallback).clamp(minButtonSize, maxButtonSize);
     return CounterElement(b,
         from: jsonDouble(json["from"], _defaults.from),
         to: jsonDouble(json["to"], _defaults.to),
@@ -408,7 +416,7 @@ class CounterElement extends CanvasElement {
         separator: CounterSeparator.fromName(jsonStr(json["sep"])),
         before: jsonString(json["before"], _defaults.before),
         after: jsonString(json["after"], _defaults.after),
-        gap: jsonDouble(json["gap"], _defaults.gap),
+        gap: jsonDouble(json["gap"], _defaults.gap).clamp(0.0, maxGap),
         loose: jsonBool(json["loose"], false),
         beforeAt: _offsetFromJson(json["beforeAt"]),
         afterAt: _offsetFromJson(json["afterAt"]),
@@ -422,30 +430,26 @@ class CounterElement extends CanvasElement {
         fit: !jsonBool(json["noFit"], false),
         keyed: !jsonBool(json["live"], false),
         source: CounterSource.fromName(jsonStr(json["source"])),
-        gameCount:
-            json["gameCount"] is String ? json["gameCount"] as String : "",
+        gameCount: jsonId(json["gameCount"], _defaults.gameCount),
         mirrored: jsonBool(json["mirrored"], false),
-        rate: jsonDouble(json["rate"], _defaults.rate),
+        rate: jsonDouble(json["rate"], _defaults.rate).clamp(0.0, maxRate),
         loop: jsonBool(json["loop"], false),
         running: jsonBool(json["running"], false),
-        buttons: raw is List
-            ? [
-                for (var name in raw)
-                  if (CounterButton.fromName(jsonStr(name)) case var button?)
-                    button,
-              ]
-            : const [],
+        // Each kind once, in the order first given: a button twice is the
+        // same button drawn twice.
+        buttons: {
+          ...jsonList(
+              json["buttons"], (n) => CounterButton.fromName(jsonStr(n)))
+        }.toList(),
         buttonSpec: jsonSpec(
             json["buttonSpec"], TextSpec.fromJson, _defaults.buttonSpec),
         looseButtons: jsonBool(json["looseButtons"], false),
-        buttonAt: json["buttonAt"] is List
-            ? [for (var at in json["buttonAt"] as List) _offsetFromJson(at)]
-            : const [],
-        buttonSize: json["buttonSize"] is List &&
-                (json["buttonSize"] as List).length == 2
-            ? Size(jsonDouble((json["buttonSize"] as List)[0], 0.3),
-                jsonDouble((json["buttonSize"] as List)[1], 0.18))
-            : const Size(0.3, 0.18),
+        buttonAt: jsonList(json["buttonAt"], _offsetFromJson,
+            most: CounterButton.values.length),
+        buttonSize: size is List && size.length == 2
+            ? Size(side(size[0], _defaults.buttonSize.width),
+                side(size[1], _defaults.buttonSize.height))
+            : _defaults.buttonSize,
         buttonBox:
             jsonSpec(json["buttonBox"], BoxSpec.fromJson, _defaults.buttonBox),
         animation: jsonSpec(
@@ -453,8 +457,11 @@ class CounterElement extends CanvasElement {
   }
 }
 
-Offset _offsetFromJson(dynamic raw) => raw is List && raw.length == 2
-    ? Offset(jsonDouble(raw[0], 0), jsonDouble(raw[1], 0))
+/// _offsetFromJson reads a loose piece's place: a share of the box from its
+/// middle, no further out than the panel and the stage can put it.
+Offset _offsetFromJson(Object? raw) => raw is List && raw.length == 2
+    ? Offset(jsonDouble(raw[0], 0).clamp(-1.0, 1.0),
+        jsonDouble(raw[1], 0).clamp(-1.0, 1.0))
     : Offset.zero;
 
 /// formatCounter writes a number as a counter writes it: a free function

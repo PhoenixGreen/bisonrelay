@@ -155,23 +155,36 @@ class LayoutNode {
           "b": b!.toJson(),
         };
 
-  /// fromJson reads a tree at most [depth] deep: a received file's tree of
-  /// a million cuts would be walked on every frame.
-  static LayoutNode fromJson(Object? j, {int depth = 12}) {
-    if (j is! Map) return LayoutNode.leaf(newElementId());
+  /// fromJson reads a tree at most [depth] deep and with at most [most]
+  /// cells: a received file's tree of a million cuts would be walked on
+  /// every frame, and one twelve deep still holds thousands of cells, each
+  /// placed every frame. A cut past either is read as one cell.
+  static LayoutNode fromJson(Object? j,
+          {int depth = 12, int most = LayoutElement.maxCells}) =>
+      _read(j, depth, most).$1;
+
+  /// _read is [j] read as fromJson says, and how many cells it holds.
+  static (LayoutNode, int) _read(Object? j, int depth, int most) {
+    if (j is! Map) return (LayoutNode.leaf(newElementId()), 1);
     var a = j["a"], b = j["b"];
-    if (depth <= 0 || a == null || b == null) {
-      return LayoutNode.leaf(jsonId(j["cell"], newElementId()));
+    if (depth <= 0 || most < 2 || a == null || b == null) {
+      return (LayoutNode.leaf(jsonId(j["cell"], newElementId())), 1);
     }
-    return LayoutNode.cut(
-      vertical: jsonBool(j["v"], false),
-      at: jsonDouble(j["at"], 0.5).clamp(0.02, 0.98),
-      tilt: jsonDouble(j["tilt"], 0).clamp(-60.0, 60.0),
-      gutter: j["gutter"] is num
-          ? jsonDouble(j["gutter"], 0).clamp(0.0, 2000.0)
-          : null,
-      a: fromJson(a, depth: depth - 1),
-      b: fromJson(b, depth: depth - 1),
+    // The first side leaves room for at least one cell on the second.
+    var (first, used) = _read(a, depth - 1, most - 1);
+    var (second, more) = _read(b, depth - 1, most - used);
+    return (
+      LayoutNode.cut(
+        vertical: jsonBool(j["v"], false),
+        at: jsonDouble(j["at"], 0.5).clamp(0.02, 0.98),
+        tilt: jsonDouble(j["tilt"], 0).clamp(-60.0, 60.0),
+        gutter: j["gutter"] is num
+            ? jsonDouble(j["gutter"], 0).clamp(0.0, 2000.0)
+            : null,
+        a: first,
+        b: second,
+      ),
+      used + more,
     );
   }
 }
@@ -237,11 +250,11 @@ class LayoutCell {
         row: (row ?? this.row).clamp(0, LayoutElement.maxTracks - 1),
         colSpan: (colSpan ?? this.colSpan).clamp(1, LayoutElement.maxTracks),
         rowSpan: (rowSpan ?? this.rowSpan).clamp(1, LayoutElement.maxTracks),
-        x: x ?? this.x,
-        y: y ?? this.y,
+        x: (x ?? this.x).clamp(-10.0, 10.0),
+        y: (y ?? this.y).clamp(-10.0, 10.0),
         width: (width ?? this.width).clamp(0.005, 10.0),
         height: (height ?? this.height).clamp(0.005, 10.0),
-        turn: turn ?? this.turn,
+        turn: (turn ?? this.turn).clamp(-360.0, 360.0),
         shape: shape ?? this.shape,
       );
 
@@ -550,12 +563,10 @@ class LayoutElement extends CanvasElement {
     }
 
     var raw = json["cells"];
-    List<String> ids(Object? v) => v is List
-        ? [
-            for (var x in v.take(maxCells))
-              if (x is String && x.isNotEmpty && x.length <= 64) x
-          ]
-        : const [];
+    // Cells by id, read as a cell's own id is, so any cell can be ordered.
+    List<String> ids(Object? v) =>
+        jsonList(v, (x) => x is String && x.isNotEmpty ? jsonId(x, "") : null,
+            most: maxCells);
     return LayoutElement(b,
         order: ids(json["order"]),
         unread: ids(json["unread"]),

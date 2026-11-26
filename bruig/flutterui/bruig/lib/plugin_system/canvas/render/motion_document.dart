@@ -1176,8 +1176,13 @@ CameraLook cameraLookAt(CameraElement cam, int frame, CanvasDocument doc,
   var on = cam.focusOn.isEmpty ? null : doc.elementById(cam.focusOn);
   return CameraLook(
     roll: cam.rotation + pose.rotate,
-    focus: on?.base.depth ?? v("focus", cam.focus),
-    blur: math.max(0.0, v("blur", cam.blur)),
+    // What a key holds is read as any keyframe's value is, unbounded, so
+    // it is held here, where it reaches a blur filter and its layer.
+    focus: on?.base.depth ??
+        v("focus", cam.focus)
+            .clamp(-CameraElement.maxKeyedFocus, CameraElement.maxKeyedFocus)
+            .toDouble(),
+    blur: v("blur", cam.blur).clamp(0.0, CameraElement.maxBlur).toDouble(),
     parallax: cam.parallax,
     vignette: v("vignette", cam.vignette).clamp(0.0, 1.0).toDouble(),
     vignetteSoft: cam.vignetteSoft,

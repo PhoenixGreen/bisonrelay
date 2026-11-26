@@ -72,6 +72,20 @@ List<Map<String, dynamic>> maps(Object? json, {int depth = 3}) {
 Map<String, dynamic> written(CanvasElement e) =>
     jsonDecode(jsonEncode(e.toJson())) as Map<String, dynamic>;
 
+/// unboundedYet are the kinds whose readers still keep what a received file
+/// sends at a key their defaults never write, or a list of good entries at
+/// any length, and what they keep: these are held only to the keys their
+/// samples write and to lists of no good entry, until they are bounded.
+const unboundedYet = {
+  ElementKind.chart: "a chart's notes, highlights and steps",
+  ElementKind.table: "a table's columns, rules and rows",
+  ElementKind.vector: "a vector's shapes",
+  ElementKind.audio: "a sound's controls",
+  ElementKind.video: "a video's controls",
+  ElementKind.code: "a Code element's files",
+  ElementKind.codeTask: "a Code task's checks",
+};
+
 void main() {
   for (var (name, element) in [...elementSamples(), ...filledSamples()]) {
     group(name, () {
@@ -118,8 +132,15 @@ void main() {
         // are maps lets a list of strings through for nothing.
         var manyMaps = List<Map<String, dynamic>>.filled(400000, {});
         var failures = <String>[];
-        for (var map in maps(root)) {
-          for (var key in map.keys.toList()) {
+        // The keys its own class reads, at the top, as well as every key
+        // written anywhere in it: a field the defaults leave out can still
+        // arrive in a received file.
+        var own = unboundedYet.containsKey(element.kind)
+            ? const <String>{}
+            : keysRead(classFile[element.runtimeType.toString()]!);
+        for (var (i, map) in maps(root).indexed) {
+          for (var key in {...map.keys, if (i == 0) ...own}) {
+            var had = map.containsKey(key);
             var was = map[key];
             for (var big in <Object>[long, many, manyMaps]) {
               map[key] = big;
@@ -133,11 +154,45 @@ void main() {
                 failures.add("$key: threw ${e.toString().split("\n").first}");
               }
             }
-            map[key] = was;
+            had ? map[key] = was : map.remove(key);
           }
         }
         expect(failures.toSet().toList(), isEmpty);
       });
+
+      // A word no enum has is dropped by any reader, so a list of an enum's
+      // names (a counter's buttons) is only tried by a list of real ones.
+      // Each list the element writes is given its own first entry a million
+      // times over: read back, it must keep no more than a reader's own
+      // limit of them (maxListLength, or twice that for a flat list of
+      // points, two numbers each), never all.
+      test("a received list of a million good entries is cut", () {
+        var root = written(element);
+        const million = 1000000;
+        var failures = <String>[];
+        int sizeOf() => jsonEncode(elementFromJson(root).toJson()).length;
+        var before = sizeOf();
+        for (var map in maps(root)) {
+          for (var key in map.keys.toList()) {
+            var was = map[key];
+            if (was is! List || was.isEmpty) continue;
+            var entry = was.first;
+            map[key] = List<Object?>.filled(million, entry);
+            try {
+              var grew = sizeOf() - before;
+              var kept = grew / (jsonEncode(entry).length + 1);
+              if (kept > million * 0.3) {
+                failures.add("$key: about ${kept.round()} of a million "
+                    "${jsonEncode(entry)} kept");
+              }
+            } catch (e) {
+              failures.add("$key: threw ${e.toString().split("\n").first}");
+            }
+            map[key] = was;
+          }
+        }
+        expect(failures.toSet().toList(), isEmpty);
+      }, skip: unboundedYet[element.kind]);
     });
   }
 }

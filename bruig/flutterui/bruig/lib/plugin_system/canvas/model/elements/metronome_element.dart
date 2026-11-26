@@ -74,13 +74,12 @@ class MetronomeElement extends CanvasElement {
         "accent": colorToJson(accent),
       };
 
+  /// fromJson holds what it reads as copyWith holds what the panel sets:
+  /// whole beats a minute, as fast as a clockwork one goes.
   factory MetronomeElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      MetronomeElement(b,
-          bpm: (json["bpm"] is num ? (json["bpm"] as num).toDouble() : 100.0)
-              .clamp(metronomeSlowest, metronomeFastest)
-              .toDouble(),
-          beats: (json["beats"] is num ? (json["beats"] as num).toInt() : 4)
-              .clamp(1, 12),
+      MetronomeElement(b).copyWith(
+          bpm: jsonDouble(json["bpm"], _defaults.bpm),
+          beats: jsonInt(json["beats"], _defaults.beats),
           body: colorFromJson(json["body"], _defaults.body),
           accent: colorFromJson(json["accent"], _defaults.accent));
 }

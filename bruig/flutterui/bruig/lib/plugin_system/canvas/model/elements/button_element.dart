@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_limits.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
@@ -105,8 +106,10 @@ class ButtonAction {
 
   factory ButtonAction.fromJson(Map<String, dynamic> json) => ButtonAction(
         kind: ButtonActionKind.fromName(jsonStr(json["kind"])),
-        frame: jsonInt(json["frame"], _defaults.frame),
-        elementId: jsonString(json["element"], _defaults.elementId),
+        frame:
+            jsonInt(json["frame"], _defaults.frame).clamp(0, maxFrameCount - 1),
+        // An element's id, or a scene's id or name (goToScene finds either).
+        elementId: jsonLabel(json["element"], _defaults.elementId),
         url: jsonString(json["url"], _defaults.url),
       );
 }

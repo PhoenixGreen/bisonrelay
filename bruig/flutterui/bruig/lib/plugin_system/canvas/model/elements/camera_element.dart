@@ -61,6 +61,12 @@ class CameraElement extends CanvasElement {
   /// field out.
   static const _defaults = CameraElement(ElementBase(id: ""));
 
+  /// maxBlur is the most a blur is set to or read with, keyed or not.
+  /// maxKeyedFocus is how far from the page a keyed focus is read: past the
+  /// nearest and furthest depth, as an easing that overshoots between two
+  /// keys carries it, and no further.
+  static const maxBlur = 200.0, maxKeyedFocus = 2.0;
+
   @override
   ElementKind get kind => ElementKind.camera;
 
@@ -90,7 +96,7 @@ class CameraElement extends CanvasElement {
           view: clearView ? null : view ?? this.view,
           focus: (focus ?? this.focus).clamp(-1.0, 1.0).toDouble(),
           focusOn: focusOn ?? this.focusOn,
-          blur: (blur ?? this.blur).clamp(0.0, 200.0).toDouble(),
+          blur: (blur ?? this.blur).clamp(0.0, maxBlur).toDouble(),
           parallax: (parallax ?? this.parallax).clamp(0.0, 1.0).toDouble(),
           vignette: (vignette ?? this.vignette).clamp(0.0, 1.0).toDouble(),
           vignetteSoft:
@@ -141,14 +147,16 @@ class CameraElement extends CanvasElement {
     }
     return CameraElement(base, view: view).copyWith(
       focus: jsonDouble(json["focus"], _defaults.focus),
-      focusOn: jsonString(json["focusOn"], _defaults.focusOn),
+      focusOn: jsonId(json["focusOn"], _defaults.focusOn),
       blur: jsonDouble(json["blur"], _defaults.blur),
       parallax: jsonDouble(json["parallax"], _defaults.parallax),
       vignette: jsonDouble(json["vignette"], _defaults.vignette),
       vignetteSoft: jsonDouble(json["vignetteSoft"], _defaults.vignetteSoft),
       motionBlur: jsonDouble(json["motionBlur"], _defaults.motionBlur),
-      aim: jsonString(json["aim"], _defaults.aim),
-      aimAt: jsonString(json["aimAt"], _defaults.aimAt),
+      aim: jsonId(json["aim"], _defaults.aim),
+      // A chart's item is named by its category, a label: "item:" and one.
+      aimAt: jsonString(json["aimAt"], _defaults.aimAt,
+          most: maxLabelLength + "item:".length),
       aimFill: jsonDouble(json["aimFill"], _defaults.aimFill),
     );
   }
