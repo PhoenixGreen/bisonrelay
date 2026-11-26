@@ -31,7 +31,8 @@ import 'support/panel_rows.dart';
 // line's Layout reads and sets the line as it is drawn, turned or slanted;
 // a closed path offers no ends, and its run is told and timed round to its
 // start; a follower gone from the canvas is shown as missing; a square or a
-// circle keeps its box square by its kind, held; Scale inside says
+// circle keeps its box square by its kind, held, and its lock says and sets
+// whether a resize scales its inside too; Scale inside says
 // what it scales on each; what the Chain's Design table writes stays
 // within the same ranges; and
 // every control of the three, pressed or set, changes what it says in one
@@ -462,24 +463,62 @@ void main() {
       expectSquared(c.document.elementById("s") as ShapeElement);
     });
 
-    /// lock is the button that holds the proportions, or lets them go.
-    Finder lock() => widgetIn<CanvasIconButton>(
-        layoutSection, (w) => w.icon == Icons.link || w.icon == Icons.link_off);
+    Finder lock() => _lock;
 
-    testWidgets("a circle's proportions show held and cannot be let go",
-        (tester) async {
-      await showPanel(tester, oblong.withKind(ShapeKind.circle));
+    /// said is whether [words] are shown in the Layout section.
+    Finder said(String words) => find.descendant(
+        of: find.byKey(const ValueKey(layoutSection)),
+        matching: find.text(words));
+
+    // Held square by its kind alone, a resize leaves its inside its size;
+    // the person's hold on it too scales its inside on every resize, which
+    // is otherwise Shift's to ask for. The lock is the two.
+    testWidgets(
+        "a circle held by its kind alone says so, and can be held to "
+        "scale its inside", (tester) async {
+      var c = await showPanel(tester, oblong.withKind(ShapeKind.circle));
       var button = tester.widget<CanvasIconButton>(lock());
       expect(button.icon, Icons.link);
+      expect(button.active, isTrue, reason: "held square, as it is");
+      expect(button.tooltip, contains("leaves its outline"));
+      expect(said("Inside stays"), findsOneWidget);
+      expect(button.onPressed, isNotNull);
+      await pressOn(tester, lock());
+      var s = c.document.elementById("s") as ShapeElement;
+      expect(s.base.lockAspect, isTrue);
+      expect(s.keepsAspect, isTrue);
+      expect(said("Inside scales"), findsOneWidget);
+    });
+
+    testWidgets(
+        "a circle the person holds says so, and can be let go to leave "
+        "its inside, still square", (tester) async {
+      var c = await showPanel(
+          tester, oblong.withKind(ShapeKind.circle).withBase(lockAspect: true));
+      var button = tester.widget<CanvasIconButton>(lock());
+      expect(button.icon, Icons.open_in_full);
       expect(button.active, isTrue);
-      expect(button.onPressed, isNull);
+      expect(button.tooltip, contains("scales its outline"));
+      expect(said("Inside scales"), findsOneWidget);
+      await pressOn(tester, lock());
+      var s = c.document.elementById("s") as ShapeElement;
+      expect(s.base.lockAspect, isFalse, reason: "the saved hold let go");
+      expect(s.keepsAspect, isTrue, reason: "square still, by its kind");
+      expect(said("Inside stays"), findsOneWidget);
+      c.undo();
+      expect(c.document.elementById("s")!.base.lockAspect, isTrue,
+          reason: "one undo step");
+      expect(c.canUndo, isFalse);
     });
 
     testWidgets("a rectangle's can still be held and let go", (tester) async {
       var c = await showPanel(tester, oblong);
       expect(tester.widget<CanvasIconButton>(lock()).onPressed, isNotNull);
+      expect(said("Inside stays"), findsNothing);
       await pressOn(tester, lock());
       expect(c.document.elementById("s")!.base.lockAspect, isTrue);
+      expect(tester.widget<CanvasIconButton>(lock()).icon, Icons.link);
+      expect(said("Inside scales"), findsNothing);
     });
 
     testWidgets("a circle's width set sets its height, its outline kept",
@@ -604,7 +643,43 @@ void main() {
   });
 
   group("every control", () => everyControl(_rows()));
+
+  // A square's or a circle's lock and its words beside it, held by its kind
+  // and held by the person too, in the narrow sidebar the panel opens in.
+  group("a circle's lock at every text size", () {
+    var circle =
+        const ShapeElement(ElementBase(id: "s", width: 200, height: 120))
+            .withKind(ShapeKind.circle);
+    for (var held in [false, true]) {
+      for (var scale in const [0.65, 1.0, 1.25, 1.5]) {
+        testWidgets("held ${held ? "by the person" : "by its kind"}, at $scale",
+            (tester) async {
+          setTestTextScale(tester, scale);
+          SharedPreferences.setMockInitialValues({});
+          var c = CanvasController(
+              panelDocument.addElement(circle.withBase(lockAspect: held)));
+          addTearDown(c.dispose);
+          c.selectOnly("s");
+          await pumpCanvasApp(tester, designSidebar(c),
+              size: const Size(300, 9000));
+          await openEverything(tester, find.byType(CanvasSidebarHost));
+          expect(find.text(held ? "Inside scales" : "Inside stays"),
+              findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  });
 }
+
+/// _lock is the Layout's button that holds the proportions, or lets them go:
+/// for a square or a circle, whether a resize scales its inside.
+final _lock = widgetIn<CanvasIconButton>(
+    layoutSection,
+    (w) =>
+        w.icon == Icons.link ||
+        w.icon == Icons.link_off ||
+        w.icon == Icons.open_in_full);
 
 /// _nodeButton is the button with [icon] on the path's point [i].
 Finder _nodeButton(int i, IconData icon) => find.descendant(
@@ -616,6 +691,8 @@ List<ControlRow> _rows() {
   const shape = ShapeElement(
       ElementBase(id: "s", x: 100, y: 100, width: 200, height: 120));
   final star = shape.copyWith(shape: ShapeKind.star);
+  final circle = shape.withKind(ShapeKind.circle);
+  final heldCircle = circle.withBase(lockAspect: true) as ShapeElement;
   final bubble = shape.copyWith(
       shape: ShapeKind.speechBubble,
       bubble: const SpeechBubbleSpec(tail: BubbleTail.curved));
@@ -665,6 +742,18 @@ List<ControlRow> _rows() {
         shape,
         chosen(keyed("quickShape"), ShapeKind.ellipse),
         (d) => expect(shapeIn(d).shape, ShapeKind.ellipse)),
+    row(
+        "a circle's lock, held to scale its inside",
+        circle,
+        pressed(_lock),
+        (d) => expect((shapeIn(d).base.lockAspect, shapeIn(d).keepsAspect),
+            (true, true))),
+    row(
+        "a held circle's lock, let go to leave its inside",
+        heldCircle,
+        pressed(_lock),
+        (d) => expect((shapeIn(d).base.lockAspect, shapeIn(d).keepsAspect),
+            (false, true))),
     row("a shape's tiles", shape, pressed(keyed("shapeKind-star")),
         (d) => expect(shapeIn(d).shape, ShapeKind.star)),
     row("a shape's quick Fill", shape, coloured(keyed("quickFill")),

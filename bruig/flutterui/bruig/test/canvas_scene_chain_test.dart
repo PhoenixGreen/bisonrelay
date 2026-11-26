@@ -143,6 +143,31 @@ void main() {
     });
   }
 
+  // Of two Cameras shown, the card names the first in the scene's order,
+  // which is the one that frames it, and the next once the first is hidden.
+  testWidgets("of two Cameras shown, the card names the one that frames",
+      (tester) async {
+    var c = CanvasController(_two());
+    addTearDown(c.dispose);
+    c.pickScene(0);
+    c.addElement(
+        newElement(ElementKind.camera, c.document).withBase(name: "Wide"),
+        select: false);
+    c.addElement(
+        newElement(ElementKind.camera, c.document).withBase(name: "Close"),
+        select: false);
+    await _show(tester, c);
+    expect(find.textContaining("Framed by Wide"), findsOneWidget);
+    expect(find.textContaining("Framed by Close"), findsNothing);
+
+    var wide = c.document.elements.firstWhere((e) => e.name == "Wide");
+    c.replaceElement(wide.withBase(visible: false));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining("Framed by Close"), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets("a scene not open is opened to give it a camera", (tester) async {
     var c = CanvasController(_two());
     addTearDown(c.dispose);

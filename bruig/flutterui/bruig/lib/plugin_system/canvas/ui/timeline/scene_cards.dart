@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show cameraAmong;
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart'
     show paintTransition;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -770,11 +772,8 @@ class CopyButtonLike extends StatelessWidget {
 CameraElement? sceneCameraOf(CanvasController c, int index) {
   var doc = c.document;
   if (index < 0 || index >= doc.allScenes.length) return null;
-  var elements = doc.at == index ? doc.elements : doc.allScenes[index].elements;
-  return elements
-      .whereType<CameraElement>()
-      .where((e) => e.visible)
-      .firstOrNull;
+  return cameraAmong(
+      doc.at == index ? doc.elements : doc.allScenes[index].elements);
 }
 
 /// _sceneRow is a card's label and what it is: the Output's rows.

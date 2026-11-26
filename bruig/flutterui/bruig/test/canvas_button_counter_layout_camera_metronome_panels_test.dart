@@ -20,7 +20,7 @@ import 'package:bruig/plugin_system/canvas/model/layout_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show cameraFraming;
+    show cameraFraming, cameraOf;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -122,6 +122,65 @@ void main() {
   testWidgets("a Camera's blur offers the model's range", (tester) async {
     await showPanel(tester, _camera);
     expect(rangeOf(tester, keyed("cameraBlur")), (0.0, CameraElement.maxBlur));
+  });
+
+  group("of two Cameras shown", () {
+    testWidgets("the one that does not frame the scene names the one that does",
+        (tester) async {
+      await showPanel(tester, _close, beside: [_wide]);
+      expect(
+          find.text("Wide frames this scene. This one is not in use while it "
+              "is shown."),
+          findsOneWidget);
+      expect(keyed(_useThis), findsOneWidget);
+    });
+
+    testWidgets("the one that frames the scene says nothing of the other",
+        (tester) async {
+      var c = await showPanel(tester, _close, beside: [_wide]);
+      c.selectOnly(_wide.id);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("cameraLook")), findsOneWidget,
+          reason: "its own panel is up");
+      expect(keyed("cameraNotInUse"), findsNothing);
+      expect(keyed(_useThis), findsNothing);
+    });
+
+    testWidgets("one hidden is not in the way of the other", (tester) async {
+      await showPanel(tester, _close,
+          beside: [_wide.withBase(visible: false) as CameraElement]);
+      expect(keyed("cameraNotInUse"), findsNothing);
+    });
+
+    // Made to frame it by going just ahead of the other in the scene's
+    // order: a Camera is never drawn, so nothing on the page moves, and the
+    // other stays on the canvas as it was.
+    testWidgets("made the one in use, it goes just ahead of the other",
+        (tester) async {
+      var shape = newElement(ElementKind.shape, panelDocument);
+      var c = await showPanel(tester, _close, beside: [_wide, shape]);
+      expect([for (var e in c.document.elements) e.id],
+          [_wide.id, shape.id, _close.id]);
+      await pressOn(tester, keyed(_useThis));
+      expect(cameraOf(c.document)?.id, _close.id);
+      expect([for (var e in c.document.elements) e.id],
+          [_close.id, _wide.id, shape.id]);
+      expect(c.document.elementById(_wide.id)!.visible, isTrue,
+          reason: "the other is left shown");
+      expect(keyed("cameraNotInUse"), findsNothing);
+      c.undo();
+      expect(cameraOf(c.document)?.id, _wide.id, reason: "one undo step");
+    });
+
+    for (var scale in const [0.65, 1.0, 1.25, 1.5]) {
+      testWidgets("the panel of the one not in use fits at $scale",
+          (tester) async {
+        setTestTextScale(tester, scale);
+        await showPanel(tester, _close, beside: [_wide]);
+        expect(keyed("cameraNotInUse"), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }
 
@@ -711,6 +770,15 @@ List<ControlRow> _layoutRows() {
 
 final _camera = newElement(ElementKind.camera, panelDocument) as CameraElement;
 
+/// _wide and _close are two Cameras for one scene, which [_wide] frames
+/// when it comes first; [_useThis] is the button that makes the other the
+/// one in use.
+final _wide = (newElement(ElementKind.camera, panelDocument) as CameraElement)
+    .withBase(name: "Wide") as CameraElement;
+final _close = (newElement(ElementKind.camera, panelDocument) as CameraElement)
+    .withBase(name: "Close") as CameraElement;
+const _useThis = "stateNote-Use this one";
+
 List<ControlRow> _cameraRows() {
   CameraElement cam(CanvasDocument d) => _only<CameraElement>(d);
   double? keyedHere(CanvasDocument d, String channel) =>
@@ -793,6 +861,9 @@ List<ControlRow> _cameraRows() {
                 (w.key as ValueKey<String>).value.startsWith("cameraMove-"))
             .first),
         (d) => expect(cam(d).base.motion.placed, hasLength(1))),
+    row("a Camera not in use, made the one in use", _close,
+        pressed(keyed(_useThis)), (d) => expect(cameraOf(d)?.id, _close.id),
+        beside: [_wide]),
     for (var (key, value, field) in [
       ("lens", 50.0, (StageCamera v) => v.lens),
       ("distance", 9.0, (StageCamera v) => v.distance),

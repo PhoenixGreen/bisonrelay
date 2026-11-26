@@ -109,8 +109,9 @@ List<_State> _states() {
 /// _lensStates are what a Camera's and a metronome's panels show beyond the
 /// samples: a Camera on the page aimed at a chart, its focus, blur, vignette
 /// and how far it turns to its aim keyed (the sample stands on a 3D stage,
-/// where none of that is shown), and a metronome holding a number of beats
-/// its first dropdown did not offer.
+/// where none of that is shown), a Camera shown after the one that frames
+/// its scene, and a metronome holding a number of beats its first dropdown
+/// did not offer.
 List<_State> _lensStates() {
   var chart = (newElement(ElementKind.chart, _doc) as ChartElement)
       .withBase(name: "League") as ChartElement;
@@ -132,11 +133,18 @@ List<_State> _lensStates() {
         }),
       ]));
   var metronome = newElement(ElementKind.metronome, _doc) as MetronomeElement;
+  var wide = newElement(ElementKind.camera, _doc).withBase(name: "Wide");
+  var close = newElement(ElementKind.camera, _doc).withBase(name: "Close");
   return [
     (
       name: "Camera, aimed at a chart with its lens keyed, on the page",
       document: _doc.addElement(chart).addElement(camera),
       id: camera.id,
+    ),
+    (
+      name: "Camera, shown after the one that frames the scene",
+      document: _doc.addElement(wide).addElement(close),
+      id: close.id,
     ),
     (
       name: "Metronome, five beats to a bar",
@@ -148,7 +156,8 @@ List<_State> _lensStates() {
 
 /// _strokeStates are what a shape's, a line's and a path's panels can show
 /// beyond the samples: a bubble of each body, a picture and a pattern
-/// inside a shape, words on a plain one, a turned line and a line whose bow
+/// inside a shape, words on a plain one, a circle with and without the
+/// person's hold, a turned line and a line whose bow
 /// is keyed, a path with its follower on the canvas, a guide and a closed
 /// one with no ends, and each of the three in a canvas laid out for two
 /// page shapes.
@@ -171,6 +180,13 @@ List<_State> _strokeStates() {
               shape: ShapeKind.speechBubble,
               bubble: SpeechBubbleSpec(body: body, tail: tail))),
     alone("Shape, with words", shape.copyWith(text: "Words on it")),
+    // Held square by its kind, and that with the person's hold saved too,
+    // which scales its inside on a resize.
+    alone("Shape, a circle", shape.withKind(ShapeKind.circle)),
+    alone(
+        "Shape, a circle the person holds",
+        shape.withKind(ShapeKind.circle).withBase(lockAspect: true)
+            as ShapeElement),
     alone(
         "Shape, painted with a picture",
         shape.copyWith(

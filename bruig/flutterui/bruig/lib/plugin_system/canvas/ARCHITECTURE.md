@@ -310,11 +310,13 @@ box square on its shorter side, about its middle, so what is drawn is the
 whole box. Its kind then keeps it square (`keepsAspectByKind`, part of
 `CanvasElement.keepsAspect`, which the stage's handles and the size fields
 ask), and nothing saved says so: whether the person holds the proportions
-(`lockAspect`) stays theirs through any change of kind, and the panel shows
-a square's or a circle's held, with nothing to let go. A resize held only by
-the kind leaves the outline, corners, padding and words their size; one the
-person holds (`lockAspect`, or Shift on a shape not held) scales them, as
-on any element. Shift cannot let a square or a circle go, so on one it
+(`lockAspect`) stays theirs through any change of kind. A resize held only
+by the kind leaves the outline, corners, padding and words their size; one
+the person holds (`lockAspect`, or Shift on a shape not held) scales them,
+as on any element. So on a square or a circle the panel's lock always shows
+it held, and is that choice instead: "Inside stays" or "Inside scales",
+said in its icon, tooltip and the words beside it, and pressed to set or
+clear `lockAspect`. Shift cannot let a square or a circle go, so on one it
 turns that scaling over instead. A canvas saved with an oblong square or
 circle reads and draws as it was: only choosing squares a box. A colour or a fade given to an outline
 with no width gives it one (`withOutline`), from the panel and the Colour
@@ -565,8 +567,15 @@ move drag takes it the way the pointer goes.
 ### A camera, a metronome and a button
 
 A scene is framed by one of two things. A Camera element shown on it
-(`cameraOf`, the first shown in the scene's order: a second is drawn on the
-canvas but frames nothing) takes over; else the scene's own slow move
+(`cameraOf`, or `cameraAmong` for a scene's elements: the first shown in the
+scene's order; a second is drawn on the canvas but frames nothing) takes
+over. The stage draws the one that frames as a viewfinder with its name on
+a filled tab, and any other shown thin, without its corners, its tab dark
+and saying it is not in use (`paintCameras`; `cameraTab` makes room for the
+words, and the press uses the same tab). The panel of one not in use names
+the one that is, with a button that moves it just ahead of that one in the
+order: a Camera is never drawn in the picture, so nothing on the page
+changes but which frames; else the scene's own slow move
 (`SceneCamera`, named by `CameraMove`, both in `model/scene_camera.dart`),
 set on the scene's Camera card. `sceneFraming` (`render/motion_document.dart`)
 is that rule, and the scene's chain asks the same question: while a Camera

@@ -206,11 +206,13 @@ void main() {
 
   group("on the canvas", () {
     Future<(CanvasController, CanvasStageState)> stageWith(
-        WidgetTester tester, CameraElement cam) async {
+        WidgetTester tester, CameraElement cam,
+        {List<CameraElement> before = const []}) async {
       var key = GlobalKey<CanvasStageState>();
       var c =
           CanvasController(CanvasDocument(frames: 96, frameRate: 24, elements: [
         red("s", const Rect.fromLTWH(500, 300, 200, 200)),
+        ...before,
         cam,
       ]));
       addTearDown(c.dispose);
@@ -237,6 +239,33 @@ void main() {
       var cam = c.document.elementById("c") as CameraElement;
       var tab = cameraTab(cam, cameraFrame(cam, 0, c.document), scaleOf(stage));
       await tester.tapAt(stage.toStagePoint(tab.center));
+      await tester.pumpAndSettle();
+      expect(c.selection, {"c"});
+    });
+
+    // A second Camera shown frames nothing: its tab says so, and the words
+    // that say it are caught with the rest of the tab.
+    testWidgets(
+        "one shown that does not frame the scene is caught by its "
+        "whole tab, which is longer for saying so", (tester) async {
+      var (c, stage) = await stageWith(
+          tester,
+          const CameraElement(ElementBase(
+              id: "c", name: "Close", x: 300, y: 200, width: 640, height: 360)),
+          before: const [
+            CameraElement(
+                ElementBase(id: "w", name: "Wide", width: 1280, height: 720)),
+          ]);
+      expect(cameraOf(c.document)?.id, "w");
+      var cam = c.document.elementById("c") as CameraElement;
+      var frame = cameraFrame(cam, 0, c.document);
+      var inUse = cameraTab(cam, frame, scaleOf(stage));
+      var notInUse = cameraTab(cam, frame, scaleOf(stage), inUse: false);
+      expect(notInUse.width, greaterThan(inUse.width + 20 / scaleOf(stage)));
+      expect(notInUse.topLeft, inUse.topLeft);
+      // Past where its name alone would end.
+      await tester.tapAt(stage.toStagePoint(
+          Offset(notInUse.right - 6 / scaleOf(stage), notInUse.center.dy)));
       await tester.pumpAndSettle();
       expect(c.selection, {"c"});
     });

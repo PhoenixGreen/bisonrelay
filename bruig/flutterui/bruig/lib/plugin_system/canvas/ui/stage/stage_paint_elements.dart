@@ -47,20 +47,26 @@ void paintKeptBoxes(Canvas canvas, bool showAllBounds, Set<String> selected,
 
 /// paintCameras draws each Camera's frame over the page, unless the
 /// stage says not ([camerasShown]): while looking through one, when the
-/// page is the frame, and on a 3D stage, where it is in the scene.
+/// page is the frame, and on a 3D stage, where it is in the scene. The one
+/// that frames the scene (cameraOf) is drawn as a viewfinder; any other
+/// shown is drawn lesser, thin and without its corners, its tab dark and
+/// saying it is not in use, so that which frames reads in any palette and
+/// not by its colour alone.
 void paintCameras(Canvas canvas, bool camerasShown, StageShown shown,
     LiveMotion? motion, double scale, Offset origin) {
   if (!camerasShown) return;
   var document = shown.document;
   var frame = shown.frame;
+  var framing = cameraOf(document);
   for (var cam in document.elements.whereType<CameraElement>()) {
     if (!cam.visible) continue;
+    var inUse = cam.id == framing?.id;
     var r = cameraFrame(cam, frame, document, live: motion);
     var box = onScreen(r, scale, origin);
     var ink = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = const Color(0xE6F2A33D);
+      ..strokeWidth = inUse ? 1.5 : 1
+      ..color = Color(inUse ? 0xE6F2A33D : 0xB3F2A33D);
     // Turned by its roll, as what it takes in is.
     var roll = cameraLookAt(cam, frame, document, live: motion).roll;
     canvas.save();
@@ -69,8 +75,9 @@ void paintCameras(Canvas canvas, bool camerasShown, StageShown shown,
       canvas.rotate(roll * math.pi / 180);
       canvas.translate(-box.center.dx, -box.center.dy);
     }
-    // Dashed round, and solid at its corners, as a viewfinder.
-    const dash = 8.0, gap = 6.0;
+    // Dashed round, and solid at its corners, as a viewfinder; one not in
+    // use is finely dashed, with no corners.
+    var (dash, gap) = inUse ? (8.0, 6.0) : (3.0, 5.0);
     for (var (a, b) in [
       (box.topLeft, box.topRight),
       (box.topRight, box.bottomRight),
@@ -79,45 +86,92 @@ void paintCameras(Canvas canvas, bool camerasShown, StageShown shown,
     ]) {
       drawDashedLine(canvas, a, b, ink, dash: dash, gap: gap);
     }
-    var corner = math.min(18.0, box.shortestSide / 4);
-    var solid = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = const Color(0xFFF2A33D);
-    for (var (c, dx, dy) in [
-      (box.topLeft, 1.0, 1.0),
-      (box.topRight, -1.0, 1.0),
-      (box.bottomRight, -1.0, -1.0),
-      (box.bottomLeft, 1.0, -1.0),
-    ]) {
-      canvas.drawLine(c, c + Offset(corner * dx, 0), solid);
-      canvas.drawLine(c, c + Offset(0, corner * dy), solid);
+    if (inUse) {
+      var corner = math.min(18.0, box.shortestSide / 4);
+      var solid = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = const Color(0xFFF2A33D);
+      for (var (c, dx, dy) in [
+        (box.topLeft, 1.0, 1.0),
+        (box.topRight, -1.0, 1.0),
+        (box.bottomRight, -1.0, -1.0),
+        (box.bottomLeft, 1.0, -1.0),
+      ]) {
+        canvas.drawLine(c, c + Offset(corner * dx, 0), solid);
+        canvas.drawLine(c, c + Offset(0, corner * dy), solid);
+      }
     }
     canvas.restore();
     // Its name on a tab inside its corner, to take hold of where its edge
     // lies on the page's (see cameraTab).
-    var tab = cameraTab(cam, r, scale);
+    var tab = cameraTab(cam, r, scale, inUse: inUse);
     var at = onScreen(tab, scale, origin);
-    canvas.drawRRect(RRect.fromRectAndRadius(at, const Radius.circular(3)),
-        Paint()..color = const Color(0xFFF2A33D));
-    var label = TextPainter(
-      text: TextSpan(
-          text: cam.name,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1B1408))),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: math.max(0, at.width - 20));
-    label.paint(
-        canvas, at.topLeft + Offset(18, (at.height - label.height) / 2));
-    _paintCameraIcon(canvas, at.topLeft + Offset(4, at.height / 2));
+    if (inUse) {
+      _paintFramingTab(canvas, cam, at);
+    } else {
+      _paintUnusedTab(canvas, cam, at);
+    }
   }
 }
 
-/// _paintCameraIcon draws a small film camera, [left] its left middle.
-void _paintCameraIcon(Canvas canvas, Offset left) {
-  var ink = Paint()..color = const Color(0xFF1B1408);
+/// _paintFramingTab is the tab of the Camera that frames the scene: filled,
+/// with its name.
+void _paintFramingTab(Canvas canvas, CameraElement cam, Rect at) {
+  canvas.drawRRect(RRect.fromRectAndRadius(at, const Radius.circular(3)),
+      Paint()..color = const Color(0xFFF2A33D));
+  var label = TextPainter(
+    text: TextSpan(
+        text: cam.name,
+        style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1B1408))),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: math.max(0, at.width - 20));
+  label.paint(canvas, at.topLeft + Offset(18, (at.height - label.height) / 2));
+  _paintCameraIcon(
+      canvas, at.topLeft + Offset(4, at.height / 2), const Color(0xFF1B1408));
+}
+
+/// _paintUnusedTab is the tab of a Camera shown that frames nothing: dark
+/// and outlined, the other way about from the framing one's, its name cut
+/// short where it must be so that the words saying it is not in use are
+/// whole.
+void _paintUnusedTab(Canvas canvas, CameraElement cam, Rect at) {
+  const ink = Color(0xFFF2A33D);
+  var shape = RRect.fromRectAndRadius(at, const Radius.circular(3));
+  canvas.drawRRect(shape, Paint()..color = const Color(0xE61B1408));
+  canvas.drawRRect(
+      shape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = ink);
+  canvas.save();
+  canvas.clipRect(at);
+  var after = TextPainter(
+    text: TextSpan(
+        text: cameraNotInUse, style: cameraTabStyle.copyWith(color: ink)),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  var name = TextPainter(
+    text: TextSpan(text: cam.name, style: cameraTabStyle.copyWith(color: ink)),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: "…",
+  )..layout(maxWidth: math.max(0, at.width - 20 - after.width));
+  var top = (at.height - name.height) / 2;
+  name.paint(canvas, at.topLeft + Offset(18, top));
+  after.paint(canvas, at.topLeft + Offset(18 + name.width, top));
+  canvas.restore();
+  _paintCameraIcon(canvas, at.topLeft + Offset(4, at.height / 2), ink);
+}
+
+/// _paintCameraIcon draws a small film camera in [colour], [left] its left
+/// middle.
+void _paintCameraIcon(Canvas canvas, Offset left, Color colour) {
+  var ink = Paint()..color = colour;
   canvas.drawRRect(
       RRect.fromRectAndRadius(Rect.fromLTWH(left.dx, left.dy - 4, 8, 8),
           const Radius.circular(1.5)),

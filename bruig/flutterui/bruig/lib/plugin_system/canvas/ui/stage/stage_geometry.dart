@@ -176,17 +176,28 @@ class FlowLine {
 /// than a handle's, since a guide lies over things that may be aimed at.
 const double guideGrabSlop = 4;
 
+/// cameraTabStyle is the words on a Camera's name tab.
+const cameraTabStyle = TextStyle(fontSize: 11, fontWeight: FontWeight.w600);
+
+/// cameraNotInUse is what follows the name on the tab of a Camera shown
+/// while another, before it in the scene's order, frames the scene.
+const cameraNotInUse = " (not in use)";
+
+/// cameraTabWords is [text] laid out as a Camera's tab has it.
+TextPainter cameraTabWords(String text) => TextPainter(
+      text: TextSpan(text: text, style: cameraTabStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
 /// cameraTab is where [cam]'s name tab is on the page: in the top-left of
 /// [frame], a fixed size on screen at any [scale]. Shared by painter and
-/// stage so drawing and hit-testing agree.
-Rect cameraTab(CameraElement cam, Rect frame, double scale) {
-  var label = TextPainter(
-    text: TextSpan(
-        text: cam.name,
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-    textDirection: TextDirection.ltr,
-  )..layout();
-  var w = math.min(label.width + 26, 220.0) / scale;
+/// stage so drawing and hit-testing agree. One not [inUse] has room after
+/// its name for saying so, as much room for its name as one in use.
+Rect cameraTab(CameraElement cam, Rect frame, double scale,
+    {bool inUse = true}) {
+  var label = cameraTabWords(cam.name);
+  var after = inUse ? 0.0 : cameraTabWords(cameraNotInUse).width;
+  var w = (math.min(label.width + 26, 220.0) + after) / scale;
   var h = 20 / scale;
   var inset = 4 / scale;
   return Rect.fromLTWH(frame.left + inset, frame.top + inset,

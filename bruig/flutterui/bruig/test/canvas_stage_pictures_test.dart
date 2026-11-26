@@ -554,7 +554,10 @@ void main() {
       await keep(tester, "path");
     });
 
-    testWidgets("cameras' frames, upright and rolled", (tester) async {
+    // Of two shown, the first in the scene's order frames it: the upright
+    // one, drawn in full; the turned one is drawn as not in use.
+    testWidgets("two cameras' frames, the upright one framing the scene",
+        (tester) async {
       var c = controllerOf(docOf([
         box("a", 300, 300, 300, 200),
         const CameraElement(ElementBase(
@@ -572,6 +575,29 @@ void main() {
       await pump(tester, c);
       expect(painted(tester).inputs.elements.camerasShown, isTrue);
       await keep(tester, "cameras");
+    });
+
+    // The same two, the turned one first in the scene's order: it frames
+    // the scene, drawn in full, and the upright one is drawn as not in use.
+    testWidgets("of two cameras, the turned one framing the scene",
+        (tester) async {
+      var c = controllerOf(docOf([
+        box("a", 300, 300, 300, 200),
+        const CameraElement(ElementBase(
+            id: "c2",
+            name: "Close",
+            x: 1000,
+            y: 400,
+            width: 480,
+            height: 270,
+            rotation: 18)),
+        const CameraElement(ElementBase(
+            id: "c1", name: "Wide", x: 100, y: 100, width: 800, height: 450)),
+      ]));
+      c.selectOnly("a");
+      await pump(tester, c);
+      expect(cameraOf(c.document)?.id, "c2");
+      await keep(tester, "cameras_turned_one_framing");
     });
 
     testWidgets("a game's touch areas", (tester) async {

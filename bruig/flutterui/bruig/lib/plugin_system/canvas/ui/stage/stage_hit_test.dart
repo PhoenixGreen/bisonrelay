@@ -96,8 +96,10 @@ class StageHitTest {
     if (e is CameraElement) {
       if (!cameras) return false;
       var frame = posed(e);
-      // Its name tab is drawn upright, so it is hit upright.
-      if (cameraTab(e, frame, scale).contains(at)) return true;
+      // Its name tab is drawn upright, so it is hit upright: longer on one
+      // shown that does not frame the scene, for saying so.
+      var inUse = !e.visible || cameraOf(document)?.id == e.id;
+      if (cameraTab(e, frame, scale, inUse: inUse).contains(at)) return true;
       // The frame and its corners are drawn turned by its roll, so the
       // point is turned back before they are tried.
       var roll = cameraLookAt(e, this.frame, document, live: live).roll;

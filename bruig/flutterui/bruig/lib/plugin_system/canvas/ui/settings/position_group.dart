@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 
 // position_group.dart is the place-and-size group every element's Layout
 // section starts with (see elementPanel): where it is, how big, its turn,
@@ -228,27 +229,55 @@ Widget _opacityField(_Placing p) => CanvasStepper(
     );
 
 /// _lockButton holds the width and height together, or lets them go. What
-/// keeps them by its kind (a square or a circle) shows them held, with
-/// nothing to let go.
+/// keeps them by its kind (a square or a circle) is held whatever it says,
+/// so on one it is the other thing the person's hold does: whether a resize
+/// scales its outline, corners, padding and words (see the stage's resize),
+/// said in its icon, its tooltip and the words beside it.
 Widget _lockButton(_Placing p) {
   var byKind = p.e.keepsAspectByKind;
-  var held = byKind || p.e.base.lockAspect;
-  return CanvasIconButton(
-    icon: held ? Icons.link : Icons.link_off,
-    tooltip: byKind
-        ? "Always square — the width and the height move together"
-        : held
-            ? "Proportions are held — the width and the height move together"
-            : "Width and height are free of each other",
-    active: held,
-    onPressed: byKind
-        ? null
-        : () {
-            p.begin();
-            p.write(p.e.withProportionsKept(!held));
-            p.commit();
-          },
-  );
+  var own = p.e.base.lockAspect;
+  var held = byKind || own;
+  void toggle() {
+    p.begin();
+    p.write(p.e.withProportionsKept(!own));
+    p.commit();
+  }
+
+  if (!byKind) {
+    return CanvasIconButton(
+      icon: held ? Icons.link : Icons.link_off,
+      tooltip: held
+          ? "Proportions are held — the width and the height move together"
+          : "Width and height are free of each other",
+      active: held,
+      onPressed: toggle,
+    );
+  }
+  return Row(mainAxisSize: MainAxisSize.min, children: [
+    CanvasIconButton(
+      icon: own ? Icons.open_in_full : Icons.link,
+      tooltip: own
+          ? "Always square, and a resize scales its outline, corners, "
+              "padding and words with it. Press to leave them their size."
+          : "Always square, and a resize leaves its outline, corners, "
+              "padding and words their size. Press to scale them with it.",
+      active: true,
+      onPressed: toggle,
+    ),
+    // Level with the button, which sits below its neighbours' captions,
+    // and on two lines where the line is short.
+    Flexible(
+        child: Builder(
+            builder: (context) => Padding(
+                  padding: EdgeInsets.only(top: nudgeIn(context)),
+                  child: Text(own ? "Inside scales" : "Inside stays",
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: ThemeNotifier.of(context)
+                              .colors
+                              .onSurfaceVariant)),
+                ))),
+  ]);
 }
 
 /// _anchorButtons are the anchor point: shown on stage to drag, or hidden;

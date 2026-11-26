@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
         CameraLook,
         cameraFraming,
         cameraLookAt,
+        cameraOf,
         isStageScene,
         poseAimAt,
         stageCameraOf;
@@ -25,8 +26,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 
-// camera_settings.dart is a Camera's panel: looking through it, and on the
-// page its framing and lens (zoom, roll, focus, depth of field, parallax, an
+// camera_settings.dart is a Camera's panel: looking through it, whether it
+// is the one that frames the scene, and on the page its framing and lens (zoom, roll, focus, depth of field, parallax, an
 // aim at a chart, vignette, motion blur), or on a 3D stage where it stands;
 // then the moves that can be put on the timeline. Focus, blur, vignette and
 // how far it turns to its aim key with ◆ (KeyframeChannel), as every panel's
@@ -51,6 +52,10 @@ Widget cameraPanel(
                   : "Its frame is what is shown",
               children: [
                 _lookGroup(controller),
+                // Shown while another frames the scene, its framing does
+                // nothing until it is the one in use.
+                if (_framingInstead(controller, e) case var other?)
+                  _notInUseNote(controller, e, other),
                 // On a 3D stage it stands in the scene: where, and its lens.
                 // Its clips move it from here.
                 if (isStageScene(controller.document))
@@ -77,6 +82,37 @@ Widget _lookGroup(CanvasController controller) => CanvasControlGroup(
             onChanged: (v) => controller.cameraView = v,
           ),
         ]);
+
+/// _framingInstead is the Camera that frames the scene in place of [e],
+/// shown: the first shown in the scene's order (cameraOf), which [e] is
+/// after. Null where [e] frames it, or is hidden and frames nothing.
+CameraElement? _framingInstead(CanvasController controller, CameraElement e) {
+  if (!e.visible) return null;
+  var framing = cameraOf(controller.document);
+  return framing == null || framing.id == e.id ? null : framing;
+}
+
+/// _notInUseNote says that [other] frames the scene and [e] does not, with
+/// the way to make [e] the one in use: moved to just ahead of [other] in the
+/// scene's order, which is what decides. A Camera is never drawn in the
+/// picture, so its place in the order changes nothing on the page; hiding
+/// [other] would take its frame off the canvas. One undo step.
+Widget _notInUseNote(
+    CanvasController controller, CameraElement e, CameraElement other) {
+  var name = other.name.isEmpty ? "Camera" : other.name;
+  return CanvasStateNote(
+    key: const ValueKey("cameraNotInUse"),
+    "$name frames this scene. This one is not in use while it is shown.",
+    action: "Use this one",
+    onAction: () {
+      var doc = controller.document;
+      var from = doc.elements.indexWhere((x) => x.id == e.id);
+      var to = doc.elements.indexWhere((x) => x.id == other.id);
+      if (from < 0 || to < 0) return;
+      controller.apply(doc.reorder(from, to));
+    },
+  );
+}
 
 /// _movesSection is the moves a Camera can be given: one put on the
 /// timeline at the playhead and opened to be shaped, the quickest way to a

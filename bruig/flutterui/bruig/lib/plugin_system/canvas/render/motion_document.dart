@@ -1077,8 +1077,13 @@ extension MovedElement on CanvasElement {
 }
 
 /// cameraOf is [doc]'s camera: the first one shown, if there is one.
-CameraElement? cameraOf(CanvasDocument doc) =>
-    doc.elements.whereType<CameraElement>().where((c) => c.visible).firstOrNull;
+CameraElement? cameraOf(CanvasDocument doc) => cameraAmong(doc.elements);
+
+/// cameraAmong is the Camera that frames a scene of [elements]: the first
+/// shown in their order. Any other shown is drawn on the canvas but frames
+/// nothing.
+CameraElement? cameraAmong(Iterable<CanvasElement> elements) =>
+    elements.whereType<CameraElement>().where((c) => c.visible).firstOrNull;
 
 /// poseAimAt is how far [cam] is keyed to turn to its aim, or null.
 double? poseAimAt(CameraElement cam, int frame, CanvasDocument doc) =>
