@@ -5,12 +5,12 @@ import 'reset.dart';
 import '../test/canvas_asset_drop_test.dart' as t0;
 import '../test/canvas_background_blockchain_test.dart' as t1;
 import '../test/canvas_background_marks_test.dart' as t2;
-import '../test/canvas_chart_grid_test.dart' as t3;
-import '../test/canvas_chart_morph_test.dart' as t4;
-import '../test/canvas_colour_map_test.dart' as t5;
-import '../test/canvas_controller_load_test.dart' as t6;
-import '../test/canvas_data_sheet_test.dart' as t7;
-import '../test/canvas_element_blend_test.dart' as t8;
+import '../test/canvas_chart_fixed_range_test.dart' as t3;
+import '../test/canvas_chart_grid_test.dart' as t4;
+import '../test/canvas_chart_morph_test.dart' as t5;
+import '../test/canvas_colour_map_test.dart' as t6;
+import '../test/canvas_controller_load_test.dart' as t7;
+import '../test/canvas_data_sheet_test.dart' as t8;
 import '../test/canvas_engine_carry_test.dart' as t9;
 import '../test/canvas_guides_test.dart' as t10;
 import '../test/canvas_instrument_test.dart' as t11;
@@ -45,27 +45,27 @@ void main() {
     setUpAll(betweenFiles);
     t2.main();
   });
-  group('canvas_chart_grid_test.dart', () {
+  group('canvas_chart_fixed_range_test.dart', () {
     setUpAll(betweenFiles);
     t3.main();
   });
-  group('canvas_chart_morph_test.dart', () {
+  group('canvas_chart_grid_test.dart', () {
     setUpAll(betweenFiles);
     t4.main();
   });
-  group('canvas_colour_map_test.dart', () {
+  group('canvas_chart_morph_test.dart', () {
     setUpAll(betweenFiles);
     t5.main();
   });
-  group('canvas_controller_load_test.dart', () {
+  group('canvas_colour_map_test.dart', () {
     setUpAll(betweenFiles);
     t6.main();
   });
-  group('canvas_data_sheet_test.dart', () {
+  group('canvas_controller_load_test.dart', () {
     setUpAll(betweenFiles);
     t7.main();
   });
-  group('canvas_element_blend_test.dart', () {
+  group('canvas_data_sheet_test.dart', () {
     setUpAll(betweenFiles);
     t8.main();
   });

@@ -337,10 +337,11 @@ bool _inside(_Quad quad, Offset p, {double slack = 0.75}) {
 Future<_Quad> _selectionOnStage(
     WidgetTester tester, CanvasDocument doc, int frame) async {
   // The stage is asked only where the box is; a picture with nothing to
-  // show has the same box, and asks no storage for one.
+  // show, moving as it does, has the same box, and asks no storage for one.
   var e = doc.elementById("e")!;
   if (e is ImageElement) {
-    doc = doc.withElement(ImageElement(e.base, fit: e.fit));
+    doc = doc
+        .withElement(ImageElement(e.base, fit: e.fit, animation: e.animation));
   }
   var controller = CanvasController(doc);
   addTearDown(controller.dispose);
@@ -382,67 +383,6 @@ Future<_Quad> _quadOf(
   return _quads[name] = await _selectionOnStage(tester, doc, _midway);
 }
 
-/// _waiting are the motions the press and the selection box do not yet lay
-/// an element out by, with what they leave out. Every check of every kind
-/// drawn so waits, but those in [_heldAlready].
-const _waiting = <String, String>{
-  "turned by its keys about an anchor at its corner":
-      "the press and the selection box turn it about its middle, where it "
-          "is drawn turned about its corner",
-  "turned as it rests and sized by its keys about an anchor at its corner":
-      "the press and the selection box size it upright about its corner and "
-          "then turn the sized box about its own middle, where it is drawn "
-          "turned about its resting middle and then sized about its corner",
-  "slanted as it rests and turned by its keys":
-      "the press and the selection box turn it by its keys before its slant, "
-          "where it is drawn slanted first and turned after",
-  "spun by its loop":
-      "the press and the selection box leave out the turn its loop gives it",
-  "swung from its top by its loop":
-      "the press and the selection box leave out the swing its loop gives it",
-  "squashed by its keys":
-      "the press and the selection box leave out its squash",
-  "moved every way at once":
-      "the press and the selection box leave out its anchor, its squash and "
-          "its loop, and turn it by its keys before its slant",
-};
-
-/// _heldAlready are the checks of a text with no box that pass under a
-/// motion still waiting: its words lie well inside its box, and the box the
-/// press and the selection box use still holds them.
-const _heldAlready = {
-  "a text turned as it rests and sized by its keys about an anchor at its "
-      "corner: pressed",
-  "a text turned as it rests and sized by its keys about an anchor at its "
-      "corner: box holds",
-  "a text slanted as it rests and turned by its keys: pressed",
-  "a text slanted as it rests and turned by its keys: box holds",
-  "a text spun by its loop: pressed",
-  "a text spun by its loop: box holds",
-};
-
-/// _wait is why [check] of [kind] drawn [motion] waits, or null where it
-/// passes as the app is.
-String? _wait(String kind, String motion, String check) =>
-    _heldAlready.contains("$kind $motion: $check") ? null : _waiting[motion];
-
-/// _copiesWaiting are the checks of copies that wait, with what is wrong:
-/// the press takes the box round every copy, each upright.
-const _copiesWaiting = <String, String>{
-  "two copies side by side: only the ink":
-      "the press takes the box round every copy, so the gap between them is "
-          "pressed",
-  "a copy turned: pressed":
-      "the press takes each copy upright, so the corners of a turned copy "
-          "are not pressed",
-  "a copy turned: only the ink":
-      "the press takes the box round every copy, so the gap between them is "
-          "pressed",
-  "the gap":
-      "the press takes the box round every copy, so the gap between them is "
-          "pressed",
-};
-
 /// _dragsWaiting are the drags that wait, with what is wrong.
 const _dragsWaiting = <String, String>{
   "sized by its keys, posed":
@@ -475,7 +415,7 @@ void main() {
           expect(missed, isEmpty,
               reason: "${missed.length} inked pixels not pressed, "
                   "the first ${missed.take(3).toList()}");
-        }, skip: _wait(kind, motion, "pressed"));
+        });
 
         if (onlyInk) {
           test("$name: nothing is pressed far from its ink", () async {
@@ -491,7 +431,7 @@ void main() {
             expect(far, isEmpty,
                 reason: "${far.length} points pressed far from ink, "
                     "the first ${far.take(3).toList()}");
-          }, skip: _wait(kind, motion, "only the ink"));
+          });
         }
 
         testWidgets("$name: its selection box holds its ink", (tester) async {
@@ -505,7 +445,7 @@ void main() {
           expect(out, isEmpty,
               reason: "${out.length} inked pixels outside $quad, "
                   "the first ${out.take(3).toList()}");
-        }, skip: _wait(kind, motion, "box holds") != null);
+        });
 
         if (boxIsInk) {
           testWidgets("$name: its selection box is no bigger than its ink",
@@ -518,9 +458,109 @@ void main() {
               expect(ink.near(corner, 2), isTrue,
                   reason: "the box's corner $corner is on ink");
             }
-          }, skip: _wait(kind, motion, "box fits") != null);
+          });
         }
       }
+    }
+  });
+
+  group("a lone element's handles are pressed where they are drawn", () {
+    testWidgets(
+        "a corner of one turned by its keys about its corner is pressed where "
+        "it is drawn, and sizes it", (tester) async {
+      var e = ShapeElement(
+          _keyed(
+              const ElementBase(
+                  id: "e",
+                  x: 100,
+                  y: 110,
+                  width: 100,
+                  height: 80,
+                  anchorX: 0,
+                  anchorY: 0),
+              const Keyframe(frame: 0, rotate: 70)),
+          fill: _orange);
+      var doc = _pageOf([e]);
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.frame = _midway;
+      c.selectOnly("e");
+      var key = GlobalKey<CanvasStageState>();
+      const viewport = Size(800, 600);
+      setTestScreen(tester, viewport);
+      await tester.pumpWidget(canvasApp(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasStage(key: key, controller: c))));
+      await tester.pumpAndSettle();
+      var stage = key.currentState!;
+      var scale = stage.pageRect.width / _page;
+      // Its far corner, as the painter lays it out: turned about the near
+      // one, well away from where a box turned about its middle has it.
+      var place = placeOnPage(e, _midway, doc, null).place;
+      var corner = place.place(e.bounds.bottomRight);
+      expect(
+          (stage.handleAt(StageHandle.bottomRight) - stage.toStagePoint(corner))
+              .distance,
+          lessThan(1),
+          reason: "the handle is drawn on the corner");
+      // Pulled out along its own diagonal.
+      var out =
+          place.place(e.bounds.bottomRight + const Offset(20, 16)) - corner;
+      var g = await tester.startGesture(stage.toStagePoint(corner));
+      await tester.pump();
+      await g.moveBy(out * scale);
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      var now = c.document.elementById("e")!;
+      expect(now.width, greaterThan(110), reason: "sized, not moved");
+      expect(now.height, greaterThan(88), reason: "sized, not moved");
+    });
+  });
+
+  group("a selected shape is taken anywhere in its box as it is drawn", () {
+    // A triangle turned as it rests leaves its box's corners empty: pressed
+    // there, selected, it is moved; pressed beside its box, where the box
+    // upright would reach, it is not.
+    for (var (name, local, takes) in [
+      ("in a corner of its turned box", const Offset(110, 118), true),
+      ("beside its turned box", const Offset(198, 188), false),
+    ]) {
+      testWidgets("a triangle turned as it rests, pressed $name",
+          (tester) async {
+        var e = ShapeElement(
+            const ElementBase(
+                id: "e", x: 100, y: 110, width: 100, height: 80, rotation: 40),
+            shape: ShapeKind.triangle,
+            fill: _orange);
+        var doc = _pageOf([e]);
+        var c = CanvasController(doc);
+        addTearDown(c.dispose);
+        c.selectOnly("e");
+        var key = GlobalKey<CanvasStageState>();
+        const viewport = Size(800, 600);
+        setTestScreen(tester, viewport);
+        await tester.pumpWidget(canvasApp(SizedBox(
+            width: viewport.width,
+            height: viewport.height,
+            child: CanvasStage(key: key, controller: c))));
+        await tester.pumpAndSettle();
+        var stage = key.currentState!;
+        var scale = stage.pageRect.width / _page;
+        // Where the point is: in the box turned or not, never on the ink.
+        var at = takes ? e.onPage(local) : local;
+        var hits = StageHitTest(document: doc, frame: 0, scale: scale);
+        expect(hits.contains(e, at), isFalse, reason: "off its outline");
+        var g = await tester.startGesture(stage.toStagePoint(at));
+        await tester.pump();
+        await g.moveBy(Offset(20 * scale, 0));
+        await tester.pump();
+        await g.up();
+        await tester.pumpAndSettle();
+        var now = c.document.elementById("e")!;
+        expect(now.x, takes ? closeTo(120, 0.5) : 100);
+      });
     }
   });
 
@@ -558,7 +598,7 @@ void main() {
         expect(missed, isEmpty,
             reason: "${missed.length} inked pixels not pressed, "
                 "the first ${missed.take(3).toList()}");
-      }, skip: _copiesWaiting["$name: pressed"]);
+      });
 
       test("$name: nothing is pressed far from their ink", () async {
         var doc = _pageOf([e]);
@@ -574,7 +614,7 @@ void main() {
         expect(far, isEmpty,
             reason: "${far.length} points pressed far from ink, "
                 "the first ${far.take(3).toList()}");
-      }, skip: _copiesWaiting["$name: only the ink"]);
+      });
     }
 
     test("the gap between two copies is not pressed", () {
@@ -586,7 +626,7 @@ void main() {
           reason: "the first copy is");
       expect(hits.contains(side, const Offset(180, 140)), isTrue,
           reason: "the second copy is");
-    }, skip: _copiesWaiting["the gap"]);
+    });
   });
 
   group("where an element is drawn on a frame is one answer", () {

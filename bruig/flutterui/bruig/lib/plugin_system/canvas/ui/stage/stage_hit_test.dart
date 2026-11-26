@@ -88,8 +88,39 @@ class StageHitTest {
         _ => posed(e),
       };
 
-  /// contains is whether document point [at] is on [e] as drawn, turn and
-  /// slant undone.
+  /// placed is [e], or its copy [instance], as the painter lays it out now
+  /// (placeOnPage). An element nothing moves but its own keys is laid out by
+  /// its keys' pose alone, which is what placeOnPage would find, without
+  /// working out a whole pose at every move of the pointer.
+  ElementOnPage placed(CanvasElement e, {int? instance}) {
+    if (instance != null || movesAtAll(e)) {
+      return placeOnPage(e, frame, document, live, instance: instance);
+    }
+    var pose = e.poseAt(frame);
+    var box = switch (e) {
+      CounterElement c => c.drawnBox(c.bounds,
+          page: document.size.rect, leftHand: document.pageIsLeftHand),
+      _ => e.bounds,
+    };
+    return ElementOnPage(e, pose, e.placedIn(box, pose), box: box);
+  }
+
+  /// copyAt is which copy of reused [e] is under document point [at], the
+  /// last drawn first, each pressed where it is drawn as [contains] presses
+  /// an element; null where none is, or [e] is not reused.
+  int? copyAt(CanvasElement e, Offset at) {
+    var set = e.base.motion.instances;
+    if (set == null) return null;
+    for (var i = set.count - 1; i >= 0; i--) {
+      if (_onPlaced(e, placed(e, instance: i), at)) return i;
+    }
+    return null;
+  }
+
+  /// contains is whether document point [at] is on [e] as drawn: taken back
+  /// through where the painter lays it out on this frame, and pressed on it
+  /// as it rests. An element reused is pressed on each copy, never between
+  /// them.
   bool contains(CanvasElement e, Offset at) {
     // A camera is hit by its frame's edge: what it shows inside is picked as
     // if it were not there. Where the frame is not drawn, nothing is hit.
@@ -157,23 +188,39 @@ class StageHitTest {
       }
     }
 
-    var box = drawn(e);
-    var shape = e.movedFrameAt(frame, document, live: live);
-    var local = at;
-    if (!shape.upright) local = box.center + shape.invert(at - box.center);
+    if (e.base.motion.instances case var set? when set.count > 0) {
+      return copyAt(e, at) != null;
+    }
+    return _onPlaced(e, placed(e), at);
+  }
+
+  /// _onPlaced is whether document point [at] is on [e] laid out as [on]:
+  /// the point taken back into its box as it rests, and found there.
+  bool _onPlaced(CanvasElement e, ElementOnPage on, Offset at) {
+    var box = on.box;
+    var local = on.place.unplace(at);
+    // As it is drawn then, its Design's settings on it.
+    var shape = switch (on.drawn) {
+      ShapeElement drawn => drawn,
+      _ => e is ShapeElement ? e : null,
+    };
     // A shape's outline is drawn centred on its edge, so half of a thick one
     // lies outside its box, and is pressed there too.
     var outside =
-        e is ShapeElement && e.strokeWidth > 0 ? e.strokeWidth / 2 : 0.0;
+        shape != null && shape.strokeWidth > 0 ? shape.strokeWidth / 2 : 0.0;
     if (!box.inflate(outside).contains(local)) return false;
 
     // A shape is pressed inside its outline, filled or not, or near enough
     // its edge to pick a thin one; its box's empty corners are left to
-    // what is behind it.
-    if (e is ShapeElement) {
-      var outline = shapeOutline(e, box);
-      return outline.contains(local) ||
-          _nearOutline(outline, local, _strokeReach(e.strokeWidth));
+    // what is behind it. The reach is the pointer's, so the same on the page
+    // however much the pose sizes or squashes the shape: in the box it is
+    // shorter by as much as the place stretches it.
+    if (shape != null) {
+      var stretch = on.place.stretch <= 0 ? 1.0 : on.place.stretch;
+      var reach =
+          math.max(shape.strokeWidth / 2, 0) + strokeHitSlop / scale / stretch;
+      var outline = shapeOutline(shape, box);
+      return outline.contains(local) || _nearOutline(outline, local, reach);
     }
     return true;
   }

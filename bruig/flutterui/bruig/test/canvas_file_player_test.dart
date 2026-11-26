@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/layout_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
@@ -178,6 +180,76 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
     });
+
+    // A click on a button turned as it rests, or turned by its keys about
+    // its corner, lands on it where it is drawn: on its ink near a corner,
+    // which its upright box leaves out, and not on a corner of that upright
+    // box, which is not drawn.
+    for (var (name, base) in [
+      (
+        "turned as it rests",
+        const ElementBase(
+            id: "b", x: 400, y: 200, width: 400, height: 100, rotation: 45),
+      ),
+      (
+        "turned by its keys about its corner",
+        ElementBase(
+            id: "b",
+            x: 400,
+            y: 200,
+            width: 400,
+            height: 100,
+            anchorX: 0,
+            anchorY: 0,
+            track: ElementTrack(const [
+              Keyframe(frame: 0),
+              Keyframe(frame: 24, rotate: 70),
+            ])),
+      ),
+    ]) {
+      for (var (point, presses) in [
+        ("on its ink near a corner", true),
+        ("on a corner of its upright box", false),
+      ]) {
+        testWidgets(
+            "a button $name is clicked $point: ${presses ? "it acts" : "nothing"}",
+            (tester) async {
+          var button = ButtonElement(base,
+              action: const ButtonAction(
+                  kind: ButtonActionKind.toggleElement, elementId: "door"));
+          var file = await write(
+              tester,
+              CanvasDocument(frames: 60, elements: [
+                ShapeElement(const ElementBase(
+                    id: "door", x: 1100, y: 600, width: 100, height: 100)),
+                button,
+              ]));
+          await show(tester, file);
+          var player = tester.state(find.byType(CanvasFilePlayer));
+          CanvasController c = (player as dynamic).controllerForTest;
+          c.pause();
+          c.frame = 12;
+          await tester.pump();
+          var place = placeOnPage(button, 12, c.document, null).place;
+          var box = button.bounds;
+          var at = presses
+              ? place.place(box.topRight + const Offset(-8, 8))
+              : box.bottomRight - const Offset(4, 4);
+          // Said of the points, as the painter lays the button out.
+          var local = place.unplace(at);
+          expect(box.contains(local), presses);
+          expect(box.contains(at), !presses);
+          var view =
+              tester.getRect(find.byKey(const ValueKey("canvasFileView")));
+          var scale = view.width / c.document.size.size.width;
+          await tester.tapAt(view.topLeft + at * scale);
+          await tester.pump();
+          expect(c.document.elementById("door")!.visible, !presses);
+          await tester.pumpWidget(const SizedBox());
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
 
     testWidgets("a clip that starts on a click starts when it is clicked",
         (tester) async {

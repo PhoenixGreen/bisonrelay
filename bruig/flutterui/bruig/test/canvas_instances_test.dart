@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_hit_test.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart'
     show StageHandle;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_lanes.dart';
@@ -220,8 +221,9 @@ void main() {
       var b = e.movedBoundsAt(0, d);
       expect(b.left, 10);
       expect(b.right, 130);
-      expect(e.instanceAt(const Offset(70, 20), 0, d), 1);
-      expect(e.instanceAt(const Offset(45, 20), 0, d), isNull);
+      var hits = StageHitTest(document: d, frame: 0, scale: 1);
+      expect(hits.copyAt(e, const Offset(70, 20)), 1);
+      expect(hits.copyAt(e, const Offset(45, 20)), isNull);
     });
   });
 

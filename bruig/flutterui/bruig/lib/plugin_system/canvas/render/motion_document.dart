@@ -1054,20 +1054,24 @@ Keyframe _clipPose(
 
 /// ElementOnPage is an element as paintElement lays it out on a frame:
 /// [drawn], the element with its Design's settings on it then; [pose], its
-/// pose there (its keys, clips, devices, loop and Design); and [place],
-/// where its box is laid on the page by that pose (ElementPlace), a page
-/// number mirrored onto a left-hand page in the box it is drawn in.
+/// pose there (its keys, clips, devices, loop and Design); [box], the box
+/// it is drawn in before it is laid on the page (its bounds, or a page
+/// number mirrored onto a left-hand page across the page); and [place],
+/// where that box is laid on the page by that pose (ElementPlace).
 class ElementOnPage {
   final CanvasElement drawn;
   final Keyframe pose;
   final ElementPlace place;
+  final Rect box;
 
   /// kept is whether this is an answer placeOnPage keeps, with nothing read
   /// from outside the document. What is worked out from it can be kept
   /// beside it while placeOnPage hands back this same answer.
   final bool kept;
 
-  const ElementOnPage(this.drawn, this.pose, this.place, {this.kept = false});
+  ElementOnPage(this.drawn, this.pose, this.place,
+      {this.kept = false, Rect? box})
+      : box = box ?? drawn.bounds;
 }
 
 /// placeOnPage is [e] as paintElement lays it out on [frame] of [doc]: the
@@ -1114,7 +1118,8 @@ ElementOnPage placeOnPage(
     box =
         drawn.drawnBox(box, page: doc.size.rect, leftHand: doc.pageIsLeftHand);
   }
-  var on = ElementOnPage(drawn, pose, drawn.placedIn(box, pose), kept: keeps);
+  var on = ElementOnPage(drawn, pose, drawn.placedIn(box, pose),
+      kept: keeps, box: box);
   if (keeps) copies[(instance, _keptFor(cuts))] = on;
   return on;
 }
@@ -1146,21 +1151,6 @@ extension MovedElement on CanvasElement {
       if (all != null) return all;
     }
     return boundsWith(poseWithMotion(this, frame, doc, live: live));
-  }
-
-  /// instanceAt is which of this element reused is at [point] on [frame],
-  /// the last drawn first; null where none is, or it is placed once.
-  int? instanceAt(Offset point, int frame, CanvasDocument doc,
-      {LiveMotion? live}) {
-    var set = base.motion.instances;
-    if (set == null) return null;
-    for (var i = set.count - 1; i >= 0; i--) {
-      if (boundsWith(poseWithMotion(this, frame, doc, live: live, instance: i))
-          .contains(point)) {
-        return i;
-      }
-    }
-    return null;
   }
 
   /// drawnPoseAt is the pose paintElement draws this element in on [frame]:

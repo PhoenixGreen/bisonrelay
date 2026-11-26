@@ -1310,19 +1310,26 @@ class ElementPlace {
   /// boxOnPage is [box], a rectangle of the element's box turned by [turn]
   /// degrees about its own middle, as it is drawn on the page: a box of the
   /// size it is drawn at, about where its middle lands, and the turn and
-  /// slant it is drawn with there. What one part of an element has as its
-  /// own selection box (a Layout's Free cell) asks it. Only turned, it is
-  /// the box moved, turned by both; otherwise the slant is taken across its
-  /// width, which a turn and a slant can always draw.
+  /// slant it is drawn with there. The selection box of a lone element, and
+  /// of one part of an element that has its own (a Layout's Free cell), ask
+  /// it. Sized evenly, and turned after its slant by nothing, it is the box
+  /// sized, turned by every turn and slanted as the element rests; otherwise
+  /// (squashed, sized unevenly by a loop, or turned after a slant) the slant
+  /// is taken across its width, which a turn and a slant can always draw.
   (Rect, BoxFrame) boxOnPage(Rect box, {double turn = 0}) {
     var middle = place(box.center);
-    if (shift == Offset.zero && !_squashed && !_posed && !_looped) {
-      if (!frame.slanted) {
-        return (
-          Rect.fromCenter(center: middle, width: box.width, height: box.height),
-          BoxFrame(frame.rotation + turn, 0, 0)
-        );
-      }
+    var turns = this.turn + loopTurn + turn;
+    if (!_squashed && loopSx == loopSy && (!frame.slanted || turns == 0)) {
+      // Sized by less than nothing is turned half round.
+      var grow = size * loopSx;
+      return (
+        Rect.fromCenter(
+            center: middle,
+            width: box.width * grow.abs(),
+            height: box.height * grow.abs()),
+        BoxFrame(frame.rotation + turns + (grow < 0 ? 180 : 0), frame.skewX,
+            frame.skewY)
+      );
     }
     // The box's half axes, turned, then laid on the page.
     var t = turn * math.pi / 180;

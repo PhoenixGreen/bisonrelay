@@ -10,8 +10,10 @@ part of 'scene_renderer.dart';
 
 /// visualBoundsOf is where [element] is drawn, which differs from its moved
 /// box on a stage, for a line or a path (round its curve as drawn, with
-/// room for its width and ends), and for text on a line. The selection
-/// outline, handles and on-canvas text editor use it.
+/// room for its width and ends), and for text on a line. The selection box
+/// of a stroke, of text on a line, of something on a stage and of several
+/// selected, and the on-canvas text editor, use it; a lone element's own is
+/// its box laid out by its place (ElementPlace.boxOnPage).
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
     {LiveMotion? live}) {
   // With its clips' moves on it: see movedBoundsAt.

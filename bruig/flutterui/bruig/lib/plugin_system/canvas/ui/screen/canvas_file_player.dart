@@ -5,6 +5,8 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
@@ -20,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/canvas_screen.dart';
 import 'package:bruig/plugin_system/canvas/ui/screen/panel_reader.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_hit_test.dart';
 import 'package:bruig/plugin_system/canvas/render/panel_reading.dart'
     show hasPanels;
 import 'package:bruig/plugin_system/canvas/ui/motion/motion_player.dart'
@@ -191,15 +194,23 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     if (size.width <= 0 || size.height <= 0) return;
     var p = Offset(
         at.dx / size.width * page.width, at.dy / size.height * page.height);
+    // Pressed where it is drawn, as the editor's stage presses it. A camera
+    // draws no frame here; a click anywhere in what it shows is on it.
+    var hits = StageHitTest(
+        document: doc,
+        frame: c.frame,
+        live: c.liveMotion,
+        scale: size.width / page.width,
+        cameras: false);
+    bool on(CanvasElement e) => e is CameraElement
+        ? e.movedBoundsAt(c.frame, doc, live: c.liveMotion).contains(p)
+        : hits.contains(e, p);
     var clicked = false;
     for (var e in [
       ...doc.elements.reversed,
       ...?doc.masterScene?.elements.reversed,
     ]) {
-      if (!e.visible ||
-          !e.movedBoundsAt(c.frame, doc, live: c.liveMotion).contains(p)) {
-        continue;
-      }
+      if (!e.visible || !on(e)) continue;
       // Clips that start on a click, whatever else it does: the top one's.
       if (!clicked) {
         clicked = true;

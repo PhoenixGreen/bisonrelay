@@ -276,7 +276,7 @@ extension StagePress on CanvasStageState {
           !chosen.locked &&
           chosen.visible &&
           _boxIsNotTheShape(chosen) &&
-          _visualBounds(chosen).contains(doc) &&
+          _inSelectionBox(doc) &&
           (chosen is PathElement || _hitHandle(stage) == null) &&
           _hitElement(doc) == null) {
         _gesture = _BoxMove(_beginTransform());
@@ -729,12 +729,12 @@ extension StagePress on CanvasStageState {
           CanvasStageState._doubleClickWindow;
 
   /// _copyAt is the copy of reused [element] at [doc], as the click that
-  /// would pick it, or null where there is none.
+  /// would pick it, or null where there is none: the copy the press is on
+  /// (StageHitTest.copyAt).
   _CopyPick? _copyAt(CanvasElement element, Offset doc) {
     var set = element.base.motion.instances;
     if (set == null) return null;
-    var i = element.instanceAt(doc, controller.frame, controller.document,
-        live: controller.liveMotion);
+    var i = _hit.copyAt(element, doc);
     if (i == null) return null;
     return _CopyPick(element.id, set.items[i].id);
   }

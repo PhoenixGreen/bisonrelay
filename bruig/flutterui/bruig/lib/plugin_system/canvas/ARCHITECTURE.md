@@ -290,9 +290,13 @@ A shape's outline is worked out in one place, `shapeOutline`
 circle drawn in the square in the middle of the box (`shapeBox`). The
 painter fills and strokes it, a loop runs round it, wrapped words go round
 it (`text_wrap.dart`) and the stage presses it (`StageHitTest.contains`).
-The last two lay it on the page as `paintElement` draws it, through the
-element's turn and slant (`BoxFrame.placePath`). A press counts inside the
-outline, filled or not, or within a line's slack of its edge, and on the
+Wrapped words lay it on the page through the element's turn and slant
+(`BoxFrame.placePath`); the press takes the point back into the box through
+where `paintElement` lays the shape out on the frame (`ElementPlace.unplace`)
+and asks the outline as it rests. A press counts inside the
+outline, filled or not, or within a line's slack of its edge (a distance on
+the page, so shorter in the box by as much as the place stretches it:
+`ElementPlace.stretch`), and on the
 half of a thick outline that lies outside the box; the selection box and
 its handles stay the box, and a selected shape is moved from anywhere in
 that box, as a bowed line is.
@@ -421,13 +425,32 @@ frame the painter has already laid out.
 `test/canvas_element_on_page_test.dart` holds every other kind to the same:
 a filled shape, a picture and a text drawn part-way through each motion,
 pressed on their ink and boxed round it, copies pressed each, and a drag at
-a moved frame moving what is drawn as far as the pointer. The press and the
-selection box of every kind but a stroke ask `movedBoundsAt` and
-`movedFrameAt`, which leave out a keyed turn or size about an anchor off the
-middle, a keyed turn under a slant, a loop's turn and a squash, and take
-copies as one box round them all; the checks that fail for it are skipped,
-each saying what is left out, and a drag at a moved frame writes where the
-element is drawn as where it rests.
+a moved frame moving what is drawn as far as the pointer. The press
+(`StageHitTest.contains`) takes the point back through the place
+`placeOnPage` lays the element out by and asks the element as it rests:
+inside the box it is drawn in, a shape inside its outline. An element
+moved by nothing but its own keys (`movesAtAll`) is placed by its keys'
+pose, which is what `placeOnPage` would find, with no whole pose worked out
+at every move of the pointer (`StageHitTest.placed`). An element reused is
+pressed copy by copy, each by its own place, never by a box round them all;
+`StageHitTest.copyAt` is that press, and also says which copy a press picks.
+A stroke, text on a line, a camera's frame, a team on a pitch and something
+standing on a 3D stage (its quad through the stage's view) keep presses of
+their own. A played canvas's click (`canvas_file_player.dart`) is the same
+press, a camera there taken anywhere in what it frames.
+
+A lone element's selection box, or one picked copy's, is its own box laid on
+the page by that place (`_placedBox`, by `ElementPlace.boxOnPage`): a box
+and a turn and slant about its middle, which is what any place makes of a
+rectangle, squashed or turned after a slant as well. So its handles, its
+turn knob, the middle a press leaves to a move (`_insideCore`), a text's
+flow grips and the press inside a shape's box that takes hold of it are on
+the element as drawn, turned about any anchor, swung or spun by its loop;
+the box's painter and the press on a handle both read `_selectionBounds` and
+`_frameOfSelection`. A line's or a path's, text on a line's, a camera's and
+a staged element's keep their own boxes, and several selected an upright
+box round them. A drag at a moved frame writes where the element is drawn
+as where it rests; those checks are skipped, each saying what is wrong.
 
 A lone line's or path's selection box is the box round its curve as drawn on
 the frame, so the stage lays it out upright (`_boxIsDrawn`), not turned and
@@ -587,8 +610,8 @@ from it and the stage presses by it, so the two cannot differ; a piece is a
 fit by the same call that draws them (`layOutRuns`, beside
 `paintRunsInBox`), so a case or a gap cannot be measured one way and drawn
 another. A mirrored page number on a left-hand page is drawn across the
-page (`CounterElement.drawnBox`); the renderer, the selection box
-(`visualBoundsOf`) and the press (`StageHitTest.drawn`) all ask it, and a
+page (`CounterElement.drawnBox`); the renderer (`placeOnPage`, the box it
+lays the element out in), the selection box and the press all ask it, and a
 move drag takes it the way the pointer goes.
 
 ### A camera, a metronome and a button

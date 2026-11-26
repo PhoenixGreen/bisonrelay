@@ -163,8 +163,10 @@ extension StageCoordinates on CanvasStageState {
 
   List<CanvasElement> get _chosen => chosenOf(controller);
 
-  /// _selectionBounds is the axis-aligned box round the selection, in
-  /// document space; rotation is ignored for several.
+  /// _selectionBounds is the selection's box in document space, before
+  /// [_frameOfSelection] turns and slants it about its middle: a lone
+  /// element's own box as it is drawn (_loneBox); for several, the upright
+  /// box round them, turns left out.
   Rect? get _selectionBounds {
     var elements = _chosen;
     if (elements.isEmpty) return null;
@@ -177,9 +179,7 @@ extension StageCoordinates on CanvasStageState {
     // A reused element's copies are each outlined and picked alone; a box
     // round them all shows only with every copy picked, as it would be
     // clutter. One copy picked gets its own box to size, turn and move.
-    if (_oneCopy case (var e, var i)?) {
-      return e.boundsWith(_copyPose(e, i));
-    }
+    if (_oneCopy case (var e, var i)?) return _placedBox(e, instance: i).$1;
     // A picture piece picked in a text: its own box (stage_text_pieces.dart).
     if (_onePiece case (var e, var i)?) return _pieceBounds(e, i);
     // A Free cell picked in a Layout (stage_layouts.dart).
@@ -193,6 +193,7 @@ extension StageCoordinates on CanvasStageState {
         }
       }
     }
+    if (_loneBox case (var box, _)?) return box;
     // Where they are on this frame, so the box follows an animated element.
     var box = _visualBounds(elements.first);
     for (var e in elements.skip(1)) {
@@ -219,6 +220,41 @@ extension StageCoordinates on CanvasStageState {
       poseWithMotion(e, controller.frame, controller.document,
           live: controller.liveMotion, instance: i);
 
+  /// _placedBox is [e]'s box, or its copy [instance]'s, as the painter lays
+  /// it out on this frame: a box the size it is drawn, about where its middle
+  /// lands, and the turn and slant it is drawn with there
+  /// (ElementPlace.boxOnPage), so the handles sit on its corners however its
+  /// motion turns, sizes, squashes or swings it, and about whatever anchor.
+  (Rect, BoxFrame) _placedBox(CanvasElement e, {int? instance}) {
+    var on = _hit.placed(e, instance: instance);
+    return on.place.boxOnPage(on.box);
+  }
+
+  /// _loneBox is the lone selection's box laid out as it is drawn
+  /// (_placedBox), or one picked copy's. Null where the selection's box is
+  /// something else: several selected, a picked text piece or Free cell,
+  /// every copy of a reused one (round them all), a line or a path (round
+  /// its curve: _boxIsDrawn), a camera (its frame), a team on a pitch, and
+  /// what has no size or turn of its own (text on a line, something
+  /// standing on a 3D stage: hasOwnGeometry).
+  (Rect, BoxFrame)? get _loneBox {
+    if (_oneCopy case (var e, var i)?) return _placedBox(e, instance: i);
+    if (_onePiece != null || _oneFreeCell != null) return null;
+    var elements = _chosen;
+    if (elements.length != 1) return null;
+    var e = elements.first;
+    if (e is StrokedElement ||
+        e is CameraElement ||
+        (e is TeamElement && e.linked) ||
+        !hasOwnGeometry(e, document, controller.frame)) {
+      return null;
+    }
+    if (e.base.motion.instances case var set?) {
+      return set.count == 1 ? _placedBox(e, instance: 0) : null;
+    }
+    return _placedBox(e);
+  }
+
   /// _boxIsNotTheShape marks elements whose selection box is bigger than what
   /// the pointer can land on: see _onPointerDown. A shape is pressed by its
   /// outline (StageHitTest.contains), which leaves its box's corners empty.
@@ -227,6 +263,16 @@ extension StageCoordinates on CanvasStageState {
       e is PathElement ||
       e is ShapeElement ||
       (e is TextElement && e.wordsSetIn(document) == WordsSet.onLine);
+
+  /// _inSelectionBox is whether document point [doc] is inside the
+  /// selection's box as it is drawn, turned and slanted with it.
+  bool _inSelectionBox(Offset doc) {
+    var bounds = _selectionBounds;
+    if (bounds == null) return false;
+    var local = _frameOfSelection.invert(doc - bounds.center);
+    return local.dx.abs() <= bounds.width / 2 &&
+        local.dy.abs() <= bounds.height / 2;
+  }
 
   /// _visualBounds is where an element is drawn: outside its rectangle for a
   /// bowed line, a path or text on a line. See visualBoundsOf.
@@ -248,9 +294,7 @@ extension StageCoordinates on CanvasStageState {
     if (_oneFreeCell case (var e, var c)?) {
       return _freeCellBox(e, c).$2.rotation * math.pi / 180;
     }
-    if (_oneCopy case (var e, var i)?) {
-      return (e.rotation + _copyPose(e, i).rotate) * math.pi / 180;
-    }
+    if (_loneBox case (_, var frame)?) return frame.rotation * math.pi / 180;
     if (_boxIsDrawn) return 0;
     return _chosen.length == 1
         ? _chosen.first.movedRotationAt(controller.frame, controller.document,
@@ -266,6 +310,9 @@ extension StageCoordinates on CanvasStageState {
     if (_onePiece == null) {
       if (_oneFreeCell case (var e, var c)?) {
         var frame = _freeCellBox(e, c).$2;
+        return Offset(frame.skewX, frame.skewY);
+      }
+      if (_loneBox case (_, var frame)?) {
         return Offset(frame.skewX, frame.skewY);
       }
     }
@@ -285,8 +332,11 @@ extension StageCoordinates on CanvasStageState {
       _oneCopy == null;
 
   /// _frameOfSelection is the selection box's turn and slant on the page.
-  BoxFrame get _frameOfSelection => BoxFrame(
-      _rotationOfSelection * 180 / math.pi,
-      _skewOfSelection.dx,
-      _skewOfSelection.dy);
+  BoxFrame get _frameOfSelection {
+    if (_onePiece == null && _oneFreeCell == null) {
+      if (_loneBox case (_, var frame)?) return frame;
+    }
+    return BoxFrame(_rotationOfSelection * 180 / math.pi, _skewOfSelection.dx,
+        _skewOfSelection.dy);
+  }
 }
