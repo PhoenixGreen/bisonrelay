@@ -115,7 +115,7 @@ extension StageElementControls on CanvasStageState {
     var id = setting.elementId;
     var element = document.elementById(id);
     if (element is! CounterElement) return null;
-    var rects = counterButtonRects(element, _hit.posed(element));
+    var rects = counterButtonRects(element, _hit.drawn(element));
     if (setting.at < 0 || setting.at >= rects.length) return null;
 
     var box = rects[setting.at];
@@ -148,30 +148,19 @@ extension StageElementControls on CanvasStageState {
     );
   }
 
-  /// _applyCounterPart moves [piece] of counter [id] to [doc]: -2 its words
-  /// before, -3 after, 0 and up a button.
-  void _applyCounterPart(String id, int piece, Offset doc) {
+  /// _applyCounterPiece moves [piece] of counter [id] to [doc].
+  void _applyCounterPiece(String id, CounterPiece piece, Offset doc) {
     var element = document.elementById(id);
     if (element is! CounterElement) return;
 
-    var inner = element.box.inner(_hit.posed(element));
+    var inner = element.box.inner(_hit.drawn(element));
     if (inner.width <= 0 || inner.height <= 0) return;
     // A fraction of the box from its middle, so it stays put on resize.
     var at = Offset(
       ((doc.dx - inner.center.dx) / inner.width).clamp(-1.0, 1.0),
       ((doc.dy - inner.center.dy) / inner.height).clamp(-1.0, 1.0),
     );
-
-    controller.replaceElement(
-        switch (piece) {
-          -2 => element.copyWith(beforeAt: at),
-          -3 => element.copyWith(afterAt: at),
-          _ => element.copyWith(buttonAt: [
-              for (var i = 0; i < element.buttons.length; i++)
-                i == piece ? at : element.placedButton(i),
-            ]),
-        },
-        transient: true);
+    controller.replaceElement(element.withPieceAt(piece, at), transient: true);
   }
 
   void _toggleSeries(ChartElement e, int at) {
@@ -290,8 +279,8 @@ class _CounterPieceDrag extends StageGesture with _CarriesClicks {
   /// counterId is the counter's.
   final String counterId;
 
-  /// piece is which: -2 the words before, -3 after, 0 and up a button.
-  final int piece;
+  /// piece is which of its pieces.
+  final CounterPiece piece;
 
   /// click is the press of the live button the piece is, if it is one:
   /// made if the press is let go where it began.
@@ -308,5 +297,5 @@ class _CounterPieceDrag extends StageGesture with _CarriesClicks {
 
   @override
   void move(CanvasStageState stage, Offset at, Offset doc) =>
-      stage._applyCounterPart(counterId, piece, doc);
+      stage._applyCounterPiece(counterId, piece, doc);
 }

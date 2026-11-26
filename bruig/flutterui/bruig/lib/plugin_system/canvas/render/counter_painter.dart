@@ -9,16 +9,94 @@ import 'package:flutter/painting.dart';
 // counter_painter.dart draws a counter: a formatted number with words either
 // side, in a box, over whatever buttons it carries. The number and words are
 // one line of styled runs, so the line centres as the number's width changes.
+// Where each piece lands is worked out once (counterLaidOut), for the
+// painter and for the stage's presses alike.
 
 /// counterGap is the space between the buttons, and above them to the number.
 const double counterGap = 8;
 
-/// counterButtonRects is where a counter's buttons are, in document space.
-/// The stage hit-tests with it, so there is one calculation.
+/// CounterLaidOut is a counter laid out in its box: where its number goes
+/// and at what size, and where each piece is. The painter draws from it and
+/// the stage presses by it, so the two cannot differ.
+class CounterLaidOut {
+  /// inner is the box inside its padding; room is what of it the number
+  /// has (above a row of buttons).
+  final Rect inner;
+  final Rect room;
+
+  /// fit is the type's scale, from shrinking to fit (1 where it does not).
+  final double fit;
+
+  /// buttons are its buttons' boxes, in its buttons' order; none where they
+  /// do nothing (CounterMode.buttonsAct).
+  final List<Rect> buttons;
+
+  /// words are where the letters of its loosely placed words are drawn,
+  /// with [bands], the line each is laid out on.
+  final Map<CounterWords, Rect> words;
+  final Map<CounterWords, Rect> bands;
+
+  const CounterLaidOut._(
+      this.inner, this.room, this.fit, this.buttons, this.words, this.bands);
+
+  /// pieces are what a press can take on their own, buttons placed freely
+  /// first and then loose words, each where it is drawn.
+  List<(CounterPiece, Rect)> pieces(CounterElement e) => [
+        if (e.looseButtons)
+          for (var (i, r) in buttons.indexed) (CounterButtonPiece(i), r),
+        for (var MapEntry(:key, :value) in words.entries) (key, value),
+      ];
+}
+
+/// counterLaidOut is [e] laid out in [bounds], showing [value]; null where
+/// its box leaves no room inside.
+CounterLaidOut? counterLaidOut(CounterElement e, Rect bounds, double value) {
+  if (bounds.width <= 0 || bounds.height <= 0) return null;
+  var inner = e.box.inner(bounds);
+  if (inner.width <= 0 || inner.height <= 0) return null;
+
+  var buttons = _buttonRects(e, inner);
+  // Loose buttons take no strip from the number.
+  var room = buttons.isEmpty || e.looseButtons
+      ? inner
+      : Rect.fromLTRB(inner.left, inner.top, inner.right,
+          buttons.first.top - counterGap * _unit(inner));
+  var fit = room.height > 0 && e.fit ? counterFitScale(e, room, value) : 1.0;
+
+  var words = <CounterWords, Rect>{}, bands = <CounterWords, Rect>{};
+  if (e.loose && room.height > 0) {
+    var affix = _looseSpec(_scaled(e.affixSpec, fit));
+    for (var (piece, text, at) in [
+      (const CounterWords(after: false), e.before, e.beforeAt),
+      (const CounterWords(after: true), e.after, e.afterAt),
+    ]) {
+      if (text.isEmpty) continue;
+      // Element-wide and centred on the point.
+      var band = Rect.fromCenter(
+          center: _placed(inner, at),
+          width: inner.width,
+          height: math.max(affix.fontSize * 1.6, 1));
+      bands[piece] = band;
+      var shown = affix.textCase.apply(text).length;
+      words[piece] = textRunBox(text, affix, band, 0, shown) ?? band;
+    }
+  }
+  return CounterLaidOut._(inner, room, fit, buttons, words, bands);
+}
+
+/// counterButtonRects is where a counter's buttons are, in document space:
+/// none where they do nothing. The stage hit-tests with it, so there is one
+/// calculation.
 List<Rect> counterButtonRects(CounterElement e, Rect bounds) {
-  if (e.buttons.isEmpty) return const [];
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return const [];
+  return _buttonRects(e, inner);
+}
+
+List<Rect> _buttonRects(CounterElement e, Rect inner) {
+  // Kept as saved in other modes, and drawn and pressed again once it is a
+  // run (CounterMode.buttonsAct).
+  if (e.buttons.isEmpty || !e.mode.buttonsAct) return const [];
 
   // Placed by hand, at the element's button size; otherwise a row.
   if (e.looseButtons) {
@@ -31,7 +109,7 @@ List<Rect> counterButtonRects(CounterElement e, Rect bounds) {
     ];
   }
 
-  var height = counterButtonHeight(e, inner);
+  var height = _buttonRowHeight(e, inner);
   var gap = counterGap * _unit(inner);
   var each = (inner.width - gap * (e.buttons.length - 1)) / e.buttons.length;
   if (each <= 0) return const [];
@@ -50,10 +128,9 @@ Offset _placed(Rect inner, Offset at) => Offset(
       inner.center.dy + inner.height * at.dy,
     );
 
-/// counterButtonHeight is how tall that row is: the label plus the button's
-/// own padding, and never more than half the element.
-double counterButtonHeight(CounterElement e, Rect inner) {
-  if (e.buttons.isEmpty) return 0;
+/// _buttonRowHeight is how tall the row of buttons is: the label plus the
+/// button's own padding, and never more than half the element.
+double _buttonRowHeight(CounterElement e, Rect inner) {
   var label = e.buttonSpec.fontSize * 1.35;
   var pad = e.buttonBox.pad.top + e.buttonBox.pad.bottom;
   return math.min(inner.height * 0.5, label + pad);
@@ -79,50 +156,28 @@ void paintCounter(
   if (bounds.width <= 0 || bounds.height <= 0) return;
   paintBox(canvas, bounds, e.box);
 
-  var inner = e.box.inner(bounds);
-  if (inner.width <= 0 || inner.height <= 0) return;
+  var laid = counterLaidOut(e, bounds, value);
+  if (laid == null) return;
 
-  var buttons = counterButtonRects(e, bounds);
-  // Loose buttons take no strip from the number.
-  var room = buttons.isEmpty || e.looseButtons
-      ? inner
-      : Rect.fromLTRB(inner.left, inner.top, inner.right,
-          buttons.first.top - counterGap * _unit(inner));
-
+  var room = laid.room;
   if (room.height > 0) {
-    var scale = e.fit ? counterFitScale(e, room, value) : 1.0;
-    var number = _scaled(e.numberSpec, scale);
-    var affix = _scaled(e.affixSpec, scale);
-
+    var number = _scaled(e.numberSpec, laid.fit);
     if (e.loose) {
       // The words are somewhere of their own; the number keeps the line.
       paintTextInBox(canvas, e.format(value), number, room, clip: true);
-      _paintLoose(canvas, inner, e.before, affix, e.beforeAt);
-      _paintLoose(canvas, inner, e.after, affix, e.afterAt);
+      var affix = _looseSpec(_scaled(e.affixSpec, laid.fit));
+      for (var MapEntry(key: piece, value: band) in laid.bands.entries) {
+        paintTextInBox(canvas, piece.after ? e.after : e.before, affix, band,
+            clip: true);
+      }
     } else {
-      // A space run in the number's ems, so it shrinks with fitting; letter
-      // spacing would space out the words too.
-      var space = _spacer(e.gap, number);
-      paintRunsInBox(
-        canvas,
-        [
-          if (e.before.isNotEmpty) ...[
-            (e.before, affix),
-            if (space != null) space
-          ],
-          (e.format(value), number),
-          if (e.after.isNotEmpty) ...[
-            if (space != null) space,
-            (e.after, affix)
-          ],
-        ],
-        number,
-        room,
-        clip: true,
-      );
+      paintRunsInBox(canvas,
+          _line(e, value, number, _scaled(e.affixSpec, laid.fit)), number, room,
+          clip: true);
     }
   }
 
+  var buttons = laid.buttons;
   for (var i = 0; i < buttons.length; i++) {
     var box = i == pressed
         ? e.buttonBox.copyWith(fill: _lit(e.buttonBox.fill))
@@ -139,29 +194,32 @@ void paintCounter(
   }
 }
 
+/// _line is the counter's number with its words as one line of runs, in
+/// the [number]'s and the words' ([affix]) type: what is drawn, and what
+/// the fit measures (_measureNow), so the two cannot differ. Loose words
+/// are not on it.
+List<(String, TextSpec)> _line(
+    CounterElement e, double value, TextSpec number, TextSpec affix) {
+  var before = e.loose ? "" : e.before, after = e.loose ? "" : e.after;
+  // A space run in the number's ems, so it shrinks with fitting; letter
+  // spacing would space out the words too.
+  var space = _spacer(e.gap, number);
+  return [
+    if (before.isNotEmpty) ...[(before, affix), if (space != null) space],
+    (e.format(value), number),
+    if (after.isNotEmpty) ...[if (space != null) space, (after, affix)],
+  ];
+}
+
 /// _spacer is the gap between the number and a word: a space at [gap] ems
 /// of the number's type, or null for no gap.
 (String, TextSpec)? _spacer(double gap, TextSpec number) => gap <= 0
     ? null
     : (" ", number.copyWith(fontSize: math.max(0.1, number.fontSize * gap)));
 
-void _paintLoose(
-    ui.Canvas canvas, Rect inner, String text, TextSpec spec, Offset at) {
-  if (text.isEmpty) return;
-  var centre = _placed(inner, at);
-  // Element-wide and centred on the point.
-  var box = Rect.fromCenter(
-      center: centre,
-      width: inner.width,
-      height: math.max(spec.fontSize * 1.6, 1));
-  paintTextInBox(
-      canvas,
-      text,
-      spec.copyWith(
-          align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.middle),
-      box,
-      clip: true);
-}
+/// _looseSpec is a loose word's type: centred on its point either way.
+TextSpec _looseSpec(TextSpec spec) => spec.copyWith(
+    align: TextAlignSpec.center, verticalAlign: VerticalAlignSpec.middle);
 
 /// counterFitScale is how much the type comes down for the whole count to fit
 /// its room. Measured at both ends of the count and the value showing (a point
@@ -183,7 +241,8 @@ double counterFitScale(CounterElement e, Rect room, double value) {
 /// Counters never change, so an edited one is a new one and misses.
 final _measured = Expando<Map<double, Size>>();
 
-/// _measure is how big one line of this counter is at its own type sizes.
+/// _measure is how big one line of this counter is at its own type sizes:
+/// the number alone where its words are loose.
 Size _measure(CounterElement e, double value) {
   var kept = _measured[e] ??= {};
   if (kept[value] case var size?) return size;
@@ -192,30 +251,8 @@ Size _measure(CounterElement e, double value) {
 }
 
 Size _measureNow(CounterElement e, double value) {
-  var painter = TextPainter(
-    text: TextSpan(
-      style: textStyleOf(e.numberSpec),
-      children: [
-        if (e.before.isNotEmpty && !e.loose)
-          TextSpan(text: e.before, style: textStyleOf(e.affixSpec)),
-        if (e.before.isNotEmpty && e.gap > 0 && !e.loose)
-          TextSpan(
-              text: " ",
-              style: textStyleOf(e.numberSpec
-                  .copyWith(fontSize: e.numberSpec.fontSize * e.gap))),
-        TextSpan(text: e.format(value), style: textStyleOf(e.numberSpec)),
-        if (e.after.isNotEmpty && e.gap > 0 && !e.loose)
-          TextSpan(
-              text: " ",
-              style: textStyleOf(e.numberSpec
-                  .copyWith(fontSize: e.numberSpec.fontSize * e.gap))),
-        if (e.after.isNotEmpty && !e.loose)
-          TextSpan(text: e.after, style: textStyleOf(e.affixSpec)),
-      ],
-    ),
-    textDirection: TextDirection.ltr,
-    maxLines: 1,
-  )..layout();
+  var painter =
+      layOutRuns(_line(e, value, e.numberSpec, e.affixSpec), e.numberSpec);
   var size = Size(painter.width, painter.height);
   painter.dispose();
   return size;

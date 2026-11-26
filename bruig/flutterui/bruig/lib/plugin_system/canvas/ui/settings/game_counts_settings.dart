@@ -70,9 +70,7 @@ String countRule(CanvasDocument doc, GameCount c) {
     ...doc.elements,
     ...?doc.master?.elements,
   ].any((e) =>
-      e is CounterElement &&
-      e.source == CounterSource.game &&
-      e.gameCount == c.id);
+      e is CounterElement && e.mode == CounterMode.game && e.gameCount == c.id);
   return [
     if (c.reach case var at?) "At $at: $does",
     if (shown) "shown by a counter",

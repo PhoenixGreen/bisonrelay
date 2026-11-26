@@ -56,11 +56,9 @@ import 'support/kept_pictures.dart';
 // loose words are drawn and pressed; for a metronome where its parts are;
 // for a Camera its framing and lens.
 //
-// Some of those numbers are worked out by rules private to the painter or
-// the stage (a counter's loose words, the room its number is fitted to).
-// Those are written here as the code has them, marked where they are, so a
-// change to one of the rules shows only through the picture; the rest come
-// from the app's own functions.
+// The numbers come from the app's own functions: a counter's room, fit,
+// buttons and loose words from counterLaidOut, the one layout its painter
+// draws from and the stage presses by, and its box from drawnBox.
 //
 // To use it, set PARTS_PICTURES to a folder and run this file on the code
 // as it is: each state's picture (<state>.rgba and .png) and numbers
@@ -989,81 +987,40 @@ void _layoutNumbers(
   }
 }
 
-/// _counterShown is the value [e] shows on [frame], as paintElement works
-/// it out with nothing running it (an export).
+/// _counterShown is the value [e] shows on [frame] with nothing running it
+/// (an export).
 double _counterShown(CounterElement e, CanvasDocument doc, int frame) =>
-    e.isPageNumber
-        ? (doc.pageNumber ?? 0).toDouble()
-        : e.live
-            ? e.from
-            : (poseWithMotion(e, frame, doc).values[KeyframeChannel.count] ??
-                e.from);
-
-/// _counterBounds is the box paintElement draws [e] in: on a left-hand
-/// page a mirrored page number is moved across the page's middle.
-Rect _counterBounds(CounterElement e, CanvasDocument doc) {
-  var bounds = e.bounds;
-  if (e.mirrored && e.isPageNumber && doc.pageIsLeftHand) {
-    var page = doc.size.rect;
-    bounds = Rect.fromLTWH(page.left + page.right - bounds.right, bounds.top,
-        bounds.width, bounds.height);
-  }
-  return bounds;
-}
+    e.shownValue(page: doc.pageNumber, pose: poseWithMotion(e, frame, doc));
 
 void _counterNumbers(StringBuffer out, CounterElement e, CanvasDocument doc,
     int frame, StageHitTest hits) {
   var value = _counterShown(e, doc, frame);
   out.writeln("${e.id} shows ${_n(value)} as \"${e.textFor(value)}\"");
-  var bounds = _counterBounds(e, doc);
-  var posed = hits.posed(e);
-  out.writeln("${e.id} drawn in ${_rect(bounds)}, pressed in ${_rect(posed)}");
+  var bounds =
+      e.drawnBox(e.bounds, page: doc.size.rect, leftHand: doc.pageIsLeftHand);
+  var pressedIn = hits.drawn(e);
+  out.writeln("${e.id} drawn in ${_rect(bounds)}, pressed in "
+      "${_rect(pressedIn)}");
 
-  // The room the number is fitted to, as the painter works it out (its
-  // rule, written here).
-  var inner = e.box.inner(bounds);
-  var buttons = counterButtonRects(e, bounds);
-  var unit = math.max(0.2, inner.shortestSide / 120);
-  var room = buttons.isEmpty || e.looseButtons
-      ? inner
-      : Rect.fromLTRB(inner.left, inner.top, inner.right,
-          buttons.first.top - counterGap * unit);
-  var fit = e.fit ? counterFitScale(e, room, value) : 1.0;
-  out.writeln("${e.id} room ${_rect(room)} fit ${_n(fit)}");
+  // The room the number is fitted to, as the painter lays it out.
+  var drawn = counterLaidOut(e, bounds, value);
+  var pressed = counterLaidOut(e, pressedIn, value);
+  if (drawn == null || pressed == null) return;
+  out.writeln("${e.id} room ${_rect(drawn.room)} fit ${_n(drawn.fit)}");
 
   // Its buttons where they are drawn and where the stage presses them.
-  for (var (i, r) in buttons.indexed) {
+  for (var (i, r) in drawn.buttons.indexed) {
     out.writeln("${e.id} button $i ${e.buttons[i].name} drawn ${_rect(r)}");
   }
-  for (var (i, r) in counterButtonRects(e, posed).indexed) {
+  for (var (i, r) in counterButtonRects(e, pressedIn).indexed) {
     out.writeln("${e.id} button $i ${e.buttons[i].name} pressed ${_rect(r)}");
   }
 
-  // Loose words: where the painter draws each (_paintLoose's box, at the
-  // fitted size) and where the stage presses it (_counterPartUnder's box,
-  // at the unfitted size), each by its own rule, written here.
-  if (e.loose) {
-    var pressedInner = e.box.inner(posed);
-    for (var (which, text, at) in [
-      ("before", e.before, e.beforeAt),
-      ("after", e.after, e.afterAt),
-    ]) {
-      if (text.isEmpty) continue;
-      var drawnSize = e.affixSpec.fontSize * (fit >= 0.999 ? 1 : fit);
-      var drawn = Rect.fromCenter(
-          center: Offset(inner.center.dx + inner.width * at.dx,
-              inner.center.dy + inner.height * at.dy),
-          width: inner.width,
-          height: math.max(drawnSize * 1.6, 1));
-      var pressed = Rect.fromCenter(
-          center: Offset(pressedInner.center.dx + pressedInner.width * at.dx,
-              pressedInner.center.dy + pressedInner.height * at.dy),
-          width: math.max(
-              e.affixSpec.fontSize * text.length * 0.7, e.affixSpec.fontSize),
-          height: e.affixSpec.fontSize * 1.4);
-      out.writeln("${e.id} words $which drawn ${_rect(drawn)} "
-          "pressed ${_rect(pressed)}");
-    }
+  // Loose words: where the painter draws each and where the stage presses
+  // it.
+  for (var MapEntry(key: piece, value: r) in drawn.words.entries) {
+    out.writeln("${e.id} words ${piece.after ? "after" : "before"} drawn "
+        "${_rect(r)} pressed ${_rect(pressed.words[piece]!)}");
   }
 }
 

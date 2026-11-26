@@ -735,7 +735,7 @@ void main() {
           buttons: [CounterButton.input],
           looseButtons: true,
           buttonAt: [Offset(0.3, 0.2)]);
-      expect(e.live, isTrue);
+      expect(e.mode, CounterMode.run);
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
       var stage = await pump(tester, c);

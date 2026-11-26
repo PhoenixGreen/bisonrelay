@@ -72,7 +72,7 @@ void main() {
   });
 
   group("two boxes in one panel", () {
-    // A counter has its own box and its buttons' box.
+    // A run has its own box and its buttons' box.
     Future<void> counter(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       setTestScreen(tester, const Size(300, 9000));
@@ -80,7 +80,7 @@ void main() {
       addTearDown(() => CanvasSection.openAll = false);
       const doc = CanvasDocument();
       var e = (newElement(ElementKind.counter, doc) as CounterElement)
-          .copyWith(buttons: CounterButton.values);
+          .copyWith(keyed: false, buttons: CounterButton.values);
       var c = CanvasController(doc.addElement(e));
       addTearDown(c.dispose);
       c.selectOnly(e.id);

@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -78,6 +79,15 @@ class StageHitTest {
   /// posed is where [e] is drawn now: its resting box moved by its motion.
   Rect posed(CanvasElement e) => e.movedBoundsAt(frame, document, live: live);
 
+  /// drawn is [posed] where the page draws it: a mirrored page number on a
+  /// left-hand page is drawn across the page (CounterElement.drawnBox), and
+  /// pressed there.
+  Rect drawn(CanvasElement e) => switch (e) {
+        CounterElement c => c.drawnBox(posed(e),
+            page: document.size.rect, leftHand: document.pageIsLeftHand),
+        _ => posed(e),
+      };
+
   /// contains is whether document point [at] is on [e] as drawn, turn and
   /// slant undone.
   bool contains(CanvasElement e, Offset at) {
@@ -145,7 +155,7 @@ class StageHitTest {
       }
     }
 
-    var box = posed(e);
+    var box = drawn(e);
     var shape = e.movedFrameAt(frame, document, live: live);
     var local = at;
     if (!shape.upright) local = box.center + shape.invert(at - box.center);

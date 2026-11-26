@@ -260,8 +260,7 @@ List<(String, CanvasElement)> fullParts(CanvasDocument doc) {
     source: CounterSource.run,
     rate: 2.5,
     loop: true,
-    // Not set to start running: an editor opened on one starts it while the
-    // stage is first built, which Flutter refuses in a debug build.
+    running: true,
     buttons: CounterButton.values,
     buttonSpec: const TextSpec(fontSize: 11, weight: 700),
     buttonBox: const BoxSpec(fill: Color(0xFF3D7EFF), borderRadius: 3),

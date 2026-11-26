@@ -48,7 +48,7 @@ class CellEdit extends InPlaceEdit {
   const CellEdit(super.elementId, {required this.row, required this.column});
 }
 
-/// CounterSet is the field on a live counter's Set button, typed into in
+/// CounterSet is the field on a run's Set button, typed into in
 /// place of a dialog that would cover the counter.
 class CounterSet extends InPlaceEdit {
   /// at is which of the counter's buttons the field is on.

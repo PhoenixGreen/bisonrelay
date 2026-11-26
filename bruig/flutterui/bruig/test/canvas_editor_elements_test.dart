@@ -1205,7 +1205,7 @@ void main() {
       expect(find.byKey(const ValueKey("counterRate")), findsNothing);
 
       await press(tester, find.byKey(const ValueKey("counterKeyed")));
-      expect(counterIn(controller).live, isTrue);
+      expect(counterIn(controller).mode, CounterMode.run);
       expect(find.byKey(const ValueKey("counterPinFrom")), findsNothing);
       expect(find.byKey(const ValueKey("counterRate")), findsOneWidget);
       expect(find.byKey(const ValueKey("counterLoop")), findsOneWidget);

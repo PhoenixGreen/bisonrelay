@@ -48,11 +48,13 @@ extension CanvasElementEditing on CanvasController {
   }
 
   /// withCountLaidOut pins a new keyframed counter's count from the playhead
-  /// to two seconds on (or the last two seconds near the end), so From and
-  /// To work without pinning both by hand.
+  /// to two seconds on (or the last two seconds near the end), From at the
+  /// first key and To at the last, so From and To count without pinning
+  /// both by hand, and move those keys after (CounterElement.withEnds). A
+  /// page number or a game's count is not counted by keys, keyed or not.
   CounterElement withCountLaidOut(CounterElement e) {
     var last = _document.frames - 1;
-    if (!e.keyed || e.track != null || last < 1) return e;
+    if (e.mode != CounterMode.keyed || e.track != null || last < 1) return e;
     var rate = math.max(1, _document.frameRate);
     var start = _frame.clamp(0, last);
     var end = math.min(last, start + rate * 2);

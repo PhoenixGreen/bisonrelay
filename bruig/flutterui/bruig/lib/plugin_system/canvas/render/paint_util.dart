@@ -586,9 +586,30 @@ List<Shadow> softShadows(TextSpec spec, double scale) => [
         ),
     ];
 
+/// layOutRuns is one line of differently styled stretches laid out as one
+/// paragraph of spans, each in its own case: what paintRunsInBox draws, and
+/// what measures the same runs asks, so the two cannot differ. At [width]
+/// it fills that width, aligned as [base] says; without, it is as wide as
+/// its words. The caller disposes of it.
+TextPainter layOutRuns(List<(String, TextSpec)> runs, TextSpec base,
+        {double? width}) =>
+    TextPainter(
+      text: TextSpan(
+        style: textStyleOf(base),
+        children: [
+          for (var (text, spec) in runs)
+            TextSpan(text: spec.textCase.apply(text), style: textStyleOf(spec)),
+        ],
+      ),
+      textAlign: base.align.flutter,
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(minWidth: width ?? 0, maxWidth: width ?? double.infinity);
+
 /// paintRunsInBox draws one line of differently styled stretches, laid out
 /// and aligned as paintTextInBox would: one paragraph of spans, so the line
-/// aligns as a whole. Used by table cells whose rules style parts.
+/// aligns as a whole. Used by table cells whose rules style parts, and a
+/// counter's number with its words.
 double paintRunsInBox(
   ui.Canvas canvas,
   List<(String, TextSpec)> runs,
@@ -598,18 +619,7 @@ double paintRunsInBox(
 }) {
   if (runs.isEmpty || box.width <= 0) return 0;
 
-  var painter = TextPainter(
-    text: TextSpan(
-      style: textStyleOf(base),
-      children: [
-        for (var (text, spec) in runs)
-          TextSpan(text: spec.textCase.apply(text), style: textStyleOf(spec)),
-      ],
-    ),
-    textAlign: base.align.flutter,
-    textDirection: TextDirection.ltr,
-    maxLines: 1,
-  )..layout(minWidth: box.width, maxWidth: box.width);
+  var painter = layOutRuns(runs, base, width: box.width);
 
   var dy = switch (base.verticalAlign) {
     VerticalAlignSpec.top => 0.0,

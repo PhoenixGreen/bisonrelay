@@ -52,6 +52,12 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
         math.max(stroke.endReach, 1.5));
   }
 
+  // A mirrored page number is drawn across the page: see drawnBox.
+  if (element is CounterElement && doc != null) {
+    return element.drawnBox(moved(),
+        page: doc.size.rect, leftHand: doc.pageIsLeftHand);
+  }
+
   return moved();
 }
 

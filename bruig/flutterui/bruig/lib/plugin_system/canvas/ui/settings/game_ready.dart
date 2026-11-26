@@ -85,7 +85,7 @@ List<GameCheck> gameChecks(CanvasController c) {
   ];
   var shown = {
     for (var e in all)
-      if (e is CounterElement && e.source == CounterSource.game) e.gameCount,
+      if (e is CounterElement && e.mode == CounterMode.game) e.gameCount,
   };
   var unshown = [
     for (var k in doc.counts)
@@ -485,7 +485,7 @@ Future<String> startGame(CanvasController c, GameStarter kind,
     for (var k in wanted)
       if (!_everything(c.document).any((e) =>
           e is CounterElement &&
-          e.source == CounterSource.game &&
+          e.mode == CounterMode.game &&
           e.gameCount == k.id))
         k,
   ];

@@ -508,7 +508,7 @@ extension StagePress on CanvasStageState {
   /// _pressSelectedControls takes a press on the controls of a selected
   /// [element] whose click waits for the release, when the travel is known:
   /// a button, a video's or speaker's controls, a sheet, an instrument's
-  /// keys, a live counter's buttons and pieces, a chart's key. A press that
+  /// keys, a counter's buttons and pieces, a chart's key. A press that
   /// travels moves the element instead. True if one took the press.
   bool _pressSelectedControls(_Press press, CanvasElement element) {
     var _Press(:doc) = press;
@@ -570,18 +570,18 @@ extension StagePress on CanvasStageState {
       }
     }
 
-    // A live counter's buttons, on the same terms: only when selected and the
+    // A counter's buttons, on the same terms: only when selected and the
     // press does not become a drag. A loose piece is both, so the press is
     // armed here and the drag moves the piece.
     if (element is CounterElement && controller.isOnlySelected(element.id)) {
-      var part = _counterPartUnder(element, doc);
-      var at = element.live ? _counterButtonAt(element, doc) : -1;
-      if (part != null) {
+      var piece = _counterPieceUnder(element, doc);
+      var at = _counterButtonAt(element, doc);
+      if (piece != null) {
         controller.beginInteraction();
         _dragStart = doc;
-        var click = at >= 0 && element.live ? _CounterClick(element, at) : null;
-        setState(
-            () => _gesture = _CounterPieceDrag(element.id, part, click: click));
+        var click = at >= 0 ? _CounterClick(element, at) : null;
+        setState(() =>
+            _gesture = _CounterPieceDrag(element.id, piece, click: click));
         return true;
       }
       if (at >= 0) {

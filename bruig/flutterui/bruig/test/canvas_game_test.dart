@@ -887,7 +887,7 @@ void main() {
       var hud = const CounterElement(ElementBase(id: "coins"),
           source: CounterSource.game, gameCount: "coins");
       expect(hud.keyed, isTrue);
-      expect(hud.live, isTrue);
+      expect(hud.mode, CounterMode.game);
       var c = CanvasController(page.copyWith(
           game: true,
           counts: const [GameCount("coins", "Coins", start: 2)],

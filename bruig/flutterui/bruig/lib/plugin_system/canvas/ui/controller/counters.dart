@@ -1,7 +1,8 @@
 part of '../canvas_controller.dart';
 
-// Live counters, as the stage, the settings and the file player read and
-// press them. Part of CanvasController. The counting is CounterClock's
+// Counters' numbers as the controller knows them, as the stage, the
+// settings and the file player read and press them. Part of
+// CanvasController. The counting is CounterClock's
 // (controller/counter_clock.dart), which the controller holds as _counters;
 // what is here is what only the controller knows: a game's counts, and the
 // canvas the counters are on.
@@ -11,25 +12,33 @@ extension CanvasCounters on CanvasController {
   /// painter to see a change: counts are not in the document.
   int get counterTicks => _counters.ticks;
 
-  /// counterValue is what [e] is showing now: a clock shows the time of day,
-  /// anything else wherever its own count has got to.
-  double counterValue(CounterElement e) {
-    if (!e.live) return e.from;
-    if (e.source == CounterSource.clock) return _counters.secondsOfDay();
-    // A game's count: where the game has got it, else where it starts.
-    if (e.source == CounterSource.game) {
-      var count =
-          _document.counts.where((c) => c.id == e.gameCount).firstOrNull;
-      if (count == null) return e.from;
-      return (_game?.countOf(_document, count.id) ?? count.start).toDouble();
-    }
-    return _counters.count(e);
+  /// counterValue is what [e]'s own source says now: a clock the time of
+  /// day, a game's count where the game has got it, a run wherever its own
+  /// count has got to. A keyed counter and a page number take theirs from
+  /// the timeline and the page (CounterElement.shownValue), so this is
+  /// their start.
+  double counterValue(CounterElement e) => switch (e.mode) {
+        CounterMode.run => _counters.count(e),
+        CounterMode.clock => _counters.secondsOfDay(),
+        CounterMode.game => _gameCountOf(e),
+        CounterMode.keyed || CounterMode.page => e.from,
+      };
+
+  /// _gameCountOf is where the game has got [e]'s count, else where it
+  /// starts.
+  double _gameCountOf(CounterElement e) {
+    var count = _document.counts.where((c) => c.id == e.gameCount).firstOrNull;
+    if (count == null) return e.from;
+    return (_game?.countOf(_document, count.id) ?? count.start).toDouble();
   }
 
   /// counterRunning is whether [e] is counting now: its own `running` is
   /// where it starts. A clock is always running.
-  bool counterRunning(CounterElement e) =>
-      e.live && (e.source == CounterSource.clock || _counters.isRunning(e.id));
+  bool counterRunning(CounterElement e) => switch (e.mode) {
+        CounterMode.clock => true,
+        CounterMode.run || CounterMode.game => _counters.isRunning(e.id),
+        CounterMode.keyed || CounterMode.page => false,
+      };
 
   /// startCounters starts every counter set to start running, as opening a
   /// canvas with a clock on it should, and sets going again those left

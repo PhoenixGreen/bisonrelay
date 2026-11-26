@@ -279,27 +279,23 @@ extension StageHitTesting on CanvasStageState {
     return null;
   }
 
-  /// _counterPartUnder is the loose piece at a document point, if any.
-  int? _counterPartUnder(CounterElement e, Offset doc) {
-    if (e.looseButtons) {
-      var at = _counterButtonAt(e, doc);
-      if (at >= 0) return at;
-    }
-    if (!e.loose) return null;
-    var inner = e.box.inner(_hit.posed(e));
-    for (var (which, text, at) in [
-      (-2, e.before, e.beforeAt),
-      (-3, e.after, e.afterAt),
-    ]) {
-      if (text.isEmpty) continue;
-      var centre = Offset(inner.center.dx + inner.width * at.dx,
-          inner.center.dy + inner.height * at.dy);
-      var box = Rect.fromCenter(
-          center: centre,
-          width: math.max(
-              e.affixSpec.fontSize * text.length * 0.7, e.affixSpec.fontSize),
-          height: e.affixSpec.fontSize * 1.4);
-      if (box.contains(doc)) return which;
+  /// _counterLaidOut is [e] laid out where it is drawn, showing what it
+  /// shows: what the painter draws it from (counterLaidOut).
+  CounterLaidOut? _counterLaidOut(CounterElement e) => counterLaidOut(
+      e,
+      _hit.drawn(e),
+      e.shownValue(
+          page: document.pageNumber,
+          pose: poseWithMotion(e, controller.frame, document,
+              live: controller.liveMotion),
+          live: controller.counterValue));
+
+  /// _counterPieceUnder is the loosely placed piece of [e] at document
+  /// point [doc], where it is drawn, if any.
+  CounterPiece? _counterPieceUnder(CounterElement e, Offset doc) {
+    for (var (piece, rect)
+        in _counterLaidOut(e)?.pieces(e) ?? const <(CounterPiece, Rect)>[]) {
+      if (rect.contains(doc)) return piece;
     }
     return null;
   }
@@ -390,7 +386,7 @@ extension StageHitTesting on CanvasStageState {
 
   /// _counterButtonAt is the counter button at a document point, or -1.
   int _counterButtonAt(CounterElement e, Offset doc) {
-    var rects = counterButtonRects(e, _hit.posed(e));
+    var rects = counterButtonRects(e, _hit.drawn(e));
     for (var i = 0; i < rects.length; i++) {
       if (rects[i].contains(doc)) return i;
     }

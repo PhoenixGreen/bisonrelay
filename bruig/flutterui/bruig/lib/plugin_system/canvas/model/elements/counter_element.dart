@@ -2,16 +2,20 @@ import 'dart:math' as math;
 
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/colour_map.dart';
 
-// counter_element.dart is a number that counts: across the timeline (a
-// figure animating up in a video) or, with [CounterElement.keyed] off, in
-// real time (a clock, stopwatch, countdown or metronome). Both are a
-// formatted number with words either side in a box; only the number's
-// source differs. It is a value, not text, so it formats as a time too.
+// counter_element.dart is a number in a box with words either side, which is
+// one of five things (CounterMode): a count set by keyframes on the timeline
+// (a figure animating up in a video), a count that runs in real time when
+// started (a stopwatch or countdown), the time of day, one of a game's
+// counts, or the number of the page it is drawn on. Each is the same
+// formatted number; what differs is where the number comes from and which
+// fields mean anything, which CounterElement.mode answers. It is a value,
+// not text, so it formats as a time too.
 
 /// CounterSeparator is how digits are grouped and pointed, one convention
 /// (1.234,56 vs 1,234.56); the time formats are not grouping at all.
@@ -38,11 +42,12 @@ enum CounterSeparator {
       );
 }
 
-/// CounterSource is where a live counter's number comes from; a keyed one
-/// reads the timeline instead, except [game], which is always live.
+/// CounterSource is where a counter not counted by keyframes takes its
+/// number from. A page number and a game's count take theirs from the page
+/// and the game whatever [CounterElement.keyed] says (see CounterMode).
 enum CounterSource {
   /// run counts from the start value towards the end at the element's rate
-  /// a second: a countdown, stopwatch or metronome by the ends and rate.
+  /// a second: a countdown or stopwatch by the ends and rate.
   run("Counts", "From the start value to the end at a rate you set"),
 
   /// clock is the time of day in seconds since midnight; choosing it sets a
@@ -66,7 +71,8 @@ enum CounterSource {
       values.firstWhere((s) => s.name == name, orElse: () => CounterSource.run);
 }
 
-/// CounterButton is one of the controls a live counter can offer.
+/// CounterButton is one of the controls a run can offer (see
+/// CounterMode.buttonsAct).
 enum CounterButton {
   startStop("Start / stop", "Runs the counter and holds it"),
   reset("Reset", "Back to the start value"),
@@ -82,6 +88,103 @@ enum CounterButton {
     }
     return null;
   }
+}
+
+/// CounterPiece is a piece of a counter placed in its box that can be taken
+/// on its own: its words before or after the number where they are placed
+/// freely, or one of its buttons.
+sealed class CounterPiece {
+  const CounterPiece();
+}
+
+/// CounterWords is the words before the number, or with [after] after it.
+final class CounterWords extends CounterPiece {
+  final bool after;
+  const CounterWords({required this.after});
+
+  @override
+  bool operator ==(Object other) =>
+      other is CounterWords && other.after == after;
+
+  @override
+  int get hashCode => after.hashCode;
+}
+
+/// CounterButtonPiece is the counter's button [index], in its buttons'
+/// order.
+final class CounterButtonPiece extends CounterPiece {
+  final int index;
+  const CounterButtonPiece(this.index);
+
+  @override
+  bool operator ==(Object other) =>
+      other is CounterButtonPiece && other.index == index;
+
+  @override
+  int get hashCode => index.hashCode;
+}
+
+/// CounterMode is which of its five things a counter is. It is not saved:
+/// [CounterElement.mode] answers it from the fields that are, so a file
+/// reads and writes as it always has. What reads a counter asks its mode
+/// and switches over it with no default, so a sixth mode is a case here
+/// and the compiler names every reader that must say what it does.
+///
+/// Which fields mean anything in which mode ("all" is every mode):
+///
+/// | Field                        | keyed | run | clock | game | page |
+/// |------------------------------|-------|-----|-------|------|------|
+/// | from, to                     | ends  | ends| fit   | fit  | fit  |
+/// | rate, loop                   |       | yes |       |      |      |
+/// | running                      |       | yes |       |      |      |
+/// | gameCount                    |       |     |       | yes  |      |
+/// | mirrored                     |       |     |       |      | yes  |
+/// | buttons and their look/place |       | yes |       |      |      |
+/// | the count keys on its track  | yes   |     |       |      |      |
+///
+/// Everything else (how the number is written, the words, the type, the
+/// box, fit, the arrival) means the same in all five. "fit" is From and To
+/// read only to size the type (counterFitScale measures both ends); "ends"
+/// is the two ends of the count, which a game's count also falls back to
+/// when its game count is gone.
+enum CounterMode {
+  /// keyed reads the number off the count keys on its track.
+  keyed("Keyframes"),
+
+  /// run counts from From to To at its rate once started, by its buttons
+  /// or by starting running.
+  run("Counts"),
+
+  /// clock shows the reader's time of day.
+  clock("The time"),
+
+  /// game shows one of the game's counts (CounterElement.gameCount).
+  game("A game count"),
+
+  /// page shows the number of the page it is drawn on.
+  page("The page number");
+
+  final String label;
+  const CounterMode(this.label);
+
+  /// buttonsAct is whether its Start, Reset and Set buttons do anything,
+  /// and so whether they are offered, drawn and pressed: only a run has a
+  /// count of its own for them to start, reset and set.
+  bool get buttonsAct => switch (this) {
+        CounterMode.run => true,
+        CounterMode.keyed ||
+        CounterMode.clock ||
+        CounterMode.game ||
+        CounterMode.page =>
+          false,
+      };
+
+  /// countsEnds is whether From and To are the ends of the count it shows
+  /// (see the table above), and so whether they are offered.
+  bool get countsEnds => switch (this) {
+        CounterMode.keyed || CounterMode.run => true,
+        CounterMode.clock || CounterMode.game || CounterMode.page => false,
+      };
 }
 
 class CounterElement extends CanvasElement {
@@ -124,11 +227,14 @@ class CounterElement extends CanvasElement {
   /// figures keep their size as they count.
   final bool fit;
 
-  /// keyed reads the number off the timeline (count clips, or a legacy
-  /// track); off, it runs in real time and the buttons work.
+  /// keyed reads the number off the count keys on its track; off, it takes
+  /// it from its [source]. Saved as "live", the other way round, for a
+  /// counter that is not keyed. A page number and a game's count are what
+  /// their source says whichever it is (see [mode]).
   final bool keyed;
 
-  /// source, rate (units a second) and loop are the live settings.
+  /// source is where the number comes from when it is not keyed; rate
+  /// (units a second) and loop are a run's.
   final CounterSource source;
   final double rate;
   final bool loop;
@@ -141,8 +247,9 @@ class CounterElement extends CanvasElement {
   /// and a centred number stays centred. See pageIsLeft in canvas_pages.dart.
   final bool mirrored;
 
-  /// running is whether a live counter is counting before anything is
-  /// pressed: true for a clock, false for a stopwatch.
+  /// running is whether a run starts counting as the canvas opens, before
+  /// anything is pressed: false for a stopwatch. Whether one is counting
+  /// now is the controller's (counterRunning).
   final bool running;
 
   /// buttons are the controls drawn under the number, in this order.
@@ -214,6 +321,11 @@ class CounterElement extends CanvasElement {
   static const maxGap = 8.0, maxRate = 100000.0;
   static const minButtonSize = 0.05, maxButtonSize = 1.0;
 
+  /// maxEnd is the furthest from nought the panel sets From, To and a
+  /// count key; maxDecimals the most figures after the point it writes.
+  static const maxEnd = 1000000000.0;
+  static const maxDecimals = 8;
+
   @override
   ElementKind get kind => ElementKind.counter;
 
@@ -235,13 +347,103 @@ class CounterElement extends CanvasElement {
     return Offset(0, 0.3 - (count - 1 - i) * 0.18);
   }
 
-  /// live is whether it runs in real time: a page number never; a game count
-  /// always, whatever [keyed] says, since a new counter starts keyed.
-  bool get live =>
-      source == CounterSource.game || (!keyed && source != CounterSource.page);
+  /// mode is which of its five things this is (see CounterMode). A page
+  /// number and a game's count are so whatever [keyed] says: a new counter
+  /// starts keyed, and choosing either does not turn keying off.
+  CounterMode get mode => switch (source) {
+        CounterSource.page => CounterMode.page,
+        CounterSource.game => CounterMode.game,
+        _ when keyed => CounterMode.keyed,
+        CounterSource.run => CounterMode.run,
+        CounterSource.clock => CounterMode.clock,
+      };
+
+  /// withPieceAt is this with [piece] placed at [at], a fraction of the box
+  /// from its middle (see [beforeAt]).
+  CounterElement withPieceAt(CounterPiece piece, Offset at) => switch (piece) {
+        CounterWords(after: false) => copyWith(beforeAt: at),
+        CounterWords(after: true) => copyWith(afterAt: at),
+        CounterButtonPiece(:var index) => copyWith(buttonAt: [
+            for (var i = 0; i < buttons.length; i++)
+              i == index ? at : placedButton(i),
+          ]),
+      };
+
+  /// mirroredOn is whether it is drawn mirrored across the page: a page
+  /// number set to mirror, on a left-hand page ([leftHand]).
+  bool mirroredOn({required bool leftHand}) =>
+      leftHand && mirrored && mode == CounterMode.page;
+
+  /// drawnBox is where its box [box] is drawn on a page [page] wide: across
+  /// the page's middle where it is [mirroredOn] it, so a spread's sides
+  /// match and a centred number stays centred. The renderer draws it there,
+  /// and the stage shows and presses it there.
+  Rect drawnBox(Rect box, {required Rect page, required bool leftHand}) =>
+      mirroredOn(leftHand: leftHand)
+          ? Rect.fromLTWH(page.left + page.right - box.right, box.top,
+              box.width, box.height)
+          : box;
+
+  /// countKeys are the keys on its track that hold a count, in frame order.
+  List<Keyframe> get countKeys => [
+        for (var k in track?.keys ?? const <Keyframe>[])
+          if (k.values.containsKey(KeyframeChannel.count)) k,
+      ];
+
+  /// keyedEnds is the first and last number its count keys hold, or null
+  /// for none: what a keyed counter counts between, which From and To are
+  /// only while the keys follow them (see withEnds).
+  (double, double)? get keyedEnds {
+    var keys = countKeys;
+    if (keys.isEmpty) return null;
+    return (
+      keys.first.values[KeyframeChannel.count]!,
+      keys.last.values[KeyframeChannel.count]!
+    );
+  }
+
+  /// withEnds is this with From set to [from] and To to [to], and its first
+  /// count key moved with From and its last with To while each still holds
+  /// the old end: a new counter's count is laid out from From to To, so
+  /// setting To 500 counts to 500. A key changed by hand to some other
+  /// number is the person's own, and stays as it is. With one count key
+  /// it is the first.
+  CounterElement withEnds({double? from, double? to}) {
+    var next = copyWith(from: from, to: to);
+    var keys = countKeys;
+    if (keys.isEmpty) return next;
+    var track = this.track!;
+    Keyframe moved(Keyframe k, double was, double? now) =>
+        now != null && k.values[KeyframeChannel.count] == was
+            ? k.withValue(KeyframeChannel.count, now)
+            : k;
+    var first = moved(keys.first, this.from, from);
+    track = track.withKey(first);
+    if (keys.length > 1) track = track.withKey(moved(keys.last, this.to, to));
+    return next.withBase(track: track) as CounterElement;
+  }
 
   /// isPageNumber is whether this shows the number of its page.
-  bool get isPageNumber => source == CounterSource.page;
+  bool get isPageNumber => mode == CounterMode.page;
+
+  /// shownValue is the number it shows: a page number the page's [page]
+  /// (none on a cover), a keyed one what its [pose] holds, and a run, a
+  /// clock or a game's count what [live] says (the controller's
+  /// counterValue), or its start where nothing runs it (an export). The
+  /// renderer, the stage and the panel all ask this.
+  double shownValue({
+    required int? page,
+    required Keyframe pose,
+    double Function(CounterElement)? live,
+  }) =>
+      switch (mode) {
+        CounterMode.page => (page ?? 0).toDouble(),
+        CounterMode.keyed => pose.values[KeyframeChannel.count] ?? from,
+        CounterMode.run ||
+        CounterMode.clock ||
+        CounterMode.game =>
+          live?.call(this) ?? from,
+      };
 
   @override
   Set<String> get assetIds => {...box.assetIds, ...buttonBox.assetIds};
@@ -412,7 +614,8 @@ class CounterElement extends CanvasElement {
     return CounterElement(b,
         from: jsonDouble(json["from"], _defaults.from),
         to: jsonDouble(json["to"], _defaults.to),
-        decimals: jsonInt(json["decimals"], _defaults.decimals).clamp(0, 8),
+        decimals:
+            jsonInt(json["decimals"], _defaults.decimals).clamp(0, maxDecimals),
         separator: CounterSeparator.fromName(jsonStr(json["sep"])),
         before: jsonString(json["before"], _defaults.before),
         after: jsonString(json["after"], _defaults.after),
@@ -464,10 +667,10 @@ Offset _offsetFromJson(Object? raw) => raw is List && raw.length == 2
         jsonDouble(raw[1], 0).clamp(-1.0, 1.0))
     : Offset.zero;
 
-/// formatCounter writes a number as a counter writes it: a free function
-/// so the settings panel can preview a choice without an element.
+/// formatCounter writes a number as a counter writes it, at [decimals]
+/// figures after the point and grouped by [separator].
 String formatCounter(double value, int decimals, CounterSeparator separator) {
-  var places = decimals.clamp(0, 8);
+  var places = decimals.clamp(0, CounterElement.maxDecimals);
   if (separator.isTime) return _asTime(value, places, separator);
 
   // Rounded once, then taken apart as a string: rounding the whole part and

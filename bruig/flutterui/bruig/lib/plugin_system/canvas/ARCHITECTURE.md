@@ -509,6 +509,44 @@ preset, a cell removed) lets go of what was docked in a cell that is gone,
 where it is: `layoutsSynced` does it on every change (`docksLetGo`), and
 moves only what is docked in a cell the layout has.
 
+### A counter's mode
+
+A counter is one of five things, `CounterMode`
+(`model/elements/counter_element.dart`): a count set by keyframes, a run
+(counting once started), the time of day, one of a game's counts, or the
+number of its page. It is not saved: `CounterElement.mode` answers it from
+the fields that are (`keyed`, saved as `"live"` the other way round, and
+`source`; a page number and a game's count are so whatever `keyed` says),
+so a file reads and writes as it always has. The table over `CounterMode`
+says which field means anything in which mode, and the mode answers the
+small questions: `buttonsAct` (only a run's Start, Reset and Set do
+anything, so only a run's are offered, drawn and pressed; a counter saved
+with buttons in another mode keeps them), `countsEnds` (From and To are a
+keyed count's or a run's ends). The number shown is `shownValue`, which
+the renderer, the stage and the panel ask. The painter, the clock
+(`CounterClock`), the controller's `counterValue`, the stage and the panel
+switch over the mode with no default, so a sixth mode is a case there and
+the compiler names every reader.
+
+From and To are set through `withEnds`: a keyed count's first and last
+count keys move with them while they still hold the old ends (a new
+counter's count is laid out from From to To by `withCountLaidOut`), and a
+key changed by hand to another number stays. A clock is kept going while
+its canvas is shown (`CounterClock.keepClocks`), whatever `running` says.
+
+Where a counter's pieces are is worked out once, by `counterLaidOut`
+(`render/counter_painter.dart`): the room its number has, the fit, its
+buttons, and where the letters of its loose words are. The painter draws
+from it and the stage presses by it, so the two cannot differ; a piece is a
+`CounterPiece` (`CounterWords`, `CounterButtonPiece`), placed by
+`withPieceAt`. Its number and words are one line of runs, measured for the
+fit by the same call that draws them (`layOutRuns`, beside
+`paintRunsInBox`), so a case or a gap cannot be measured one way and drawn
+another. A mirrored page number on a left-hand page is drawn across the
+page (`CounterElement.drawnBox`); the renderer, the selection box
+(`visualBoundsOf`) and the press (`StageHitTest.drawn`) all ask it, and a
+move drag takes it the way the pointer goes.
+
 ## The editor
 
 `CanvasController` (`ui/canvas_controller.dart`) is the editing session. One
@@ -531,8 +569,9 @@ are with its lanes (`lanes.dart`), and what a button element does is
 in the editor and in a published book, and where the two differ. What needs
 nothing of the controller is a library beside the parts rather than a part,
 handed what it reads and what to tell: `view_types.dart`;
-`counter_clock.dart`, the live counters' clock, which the controller holds
-one of (`counters.dart` is the controller's side of it: a game's counts);
+`counter_clock.dart`, the counters' clock (a run's count, and a clock
+kept going while shown), which the controller holds one of (`counters.dart`
+is the controller's side of it: a game's counts);
 and `playhead_on.dart`, what the playhead is on (below).
 `test/canvas_layers_test.dart` holds those three to not importing the
 controller.

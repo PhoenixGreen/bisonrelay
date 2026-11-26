@@ -164,7 +164,7 @@ typedef StageLive = ({
   /// hoveredButton is the button element under the pointer, drawn lit.
   String? hoveredButton,
 
-  /// counterHover is the live counter under the pointer and which of its
+  /// counterHover is the run under the pointer and which of its
   /// buttons, drawn lit; id null and button -1 when there is none.
   ({String? id, int button}) counterHover,
 

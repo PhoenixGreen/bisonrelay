@@ -30,11 +30,12 @@ import 'support/kept_lists.dart';
 // canvas_panel_keys_test.dart is what every kind's settings show, in the real
 // sidebar at the width it opens at, with every section, card and "more"
 // group open: every key in order and every piece of text in order, for each
-// kind as first added and as filled (element_samples.dart), and for the few
-// places that the place-and-size group shows something of its own (a page
-// number, a Camera's depth, several page shapes, words on a line), for a
-// panel with two boxes, and for what a shape's, a line's and a path's
-// panels show beyond the samples (_strokeStates).
+// kind as first added and as filled (element_samples.dart), for a counter
+// in a document of pages (where it can be the page number), for the few
+// places that the place-and-size group shows something of its own (a
+// Camera's depth, several page shapes, words on a line), for a panel with
+// two boxes, and for what a shape's, a line's and a path's panels show
+// beyond the samples (_strokeStates).
 //
 // It is how a change to how panels are built is shown to change nothing a
 // person sees. Set PANEL_KEYS to a folder and run this file on the code as
@@ -75,9 +76,10 @@ List<_State> _states() {
           .addElement(counter.copyWith(source: CounterSource.page)),
       id: counter.id,
     ),
-    // Two boxes in one panel: its own and its buttons'.
+    // Two boxes in one panel: its own and its buttons', which only a run
+    // offers.
     alone("Counter, with buttons",
-        counter.copyWith(buttons: CounterButton.values)),
+        counter.copyWith(keyed: false, buttons: CounterButton.values)),
     (
       name: "Text, with a Camera, on two page shapes",
       document: const CanvasDocument(targets: ["feedAd", "wide"])

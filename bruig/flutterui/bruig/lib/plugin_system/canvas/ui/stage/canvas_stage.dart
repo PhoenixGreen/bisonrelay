@@ -454,8 +454,12 @@ class CanvasStageState extends State<CanvasStage>
     }
     _scroller.down.addListener(_followScroll);
     _scroller.across.addListener(_followScroll);
-    // Counters set to start running do; a stopwatch waits.
-    controller.startCounters();
+    // Counters set to start running do; a stopwatch waits. Just after this
+    // build, as leaving the page stops them just after its last: starting
+    // tells the controller's watchers, some built in this frame already.
+    scheduleMicrotask(() {
+      if (mounted) controller.startCounters();
+    });
     // Until the key shader lands a keyed video is drawn unkeyed, and so on.
     for (var l in _shadersReady) {
       l.addListener(_onChanged);
@@ -683,7 +687,7 @@ class CanvasStageState extends State<CanvasStage>
   GuideAxis? _hoverRuler;
 
   /// _hoverPressable is whether a click here would press a selected button,
-  /// speaker or video control, or a live counter's button.
+  /// speaker or video control, or a run's button.
   bool _hoverPressable = false;
 
   /// _gizmoHot is the part of the gizmo the pointer was last over, drawn

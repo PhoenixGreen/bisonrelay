@@ -181,7 +181,7 @@ extension StageRelease on CanvasStageState {
 
     String? counter;
     var at = -1;
-    if (element is CounterElement && element.live) {
+    if (element is CounterElement) {
       at = _counterButtonAt(element, doc);
       if (at >= 0) counter = element.id;
     }

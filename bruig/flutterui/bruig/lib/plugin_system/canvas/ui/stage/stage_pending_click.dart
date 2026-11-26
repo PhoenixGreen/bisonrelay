@@ -107,7 +107,7 @@ class _AudioClick extends PendingClick {
   void click(CanvasStageState stage) => stage._pressAudio(speaker, part, at);
 }
 
-/// _CounterClick is a live counter's button pressed: clicked, it runs (see
+/// _CounterClick is a run's button pressed: clicked, it runs (see
 /// _pressCounter).
 class _CounterClick extends PendingClick {
   _CounterClick(this.counter, this.at);

@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:bruig/theming_system/theme_manager.dart';
 
-// counter_input.dart is the field a live counter's Set button opens over the
+// counter_input.dart is the field a run's Set button opens over the
 // counter.
 
-/// CounterInput is the field a live counter's Set button opens in place of a
+/// CounterInput is the field a run's Set button opens in place of a
 /// dialog that would cover the counter. Its value opens selected.
 class CounterInput extends StatefulWidget {
   final double value;

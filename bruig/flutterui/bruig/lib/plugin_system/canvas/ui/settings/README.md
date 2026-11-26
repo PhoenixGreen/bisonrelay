@@ -68,7 +68,8 @@ its sections' bits are named pieces (`_kindBit`, `_lookBit`, `_wordsBit`,
 A control in the quick strip is the twin of one in a section. Build the two
 with one function that is told which it is (`quick:`), so their range, what
 they offer and what they write cannot part: the shape's `_outlineWidth`,
-and a stroke's controls in `stroke_controls.dart`. Take every range from
+a counter's From, To and Written (`_end`, `_written`), and a stroke's
+controls in `stroke_controls.dart`. Take every range from
 the model (`StrokeRange`, `SpeechBubbleSpec.maxTailLength`), never a number
 written in the panel.
 

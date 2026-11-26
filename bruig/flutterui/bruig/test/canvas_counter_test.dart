@@ -126,8 +126,8 @@ void main() {
     test("is keyed until it is told to run", () {
       const e = CounterElement(ElementBase(id: "c"));
       expect(e.keyed, isTrue);
-      expect(e.live, isFalse);
-      expect(e.copyWith(keyed: false).live, isTrue);
+      expect(e.mode, CounterMode.keyed);
+      expect(e.copyWith(keyed: false).mode, CounterMode.run);
     });
   });
 

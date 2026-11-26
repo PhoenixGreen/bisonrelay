@@ -295,10 +295,16 @@ extension StageDrag on CanvasStageState {
         next = next.withElement(controller.cameraShifted(camera, delta));
         continue;
       }
+      // A page number drawn mirrored across the page is placed the other
+      // way across, so what is drawn follows the pointer (drawnBox).
+      var by = element is CounterElement &&
+              element.mirroredOn(leftHand: document.pageIsLeftHand)
+          ? Offset(-delta.dx, delta.dy)
+          : delta;
       // Through the controller, so an animated element is posed rather than
       // moved. See CanvasController.posesRatherThanMoves.
       next = next.withElement(controller
-          .movedTo(element, entry.value.topLeft + delta, free: reach == null));
+          .movedTo(element, entry.value.topLeft + by, free: reach == null));
     }
     controller.apply(next, transient: true);
     return caught;

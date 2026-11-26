@@ -716,7 +716,7 @@ class CanvasController extends ChangeNotifier {
     // A live preview's widget goes with the page and is built again on the
     // way back, which would run its code again with nobody pressing Run.
     if (_codeLive != null) unawaited(endLiveCode());
-    _counters.stopTimer();
+    _counters.leave();
     _letGoOfLive();
     stopAudio();
     clearRenderCaches();
@@ -897,6 +897,8 @@ class CanvasController extends ChangeNotifier {
     _syncTimeline();
     _scheduleParts();
     if (!transient && _interaction == null) _followEdits(was);
+    // A counter made a clock goes from now (see CounterClock.keepClocks).
+    if (!transient) _counters.keepClocks();
 
     // A step of a gesture: endInteraction tells chrome when it is done.
     transient && _interaction != null ? _notifyRapid() : notifyListeners();
@@ -968,6 +970,7 @@ class CanvasController extends ChangeNotifier {
     _audioFollowsPage(turned: false);
     _syncTimeline();
     _followEdits(before);
+    _counters.keepClocks();
     notifyListeners();
   }
 

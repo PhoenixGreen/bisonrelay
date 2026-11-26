@@ -239,7 +239,7 @@ void main() {
       var number = CounterElement(const ElementBase(id: "n"),
           source: CounterSource.page);
       expect(number.isPageNumber, isTrue);
-      expect(number.live, isFalse,
+      expect(number.mode, CounterMode.page,
           reason: "it does not run, and it has no buttons");
     });
   });

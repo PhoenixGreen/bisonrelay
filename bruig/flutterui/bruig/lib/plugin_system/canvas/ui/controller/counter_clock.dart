@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 
-// counter_clock.dart is the live counters' clock: where each counter's own
+// counter_clock.dart is the counters' clock: where each run's own
 // count has got to, which are counting, and the timer that moves them on.
 // It knows nothing of the controller, which holds one and hands it what it
 // reads (the document's counters) and what to tell (a count changed).
@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 // Counts are not on the elements: writing each tick into the document would
 // make a clock an unsaved change every second and flood the undo history.
 
-/// CounterClock counts the open canvas's live counters in real time.
+/// CounterClock counts the open canvas's runs in real time.
 class CounterClock {
   /// [counters] are the counters on the canvas showing, [counterById] the
   /// counter of an id anywhere in the document (null for none); [changed]
@@ -35,7 +35,7 @@ class CounterClock {
   final void Function() _ticked;
   final DateTime Function() _now;
 
-  /// _counts is what each live counter shows, by element id.
+  /// _counts is where each counter's own count has got to, by element id.
   final Map<String, double> _counts = {};
 
   /// _running is which of them are counting, and _since when each was last
@@ -44,6 +44,10 @@ class CounterClock {
   final Map<String, DateTime> _since = {};
 
   Timer? _timer;
+
+  /// _shown is whether the canvas is on screen: from start, as the page
+  /// opens on it, until leave. Clocks are kept going only then.
+  bool _shown = false;
 
   /// ticks counts the counters' moves, for the stage's painter to see a
   /// change: counts are not in the document.
@@ -66,26 +70,45 @@ class CounterClock {
         now.millisecond / 1000;
   }
 
-  /// start starts every counter set to start running, as opening a canvas
-  /// with a clock on it should, and sets going again those left running
-  /// when the timer was stopped (see stopTimer).
+  /// start starts every run set to start running, as opening a canvas
+  /// should, sets going again those left running when the timer was
+  /// stopped (see stopTimer), and keeps every clock going (keepClocks).
   void start() {
+    _shown = true;
     // From where each was, not on by the time the timer was stopped.
     var now = _now();
     for (var id in _running) {
       _since[id] = now;
     }
     if (_running.isNotEmpty) _startTimer();
+    keepClocks();
     for (var e in _counters()) {
-      if (e.live && e.running) run(e, true);
+      if (e.mode == CounterMode.run && e.running) run(e, true);
     }
+  }
+
+  /// keepClocks keeps the timer going for every clock on the canvas while
+  /// it is shown, so the time it shows is drawn again as it moves: a clock
+  /// is always going, whatever its `running` says. It tells nothing: what
+  /// calls it is about to tell of a change of its own, and a tick tells of
+  /// each move.
+  void keepClocks() {
+    if (!_shown) return;
+    var added = false;
+    for (var e in _counters()) {
+      if (e.mode == CounterMode.clock && _running.add(e.id)) {
+        _since[e.id] = _now();
+        added = true;
+      }
+    }
+    if (added) _startTimer();
   }
 
   /// press is what one of a counter's own buttons does. Returns true where
   /// the press was handled here; Input returns false, and the caller asks
   /// for a number (see set).
   bool press(CounterElement e, CounterButton button) {
-    if (!e.live) return true;
+    if (!e.mode.buttonsAct) return true;
     switch (button) {
       case CounterButton.startStop:
         run(e, !_running.contains(e.id));
@@ -131,24 +154,44 @@ class CounterClock {
 
   /// stopTimer stops the counting without stopping any counter: those
   /// running are still running, and start sets them going again from where
-  /// they were. For the page left, with nothing to show them.
+  /// they were.
   void stopTimer() {
     _timer?.cancel();
     _timer = null;
   }
 
-  /// tick moves every running counter on by the time that has passed: by
-  /// the clock rather than a fixed step per tick, since the timer loses time
-  /// whenever the window is busy.
+  /// leave is the page left, with nothing to show the counters: the timer
+  /// stops (stopTimer), and no clock is kept going until start.
+  void leave() {
+    _shown = false;
+    stopTimer();
+  }
+
+  /// tick moves every running run on by the time that has passed: by the
+  /// clock rather than a fixed step per tick, since the timer loses time
+  /// whenever the window is busy. A clock is told of as moved at each.
   void tick({DateTime? now}) {
     if (_running.isEmpty) return;
     var at = now ?? _now();
     var moved = false;
     for (var id in _running.toList()) {
       var e = _counterById(id);
-      if (e == null || !e.live) {
+      if (e == null) {
         _running.remove(id);
         continue;
+      }
+      switch (e.mode) {
+        case CounterMode.run:
+          break;
+        // Its time is the reader's (secondsOfDay); the tick is for drawing
+        // it again, and it never ends.
+        case CounterMode.clock:
+          _since[id] = at;
+          moved = true;
+          continue;
+        case CounterMode.keyed || CounterMode.game || CounterMode.page:
+          _running.remove(id);
+          continue;
       }
       var since = _since[id] ?? at;
       var seconds = at.difference(since).inMicroseconds / 1000000;

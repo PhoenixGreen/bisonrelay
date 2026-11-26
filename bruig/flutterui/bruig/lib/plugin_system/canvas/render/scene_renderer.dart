@@ -833,15 +833,10 @@ void paintElement(
   }
 
   // A page number on the leaf's outside edge: mirrored on a left-hand page
-  // so a spread matches and centred stays centred (CounterElement.mirrored).
-  if (element is CounterElement &&
-      element.mirrored &&
-      element.isPageNumber &&
-      document != null &&
-      document.pageIsLeftHand) {
-    var page = document.size.rect;
-    bounds = Rect.fromLTWH(page.left + page.right - bounds.right, bounds.top,
-        bounds.width, bounds.height);
+  // (CounterElement.drawnBox, which the stage presses too).
+  if (element is CounterElement && document != null) {
+    bounds = element.drawnBox(bounds,
+        page: document.size.rect, leftHand: document.pageIsLeftHand);
   }
 
   // Nothing to draw in no room -- except a line, whose box has no height
@@ -1037,15 +1032,8 @@ void paintElement(
                 canvas,
                 bounds,
                 e,
-                // A page number is read off the page (CounterSource.page);
-                // a live counter from whatever runs it, or its start where
-                // nothing does; a keyed one from its pose alone, never the
-                // live callback, which would answer with its start.
-                e.isPageNumber
-                    ? (document?.pageNumber ?? 0).toDouble()
-                    : e.live
-                        ? (counterValue?.call(e) ?? e.from)
-                        : (pose.values[KeyframeChannel.count] ?? e.from),
+                e.shownValue(
+                    page: document?.pageNumber, pose: pose, live: counterValue),
                 pressed: counterPressed?.call(e) ?? -1,
                 running: counterRunning?.call(e)));
       case SheetElement e:

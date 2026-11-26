@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stroke.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
@@ -34,9 +33,6 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         ..._skewRow(p),
         // Distance from the scene's Camera, for depth of field and parallax.
         if (e is! CameraElement && cameraOf(document) != null) ..._depthRow(p),
-        // A counter in a document of pages can be the page number, offered
-        // beside "Own on A4": both are what it does on its leaf.
-        if (e is CounterElement && document.isPages) ..._pageNumberRow(p, e),
         // What this element does on this page shape, for a document laid out
         // for several; a canvas made for one shape has one design.
         if (document.targets.length > 1) ..._pageShapeRow(p),
@@ -361,49 +357,6 @@ List<Widget> _depthRow(_Placing p) => [
           "in front of it, to -100, as the Camera sees it: its depth of "
           "field blurs what is away from its focus, and its parallax moves "
           "the far less and the near more."),
-    ];
-
-/// _pageNumberRow makes a counter the number of the page it is drawn on, and
-/// says which edge it keeps to on a left-hand page.
-List<Widget> _pageNumberRow(_Placing p, CounterElement e) => [
-      const CanvasLineBreak(gap: 8),
-      CanvasToggle(
-        key: const ValueKey("counterIsPageNumber"),
-        label: "Page number",
-        value: e.isPageNumber,
-        onChanged: (v) {
-          p.begin();
-          p.write(
-              e.copyWith(source: v ? CounterSource.page : CounterSource.run));
-          p.commit();
-        },
-      ),
-      // And which edge it sits against, for a page number on the leaf's
-      // outside. See CounterElement.mirrored.
-      if (e.isPageNumber)
-        CanvasToggle(
-          key: const ValueKey("counterMirrored"),
-          label: "Mirror on left pages",
-          value: e.mirrored,
-          onChanged: (v) {
-            p.begin();
-            p.write(e.copyWith(mirrored: v));
-            p.commit();
-          },
-        ),
-      CanvasHint(e.isPageNumber
-          ? "The number of the page it is drawn on. On the master canvas "
-              "it gives every page its own number, and shows the first "
-              "number the document prints so that there is something "
-              "there to place. Mirrored, it moves to the matching place "
-              "on the other edge for a left-hand page, so the number sits "
-              "on the outside of the leaf on both sides of a spread — "
-              "something already centred stays where it is, because the "
-              "mirror of the middle is the middle. You place it here as a "
-              "right-hand page; open a left-hand one to see it mirrored."
-          : "Turn this on and the counter shows the number of the page "
-              "it is drawn on instead of counting. Put one on the master "
-              "canvas and every page wears it."),
     ];
 
 /// _pageShapeRow is what the element does on the page shape shown: how big
