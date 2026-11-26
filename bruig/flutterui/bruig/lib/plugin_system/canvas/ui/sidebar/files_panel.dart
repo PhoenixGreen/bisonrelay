@@ -381,39 +381,57 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     await _reload();
   }
 
+  /// _shortest is the height below which the list has no room to be any
+  /// use: the panel then shows its folder row and buttons, scrolling.
+  static const _shortest = 160.0;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+      builder: (context, box) => box.maxHeight < _shortest
+          // Squeezed (a short panel): the parts that stay useful, in a
+          // scroll so they never overflow.
+          ? SingleChildScrollView(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                  if (_folder.isNotEmpty) _folderRow(),
+                  _actions(ThemeNotifier.of(context)),
+                ]))
+          : _full(context));
+
+  Widget _folderRow() => Material(
+        // Its own Material inside the list: the sidebar's would let the
+        // highlight spill over other sections and stay put on scroll.
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              _folder = "";
+              _loading = true;
+            });
+            _rememberFolder();
+            _reload();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(children: [
+              const Icon(Icons.arrow_back, size: 15),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(_folder,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600))),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _full(BuildContext context) {
     var theme = ThemeNotifier.of(context);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (_folder.isNotEmpty)
-        Material(
-          // Its own Material inside the list: the sidebar's would let the
-          // highlight spill over other sections and stay put on scroll.
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: () {
-              setState(() {
-                _folder = "";
-                _loading = true;
-              });
-              _rememberFolder();
-              _reload();
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(children: [
-                const Icon(Icons.arrow_back, size: 15),
-                const SizedBox(width: 6),
-                Expanded(
-                    child: Text(_folder,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600))),
-              ]),
-            ),
-          ),
-        ),
+      if (_folder.isNotEmpty) _folderRow(),
       Expanded(
         child: _loading
             ? const Center(

@@ -63,6 +63,7 @@ void main() {
     CanvasController? controller,
     void Function(String folder, String name)? onNew,
     CanvasPreferences? prefs,
+    double? height,
   }) async {
     // Written on the real loop: this is a real directory.
     await tester.runAsync(() async {
@@ -82,6 +83,7 @@ void main() {
     await tester.pumpWidget(canvasApp(
         SizedBox(
             width: 300,
+            height: height,
             child: CanvasFilesPanel(
                 controller: it,
                 onOpen: (f, n) async {},
@@ -190,6 +192,48 @@ void main() {
     // They are below the list, which is the thing somebody came here to read.
     var list = tester.getBottomLeft(find.text("Match plan")).dy;
     expect(tester.getTopLeft(find.text("New canvas")).dy, greaterThan(list));
+  });
+
+  testWidgets("squeezed short, it keeps its buttons and never overflows",
+      (tester) async {
+    // A short panel (the panel stack lets it go to 80 px) once overflowed
+    // by 7 px: the folder row and the buttons alone are taller than that.
+    for (var height in [60.0, 80.0, 120.0, 159.0]) {
+      var c = CanvasController(const CanvasDocument());
+      c.name = "Plan";
+      // A fresh panel each time (the same State would keep its folder).
+      await tester.pumpWidget(const SizedBox());
+      await idle(tester);
+      // Inside a folder, so the folder row is there too.
+      var prefs = CanvasPreferences()..filesFolder = "Season";
+      addTearDown(prefs.dispose);
+      await pump(tester,
+          canvases: ["Plan"],
+          folders: ["Season"],
+          controller: c,
+          height: height,
+          prefs: prefs);
+      expect(tester.takeException(), isNull, reason: "at $height px");
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget,
+          reason: "the way out of the folder stays at $height px");
+      expect(find.byType(ReorderableListView), findsNothing,
+          reason: "no room for the list at $height px");
+      expect(find.text("New canvas"), findsOneWidget,
+          reason: "the buttons stay at $height px");
+    }
+    var c = CanvasController(const CanvasDocument());
+    c.name = "Plan";
+    await tester.pumpWidget(const SizedBox());
+    await idle(tester);
+    // At the top of the library, where "Plan" is: the panels above left
+    // "Season" remembered.
+    var top = CanvasPreferences()..filesFolder = "";
+    addTearDown(top.dispose);
+    await pump(tester,
+        canvases: ["Plan"], controller: c, height: 220, prefs: top);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ReorderableListView), findsOneWidget,
+        reason: "with room, the list is back");
   });
 
   testWidgets("the toolbar that was above the list is gone", (tester) async {
