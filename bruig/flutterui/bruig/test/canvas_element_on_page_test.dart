@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -23,10 +24,14 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_align.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_hit_test.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_paint_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_paint_selection.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter.dart';
 
 import 'support/canvas_app.dart';
 
@@ -383,19 +388,180 @@ Future<_Quad> _quadOf(
   return _quads[name] = await _selectionOnStage(tester, doc, _midway);
 }
 
-/// _dragsWaiting are the drags that wait, with what is wrong.
-const _dragsWaiting = <String, String>{
-  "sized by its keys, posed":
-      "the drag writes the box where it is drawn as the key's move, so the "
-          "shift its size makes about its anchor is added again: it jumps on "
-          "the first step",
-  "moved by a clip, posed":
-      "the drag writes where the clip has moved it as the key's move, so "
-          "the clip's move is added again: it jumps on the first step",
-  "moved by a clip, moved":
-      "the drag writes where the clip has moved it as where it rests, so "
-          "the clip's move is added again: it jumps on the first step",
-};
+/// _onStage shows [c] on a stage the size the other tests use, and hands
+/// back its state.
+Future<CanvasStageState> _onStage(
+    WidgetTester tester, CanvasController c) async {
+  var key = GlobalKey<CanvasStageState>();
+  const viewport = Size(800, 600);
+  setTestScreen(tester, viewport);
+  await tester.pumpWidget(canvasApp(SizedBox(
+      width: viewport.width,
+      height: viewport.height,
+      child: CanvasStage(key: key, controller: c))));
+  await tester.pumpAndSettle();
+  return key.currentState!;
+}
+
+/// _painterOf is the stage's page painter as last built.
+StagePainter _painterOf(WidgetTester tester) => tester
+    .widgetList<CustomPaint>(find.byType(CustomPaint))
+    .expand((p) => [p.painter, p.foregroundPainter])
+    .whereType<StagePainter>()
+    .first;
+
+/// _marksOf is what [paint] draws on a clear page, a document unit to a
+/// pixel: whether each pixel is marked at all.
+Future<List<bool>> _marksOf(
+    WidgetTester tester, void Function(Canvas canvas) paint) async {
+  late List<bool> marked;
+  await tester.runAsync(() async {
+    var recorder = ui.PictureRecorder();
+    paint(ui.Canvas(recorder));
+    var image = await recorder.endRecording().toImage(_page, _page);
+    var data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!
+        .buffer
+        .asUint8List();
+    image.dispose();
+    marked = [for (var i = 3; i < data.length; i += 4) data[i] > 40];
+  });
+  return marked;
+}
+
+/// _offEdge is how far [p] is from the nearest edge of [quad].
+double _offEdge(_Quad quad, Offset p) {
+  var best = double.infinity;
+  for (var i = 0; i < 4; i++) {
+    var a = quad[i], b = quad[(i + 1) % 4];
+    var ab = b - a;
+    var t = ((p - a).dx * ab.dx + (p - a).dy * ab.dy) /
+        (ab.dx * ab.dx + ab.dy * ab.dy);
+    var q = a + ab * t.clamp(0.0, 1.0);
+    best = math.min(best, (p - q).distance);
+  }
+  return best;
+}
+
+/// _expectOutlined checks that [marked] is an outline round each of
+/// [quads] and nothing else: every mark on one of their edges, within
+/// [near], and every corner of each marked.
+void _expectOutlined(List<bool> marked, List<_Quad> quads, {double near = 2}) {
+  var stray = <Offset>[];
+  for (var i = 0; i < marked.length; i++) {
+    if (!marked[i]) continue;
+    var p = Offset(i % _page + 0.5, i ~/ _page + 0.5);
+    if (quads.every((q) => _offEdge(q, p) > near)) stray.add(p);
+  }
+  expect(stray, isEmpty,
+      reason: "${stray.length} marks off every outline, "
+          "the first ${stray.take(3).toList()}");
+  for (var quad in quads) {
+    for (var corner in quad) {
+      var found = false;
+      for (var y = (corner.dy - near).floor();
+          y <= (corner.dy + near).ceil() && !found;
+          y++) {
+        for (var x = (corner.dx - near).floor();
+            x <= (corner.dx + near).ceil() && !found;
+            x++) {
+          if (x < 0 || y < 0 || x >= _page || y >= _page) continue;
+          found = marked[y * _page + x] &&
+              (Offset(x + 0.5, y + 0.5) - corner).distance <= near + 0.8;
+        }
+      }
+      expect(found, isTrue, reason: "the corner $corner is outlined");
+    }
+  }
+}
+
+/// _drawnQuad is [e]'s box, or its copy [instance]'s, where the painter
+/// lays it out on [_midway], its corners in order round it.
+_Quad _drawnQuad(CanvasElement e, CanvasDocument doc, {int? instance}) {
+  var on = placeOnPage(e, _midway, doc, null, instance: instance);
+  var b = on.box;
+  return [
+    for (var p in [b.topLeft, b.topRight, b.bottomRight, b.bottomLeft])
+      on.place.place(p),
+  ];
+}
+
+/// _round is the upright box round [quad].
+Rect _round(_Quad quad) => Rect.fromLTRB(
+    quad.map((p) => p.dx).reduce(math.min),
+    quad.map((p) => p.dy).reduce(math.min),
+    quad.map((p) => p.dx).reduce(math.max),
+    quad.map((p) => p.dy).reduce(math.max));
+
+/// _drawnWays are three elements drawn well off their resting box at
+/// [_midway], so an outline, a marquee or a snap by that box would miss
+/// them: one turned by its keys about its corner, one spun by its loop and
+/// one squashed by its keys; each with two boxes
+/// for a marquee near it there, drawn from empty page: one reaching the
+/// element as drawn and not its resting box, one the other way about.
+List<(String, CanvasElement, Rect, Rect)> _drawnWays() {
+  const box = ElementBase(id: "e", x: 100, y: 110, width: 100, height: 80);
+  return [
+    (
+      "one turned by its keys about its corner",
+      ShapeElement(
+          _keyed(box.copyWith(anchorX: 0, anchorY: 0),
+              const Keyframe(frame: 0, rotate: 70)),
+          fill: _orange),
+      const Rect.fromLTRB(30, 165, 62, 185),
+      const Rect.fromLTRB(192, 100, 205, 118),
+    ),
+    (
+      "one spun by its loop",
+      ShapeElement(box,
+          fill: _orange, animation: const ElementAnimation(loop: _spin)),
+      const Rect.fromLTRB(140, 90, 160, 104),
+      const Rect.fromLTRB(92, 115, 104, 130),
+    ),
+    (
+      "one squashed by its keys",
+      ShapeElement(
+          _keyed(
+              box,
+              const Keyframe(frame: 0, values: {
+                KeyframeChannel.squash: 1.8,
+                KeyframeChannel.squashAngle: 0,
+              })),
+          fill: _orange),
+      const Rect.fromLTRB(40, 135, 66, 150),
+      const Rect.fromLTRB(192, 100, 205, 118),
+    ),
+  ];
+}
+
+/// _apart is whether [quad] and [box] are well clear of each other: no
+/// corner of either within the other, nor an edge of one crossing the
+/// other's middle.
+bool _apart(_Quad quad, Rect box) =>
+    quad.every((p) => !box.inflate(1).contains(p)) &&
+    [box.topLeft, box.topRight, box.bottomLeft, box.bottomRight, box.center]
+        .every((p) => !_inside(quad, p, slack: 1));
+
+/// _grown is [quad] grown out by [by] on every side.
+_Quad _grown(_Quad quad, double by) {
+  var middle = (quad[0] + quad[2]) / 2;
+  return [
+    for (var i = 0; i < 4; i++)
+      () {
+        var a = quad[(i + 3) % 4], p = quad[i], b = quad[(i + 1) % 4];
+        Offset out(Offset from, Offset to) {
+          var d = to - from;
+          var n = Offset(-d.dy, d.dx) / d.distance;
+          return (p - middle).dx * n.dx + (p - middle).dy * n.dy >= 0 ? n : -n;
+        }
+
+        // Out along both sides' normals, to where the grown sides meet.
+        var n1 = out(a, p), n2 = out(p, b);
+        var bisect = n1 + n2;
+        var cos = (n1.dx * bisect.dx + n1.dy * bisect.dy) / bisect.distance;
+        return p + bisect / bisect.distance * (by / cos);
+      }(),
+  ];
+}
 
 void main() {
   group("an element is pressed and boxed where it is drawn", () {
@@ -849,7 +1015,282 @@ void main() {
         expect(first.dy, closeTo(0, 0.5), reason: "first step: $first");
         expect(all.dx, closeTo(40, 0.5), reason: "both steps: $all");
         expect(all.dy, closeTo(0, 0.5), reason: "both steps: $all");
-      }, skip: _dragsWaiting.containsKey(name));
+      });
     }
+  });
+  group("what the stage outlines, takes and snaps to is as drawn", () {
+    // A plain partner, at rest, to select beside each.
+    var partner = ShapeElement(
+        const ElementBase(id: "p", x: 20, y: 20, width: 40, height: 30),
+        fill: _blue);
+
+    for (var (name, e, reaches, misses) in _drawnWays()) {
+      testWidgets("several selected, $name is outlined where it is drawn",
+          (tester) async {
+        var doc = _pageOf([e, partner]);
+        var c = CanvasController(doc);
+        addTearDown(c.dispose);
+        c.frame = _midway;
+        c.selectOnly("e");
+        c.toggleSelected("p");
+        await _onStage(tester, c);
+        var inputs = _painterOf(tester).inputs;
+        var marked = await _marksOf(
+            tester,
+            (canvas) => paintChosenBoxes(canvas, inputs.selection.ids,
+                inputs.shown, null, 1, Offset.zero));
+        _expectOutlined(marked, [_drawnQuad(e, doc), _drawnQuad(partner, doc)]);
+      });
+
+      testWidgets("with every box shown, $name is outlined where it is drawn",
+          (tester) async {
+        var doc = _pageOf([e, partner]);
+        var c = CanvasController(doc);
+        addTearDown(c.dispose);
+        c.frame = _midway;
+        c.showAllBounds = true;
+        await _onStage(tester, c);
+        var inputs = _painterOf(tester).inputs;
+        var marked = await _marksOf(
+            tester,
+            (canvas) => paintKeptBoxes(
+                canvas, true, const {}, inputs.shown, null, 1, Offset.zero));
+        _expectOutlined(marked, [_drawnQuad(e, doc), _drawnQuad(partner, doc)]);
+      });
+
+      testWidgets("several selected with $name are boxed round them as drawn",
+          (tester) async {
+        var doc = _pageOf([e, partner]);
+        var c = CanvasController(doc);
+        addTearDown(c.dispose);
+        c.frame = _midway;
+        c.selectOnly("e");
+        c.toggleSelected("p");
+        var stage = await _onStage(tester, c);
+        var origin = stage.toStagePoint(Offset.zero);
+        var scale =
+            (stage.toStagePoint(const Offset(_page * 1.0, 0)) - origin).dx /
+                _page;
+        Offset back(Offset screen) => (screen - origin) / scale;
+        var box = Rect.fromPoints(back(stage.handleAt(StageHandle.topLeft)),
+            back(stage.handleAt(StageHandle.bottomRight)));
+        var drawn = _round(_drawnQuad(e, doc)).expandToInclude(partner.bounds);
+        for (var (got, want) in [
+          (box.left, drawn.left),
+          (box.top, drawn.top),
+          (box.right, drawn.right),
+          (box.bottom, drawn.bottom),
+        ]) {
+          expect(got, closeTo(want, 0.5), reason: "$box round $drawn");
+        }
+      });
+
+      for (var (what, marquee, takes) in [
+        ("a marquee reaching it as drawn takes it", reaches, true),
+        ("a marquee reaching only where it rests leaves it", misses, false),
+      ]) {
+        testWidgets("$name: $what", (tester) async {
+          var doc = _pageOf([e]);
+          var quad = _drawnQuad(e, doc);
+          var resting = e.bounds;
+          // Each marquee reaches one and not the other.
+          expect(_apart(quad, marquee), !takes, reason: "the drawn one");
+          expect(resting.overlaps(marquee), !takes, reason: "the resting one");
+          // Drawn from empty page, so it is a marquee and not a move.
+          var from = takes ? marquee.topLeft : marquee.topRight;
+          expect(_inside(quad, from, slack: 4), isFalse);
+          var c = CanvasController(doc);
+          addTearDown(c.dispose);
+          c.frame = _midway;
+          var stage = await _onStage(tester, c);
+          var g = await tester.startGesture(stage.toStagePoint(from));
+          await tester.pump();
+          await g.moveTo(stage
+              .toStagePoint(takes ? marquee.bottomRight : marquee.bottomLeft));
+          await tester.pump();
+          await g.up();
+          await tester.pumpAndSettle();
+          expect(c.selection.contains("e"), takes);
+          expect(c.document.elementById("e")!.x, e.x, reason: "not moved");
+        });
+      }
+    }
+
+    // A small square dragged up to the one turned by its keys about its
+    // corner, its left side brought just past where that is drawn furthest
+    // right, snaps there: the edge that shows, not its resting box's.
+    testWidgets(
+        "a square dragged beside one turned by its keys about its corner "
+        "snaps to its edge as drawn", (tester) async {
+      var turned = _drawnWays().first.$2;
+      var square = ShapeElement(
+          const ElementBase(id: "s", x: 180, y: 30, width: 30, height: 30),
+          fill: _blue);
+      var doc = CanvasDocument(
+          size: const CanvasSize(width: _page, ratio: CanvasRatio.square),
+          elements: [turned, square],
+          frames: 48,
+          frameRate: 12,
+          guides: const CanvasGuides(snapTo: SnapTo(centres: false)));
+      var right = _round(_drawnQuad(turned, doc)).right;
+      expect((right - turned.bounds.right).abs(), greaterThan(10),
+          reason: "drawn well inside where it rests");
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.frame = _midway;
+      c.selectOnly("s");
+      var stage = await _onStage(tester, c);
+      var scale = stage.pageRect.width / _page;
+      var travel = right + 1.3 - 180;
+      var g =
+          await tester.startGesture(stage.toStagePoint(square.bounds.center));
+      await tester.pump();
+      await g.moveBy(Offset(travel / 2 * scale, 0));
+      await tester.pump();
+      await g.moveBy(Offset(travel / 2 * scale, 0));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(c.document.elementById("s")!.x, closeTo(right, 0.01));
+    });
+
+    // The one turned by its keys about its corner, dragged so its drawn
+    // left comes just past the page's edge, snaps by that drawn left.
+    testWidgets(
+        "one turned by its keys about its corner, dragged, snaps by its "
+        "edge as drawn", (tester) async {
+      var turned = _drawnWays().first.$2;
+      var doc = CanvasDocument(
+          size: const CanvasSize(width: _page, ratio: CanvasRatio.square),
+          elements: [turned],
+          frames: 48,
+          frameRate: 12,
+          guides: const CanvasGuides(snapTo: SnapTo(centres: false)));
+      var left = _round(_drawnQuad(turned, doc)).left;
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.frame = _midway;
+      c.selectOnly("e");
+      var stage = await _onStage(tester, c);
+      var scale = stage.pageRect.width / _page;
+      var quad = _drawnQuad(turned, doc);
+      var middle = (quad[0] + quad[2]) / 2;
+      var travel = 1.3 - left;
+      var g = await tester.startGesture(stage.toStagePoint(middle));
+      await tester.pump();
+      await g.moveBy(Offset(travel / 2 * scale, 0));
+      await tester.pump();
+      await g.moveBy(Offset(travel / 2 * scale, 0));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      var now = c.document;
+      expect(_round(_drawnQuad(now.elementById("e")!, now)).left,
+          closeTo(0, 0.01));
+    });
+
+    // Two copies, the second turned: each ringed where it is drawn.
+    testWidgets("an element reused has each copy ringed where it is drawn",
+        (tester) async {
+      var e = ShapeElement(
+          const ElementBase(
+              id: "e",
+              x: 30,
+              y: 110,
+              width: 60,
+              height: 60,
+              motion: ElementMotion(
+                  instances: InstanceSet(items: [
+                ElementInstance("a"),
+                ElementInstance("b", dx: 140, own: {"turn": 40}),
+              ]))),
+          fill: _orange);
+      var doc = _pageOf([e]);
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      c.frame = _midway;
+      c.selectOnly("e");
+      c.pickCopies("e", {"a", "b"});
+      await _onStage(tester, c);
+      var inputs = _painterOf(tester).inputs;
+      var marked = await _marksOf(
+          tester,
+          (canvas) => paintCopies(
+              canvas, inputs.selection, inputs.shown, null, 1, Offset.zero));
+      // The rings stand off the copies a little, and each number sits on a
+      // tag above the upright box round its copy: only the rings' own
+      // pixels are asked about.
+      var copies = [
+        for (var i in [0, 1]) _drawnQuad(e, doc, instance: i)
+      ];
+      var rings = [for (var q in copies) _grown(q, 3)];
+      var numbers = [
+        for (var q in copies)
+          Rect.fromLTRB(_round(q).left - 4, _round(q).top - 18,
+              _round(q).left + 26, _round(q).top - 3)
+      ];
+      var ringOnly = [
+        for (var i = 0; i < marked.length; i++)
+          marked[i] &&
+              !numbers.any(
+                  (n) => n.contains(Offset(i % _page + 0.5, i ~/ _page + 0.5))),
+      ];
+      _expectOutlined(ringOnly, rings, near: 3);
+    });
+  });
+
+  group("align and spread line up what is drawn", () {
+    // At rest; moved by a clip, resting where it was; and turned by its keys
+    // about its corner, which poses it.
+    ShapeElement still() => ShapeElement(
+        const ElementBase(id: "a", x: 20, y: 10, width: 40, height: 30),
+        fill: _blue);
+    ShapeElement clipped() => ShapeElement(
+        ElementBase(
+            id: "b",
+            x: 120,
+            y: 200,
+            width: 50,
+            height: 40,
+            motion: _clip(80, 40)),
+        fill: _blue);
+    var turned = _drawnWays().first.$2;
+
+    CanvasController controllerOf(List<CanvasElement> elements) {
+      var c = CanvasController(_pageOf(elements));
+      addTearDown(c.dispose);
+      c.frame = _midway;
+      c.selectOnly("a");
+      c.toggleSelected("b");
+      c.toggleSelected("e");
+      return c;
+    }
+
+    Rect drawnOf(CanvasController c, String id) =>
+        _round(_drawnQuad(c.document.elementById(id)!, c.document));
+
+    test("align left puts every drawn left side on the leftmost", () {
+      var c = controllerOf([still(), clipped(), turned]);
+      c.alignSelected(CanvasAlign.left);
+      for (var id in ["a", "b", "e"]) {
+        expect(drawnOf(c, id).left, closeTo(20, 0.01), reason: id);
+      }
+      var b = c.document.elementById("b")!;
+      expect(c.posesRatherThanMoves(b), isFalse);
+      expect(b.track, isNull, reason: "moved where it rests");
+      var e = c.document.elementById("e")!;
+      expect(e.x, turned.x, reason: "posed where it is, its rest kept");
+    });
+
+    test("spread down leaves even gaps between what is drawn", () {
+      var c = controllerOf([still(), clipped(), turned]);
+      c.spreadSelected(false);
+      var boxes = [
+        for (var id in ["a", "b", "e"]) drawnOf(c, id)
+      ]..sort((x, y) => x.top.compareTo(y.top));
+      var first = boxes[1].top - boxes[0].bottom;
+      var second = boxes[2].top - boxes[1].bottom;
+      expect(first, closeTo(second, 0.01), reason: "$boxes");
+    });
   });
 }

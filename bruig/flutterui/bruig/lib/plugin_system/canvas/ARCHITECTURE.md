@@ -448,9 +448,36 @@ flow grips and the press inside a shape's box that takes hold of it are on
 the element as drawn, turned about any anchor, swung or spun by its loop;
 the box's painter and the press on a handle both read `_selectionBounds` and
 `_frameOfSelection`. A line's or a path's, text on a line's, a camera's and
-a staged element's keep their own boxes, and several selected an upright
-box round them. A drag at a moved frame writes where the element is drawn
-as where it rests; those checks are skipped, each saying what is wrong.
+a staged element's keep their own boxes.
+
+Every other outline, box and edge the stage draws, snaps to or selects by
+is the same box laid on the page by the same place: its four corners there
+(`ElementPlace.corners`), or the upright box round them where an upright
+one is needed (`ElementPlace.reach`), each copy of an element reused by its
+own. `placesItsBox` (`render/scene_renderer_shapes.dart`) says which
+elements are drawn so: not a line or a path, text on a line, something on
+a 3D stage, a camera or a team on a pitch, which keep the answers they had.
+`StageHitTest.outlines` is an element's outline as drawn, `reaches` and
+`reach` the upright boxes round it, and `meets` whether it overlaps a box.
+Each of several selected and every element with all bounds shown is
+outlined by it (`outlinesOnPage`, `paintChosenBoxes`, `paintKeptBoxes`),
+each copy is ringed turned as it is drawn (`paintCopies`), several selected
+are boxed round their reaches (`_drawnReach`), a marquee takes what its
+outline overlaps (`_selectWithin`), and a move snaps to the others'
+reaches by the dragged elements' (`_otherBounds`, `_seenBounds`). Align and
+spread line up the reaches too (`reachOnPage`, the same box for the
+controller, `_drawnBox`), so what is drawn on the frame lines up, and
+write through `_moved`: a pose where a drag would pose, else the rest. A
+depth-blurred element's layer under the Camera's lens is bounded by its
+reach grown by the blur (`_Lens.on`), so a turned one's ends are softened,
+not cut off.
+
+A move drag writes each element's value at the press plus the travel
+(`CanvasController.moveOrigin`, then `movedTo`): its rest, its keys' move
+where the drag poses it, or where it stands on a 3D stage. Never where it
+is drawn, which holds whatever else moves it on the frame (a clip, a
+device, a loop, a size about its anchor) and written back would add it
+twice; so what is drawn follows the pointer exactly.
 
 A lone line's or path's selection box is the box round its curve as drawn on
 the frame, so the stage lays it out upright (`_boxIsDrawn`), not turned and
@@ -951,7 +978,8 @@ the drag. It answers with the nudge to add and the lines caught
 (`SnapLines`), which `_BoxDrag` holds as the mark `_stagePainter` draws.
 
 What snaps: a move of the selection's box, by the box it is seen in
-(turned and slanted elements by the upright box round them as drawn); a
+(each element by the upright box round it as drawn on the frame, and the
+others' the same: see `StageHitTest.reaches`); a
 resize, by the dragged edge alone, upright boxes only; a guide dragged; a
 single line's end, to level, upright and diagonal (`snapLineAngle`); and on
 a 3D stage, with Snap on a 3D stage, an element moved across the floor

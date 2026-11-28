@@ -155,6 +155,42 @@ void main() {
         reason: "the near one, on the focus, stays as it was");
   });
 
+  test("depth of field: a turned element is softened whole, its ends kept",
+      () async {
+    // A long thin bar turned on its diagonal, far from the focus: its ends
+    // reach well past the box it rests in, and are drawn softened, not cut
+    // off where that box ends.
+    var bar = ShapeElement(
+        const ElementBase(
+            id: "bar",
+            x: 60,
+            y: 82,
+            width: 200,
+            height: 16,
+            rotation: 45,
+            depth: 1),
+        fill: const Color(0xFFFF0000),
+        strokeWidth: 0);
+    CanvasDocument with_(double blur) => page([
+          bar,
+          CameraElement(const ElementBase(id: "c", width: 320, height: 180),
+              blur: blur),
+        ]);
+    var (sharp, w, _) = await render(with_(0));
+    var (dof, _, _) = await render(with_(6));
+    int green(ByteData raw, Offset p) =>
+        raw.getUint8((p.dy.round() * w + p.dx.round()) * 4 + 1);
+    // Along its length, 55 from its middle either way: past where its
+    // resting box, grown by the blur's reach, would end.
+    for (var p in const [Offset(121, 51), Offset(199, 129)]) {
+      expect(green(sharp, p), lessThan(60), reason: "drawn sharp at $p");
+      expect(green(dof, p), lessThan(200), reason: "drawn soft at $p");
+    }
+    expect(soft(dof, w, const Rect.fromLTWH(0, 0, 320, 180)),
+        greaterThan(soft(sharp, w, const Rect.fromLTWH(0, 0, 320, 180)) + 200),
+        reason: "and softened");
+  });
+
   test("focus pulled: keyed, the soft one changes over the move", () async {
     var doc = page([
       square("near", const Rect.fromLTWH(30, 50, 80, 80)),

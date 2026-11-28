@@ -146,10 +146,11 @@ extension StageRelease on CanvasStageState {
   /// more than a click.
   void _selectWithin(Rect box) {
     if (box.width <= 3 || box.height <= 3) return;
-    // What the box is drawn round on screen: where each is drawn now.
+    // What the box is drawn round on screen: each as it is drawn now, a
+    // turned one by its turned outline (StageHitTest.meets).
     var hit = _hit;
     for (var e in document.elements) {
-      if (!e.locked && e.visible && box.overlaps(hit.posed(e))) {
+      if (!e.locked && e.visible && hit.meets(e, box)) {
         controller.toggleSelected(e.id);
       }
     }

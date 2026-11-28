@@ -156,6 +156,7 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart' show SynthShow, synthShowOf, synthPanelFor, synthPanelFit, synthPanelOf;
 import 'package:bruig/plugin_system/canvas/render/synth_task_painter.dart' show synthTaskLayout, synthTaskScale;
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart' show reachOnPage;
 import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart' show tileMapEditingOf;
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';

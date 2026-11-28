@@ -166,7 +166,7 @@ extension StageCoordinates on CanvasStageState {
   /// _selectionBounds is the selection's box in document space, before
   /// [_frameOfSelection] turns and slants it about its middle: a lone
   /// element's own box as it is drawn (_loneBox); for several, the upright
-  /// box round them, turns left out.
+  /// box round them as drawn (_drawnReach).
   Rect? get _selectionBounds {
     var elements = _chosen;
     if (elements.isEmpty) return null;
@@ -194,10 +194,10 @@ extension StageCoordinates on CanvasStageState {
       }
     }
     if (_loneBox case (var box, _)?) return box;
-    // Where they are on this frame, so the box follows an animated element.
-    var box = _visualBounds(elements.first);
+    // Upright, round each as it is drawn on this frame, turned and all.
+    var box = _drawnReach(elements.first);
     for (var e in elements.skip(1)) {
-      box = box.expandToInclude(_visualBounds(e));
+      box = box.expandToInclude(_drawnReach(e));
     }
     return box;
   }
@@ -273,6 +273,11 @@ extension StageCoordinates on CanvasStageState {
     return local.dx.abs() <= bounds.width / 2 &&
         local.dy.abs() <= bounds.height / 2;
   }
+
+  /// _drawnReach is the upright box round [e] as it is drawn on this frame:
+  /// round its box's corners laid on the page (StageHitTest.reach), or for
+  /// what keeps an answer of its own, [_visualBounds].
+  Rect _drawnReach(CanvasElement e) => _hit.reach(e) ?? _visualBounds(e);
 
   /// _visualBounds is where an element is drawn: outside its rectangle for a
   /// bowed line, a path or text on a line. See visualBoundsOf.

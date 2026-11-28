@@ -277,6 +277,71 @@ void main() {
       await keep(tester, "show_all_bounds");
     });
 
+    testWidgets("several on a frame where their motion turns and squashes them",
+        (tester) async {
+      // Each outlined, and the box round them, as drawn: one turned by its
+      // keys about its corner, one squashed, one at rest.
+      ShapeElement moved(String id, double x, double y, Keyframe to,
+              {double anchor = 0.5}) =>
+          ShapeElement(
+              ElementBase(
+                  id: id,
+                  x: x,
+                  y: y,
+                  width: 300,
+                  height: 160,
+                  anchorX: anchor,
+                  anchorY: anchor,
+                  track: ElementTrack([const Keyframe(frame: 0), to])),
+              fill: const Color(0xFFFFA726));
+      var c = controllerOf(
+          CanvasDocument(frames: 48, frameRate: 12, elements: [
+            moved("t", 300, 150, const Keyframe(frame: 24, rotate: 70),
+                anchor: 0),
+            moved(
+                "q",
+                700,
+                450,
+                const Keyframe(frame: 24, values: {
+                  KeyframeChannel.squash: 1.8,
+                  KeyframeChannel.squashAngle: 0,
+                })),
+            box("r", 1000, 250, 200, 200, fill: const Color(0xFFFFA726)),
+          ]),
+          audio: true);
+      c.frame = 12;
+      c.selectMany({"t", "q", "r"});
+      await pump(tester, c);
+      await keep(tester, "selection_several_moving");
+    });
+
+    testWidgets("every element's box shown, on a frame where they move",
+        (tester) async {
+      var c = controllerOf(
+          CanvasDocument(frames: 48, frameRate: 12, elements: [
+            ShapeElement(
+                ElementBase(
+                    id: "t",
+                    x: 300,
+                    y: 150,
+                    width: 300,
+                    height: 160,
+                    anchorX: 0,
+                    anchorY: 0,
+                    track: ElementTrack(const [
+                      Keyframe(frame: 0),
+                      Keyframe(frame: 24, rotate: 70)
+                    ])),
+                fill: const Color(0xFFFFA726)),
+            box("r", 1000, 250, 200, 200, fill: const Color(0xFFFFA726)),
+          ]),
+          audio: true);
+      c.frame = 12;
+      c.showAllBounds = true;
+      await pump(tester, c);
+      await keep(tester, "show_all_bounds_moving");
+    });
+
     testWidgets("with its anchors, one locked", (tester) async {
       var c = controllerOf(docOf([
         box("a", 200, 200, 300, 200),
@@ -333,6 +398,44 @@ void main() {
           showHandles: s.showHandles,
           showHelpers: s.showHelpers,
           pickedCopies: EqualSet({"i0", "i2"}),
+          trail: s.trail,
+          anchors: s.anchors,
+        ));
+      });
+    });
+
+    testWidgets("a reused element's copies, one turned, two picked",
+        (tester) async {
+      var c = controllerOf(
+          CanvasDocument(frames: 240, frameRate: 24, elements: [
+            ShapeElement(
+                const ElementBase(
+                    id: "a",
+                    x: 100,
+                    y: 100,
+                    width: 100,
+                    height: 100,
+                    motion: ElementMotion(
+                        instances: InstanceSet(items: [
+                      ElementInstance("i0"),
+                      ElementInstance("i1", dx: 250, own: {"turn": 40}),
+                      ElementInstance("i2", dx: 500),
+                    ]))),
+                fill: const Color(0xFF000000)),
+          ]),
+          audio: true);
+      c.selectOnly("a");
+      c.pickAllCopies("a");
+      await pump(tester, c);
+      await keep(tester, "copies_turned", alter: (i) {
+        var s = i.selection;
+        return withInputs(i, selection: (
+          ids: s.ids,
+          bounds: s.bounds,
+          frame: s.frame,
+          showHandles: s.showHandles,
+          showHelpers: s.showHelpers,
+          pickedCopies: EqualSet({"i0", "i1"}),
           trail: s.trail,
           anchors: s.anchors,
         ));

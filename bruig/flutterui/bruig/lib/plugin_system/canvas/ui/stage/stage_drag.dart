@@ -211,6 +211,13 @@ extension StageDrag on CanvasStageState {
       posed: {
         for (var e in controller.selectedElements) e.id: _hit.posed(e),
       },
+      // What a move writes: each element's value at the press plus the
+      // travel, never where it is drawn, which holds whatever else moves it
+      // on this frame (CanvasController.moveOrigin).
+      from: {
+        for (var e in controller.selectedElements)
+          e.id: controller.moveOrigin(e),
+      },
       // The box the handles are on, bigger than the element's own for a
       // line or path (see _visualBounds). A resize is measured against it
       // and applied to the real rectangle in proportion.
@@ -231,7 +238,8 @@ extension StageDrag on CanvasStageState {
   }
 
   /// _otherBounds is everything not dragged, locked included, to snap to:
-  /// where each is drawn now, which is where it is seen. [moving] is the
+  /// the upright box round each as it is drawn now, turned and all, each
+  /// copy of one reused by its own (StageHitTest.reaches). [moving] is the
   /// ids of the selection being dragged.
   List<Rect> _otherBounds(Set<String> moving) {
     if (!document.guides.snapTo.objects) return const [];
@@ -239,14 +247,16 @@ extension StageDrag on CanvasStageState {
     return [
       for (var element in document.elements)
         if (!moving.contains(element.base.id) && element.base.visible)
-          hit.posed(element),
+          ...(hit.reaches(element) ?? [hit.posed(element)]),
     ];
   }
 
-  /// _seenBounds is the upright box [e] is seen in: the box its handles are
-  /// on (see _visualBounds), turned and slanted about its middle as it is
-  /// drawn, so a turned element is snapped by the corners that show.
+  /// _seenBounds is the upright box [e] is seen in, so it is snapped by the
+  /// corners that show: round its box as it is drawn on this frame
+  /// (_drawnReach), or for what keeps an answer of its own, the box its
+  /// handles are on (see _visualBounds) turned and slanted about its middle.
   Rect _seenBounds(CanvasElement e) {
+    if (_hit.reach(e) case var drawn?) return drawn;
     var box = _visualBounds(e);
     // A line's or a path's is round its curve as drawn already.
     if (e is StrokedElement) return box;
@@ -275,7 +285,7 @@ extension StageDrag on CanvasStageState {
     var box = start.seenBox;
     // Not on a 3D stage, where page lines mean nothing: staged elements snap
     // to the floor's 3D steps (see CanvasController.movedTo).
-    var onStage = start.posed.keys
+    var onStage = start.from.keys
         .any((id) => document.elementById(id)?.base.spot != null);
     var reach = _snapReach;
     var caught = SnapLines.none;
@@ -286,7 +296,7 @@ extension StageDrag on CanvasStageState {
     }
 
     var next = document;
-    for (var entry in start.posed.entries) {
+    for (var entry in start.from.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
       // A camera moves by where it looks, from its start: its frame is not
@@ -303,8 +313,8 @@ extension StageDrag on CanvasStageState {
           : delta;
       // Through the controller, so an animated element is posed rather than
       // moved. See CanvasController.posesRatherThanMoves.
-      next = next.withElement(controller
-          .movedTo(element, entry.value.topLeft + by, free: reach == null));
+      next = next.withElement(
+          controller.movedTo(element, entry.value + by, free: reach == null));
     }
     controller.apply(next, transient: true);
     return caught;

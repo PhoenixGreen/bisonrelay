@@ -452,15 +452,17 @@ extension CanvasElementEditing on CanvasController {
     ];
     if (chosen.length < 2) return;
 
+    // As each is drawn on this frame, so what is seen lines up.
+    var drawn = {for (var e in chosen) e.id: _drawnBox(e)};
     Rect? box;
-    for (var element in chosen) {
-      box = box == null ? element.bounds : box.expandToInclude(element.bounds);
+    for (var at in drawn.values) {
+      box = box == null ? at : box.expandToInclude(at);
     }
     if (box == null) return;
 
     var next = _document;
     for (var element in chosen) {
-      var by = align.offset(box, element.bounds);
+      var by = align.offset(box, drawn[element.id]!);
       if (by == Offset.zero) continue;
       next = next.withElement(_moved(element, by.dx, by.dy));
     }
@@ -483,21 +485,25 @@ extension CanvasElementEditing on CanvasController {
         if (!e.locked) e
     ];
     if (chosen.length < 3) return;
+    // As each is drawn on this frame, so what is seen is evenly spaced.
+    var drawn = {for (var e in chosen) e.id: _drawnBox(e)};
     chosen.sort((a, b) => across
-        ? a.bounds.left.compareTo(b.bounds.left)
-        : a.bounds.top.compareTo(b.bounds.top));
+        ? drawn[a.id]!.left.compareTo(drawn[b.id]!.left)
+        : drawn[a.id]!.top.compareTo(drawn[b.id]!.top));
 
-    var first = chosen.first.bounds;
-    var last = chosen.last.bounds;
+    var first = drawn[chosen.first.id]!;
+    var last = drawn[chosen.last.id]!;
     var span = across ? last.right - first.left : last.bottom - first.top;
     var filled = chosen.fold<double>(
-        0, (sum, e) => sum + (across ? e.bounds.width : e.bounds.height));
+        0,
+        (sum, e) =>
+            sum + (across ? drawn[e.id]!.width : drawn[e.id]!.height));
     var gap = (span - filled) / (chosen.length - 1);
 
     var next = _document;
     var at = across ? first.left : first.top;
     for (var element in chosen) {
-      var bounds = element.bounds;
+      var bounds = drawn[element.id]!;
       var shift = at - (across ? bounds.left : bounds.top);
       if (shift != 0) {
         next = next.withElement(
@@ -521,7 +527,16 @@ extension CanvasElementEditing on CanvasController {
       pathDriving(element.id) == null &&
       (_autoKeyframe || (element.track?.posesAnything == true));
 
-  /// _moved is one element shifted, as either a pose or a relocation.
+  /// _drawnBox is the upright box round [element] as it is drawn on this
+  /// frame (reachOnPage), which align and spread line up: its resting box
+  /// for what keeps an answer of its own (a line, a path, a camera).
+  Rect _drawnBox(CanvasElement element) =>
+      reachOnPage(element, _frame, _document, live: liveMotion) ??
+      element.bounds;
+
+  /// _moved is one element shifted, as either a pose or a relocation: the
+  /// same as a drag writes (movedTo from moveOrigin), so what is drawn moves
+  /// by exactly as much.
   CanvasElement _moved(CanvasElement element, double dx, double dy) {
     if (!posesRatherThanMoves(element)) {
       return element.withBase(x: element.x + dx, y: element.y + dy);

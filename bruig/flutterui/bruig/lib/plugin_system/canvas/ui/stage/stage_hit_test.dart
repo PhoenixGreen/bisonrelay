@@ -105,6 +105,77 @@ class StageHitTest {
     return ElementOnPage(e, pose, e.placedIn(box, pose), box: box);
   }
 
+  /// outlines is [e]'s outline as drawn now: its box's four corners laid on
+  /// the page by its place, in order round it, one for each copy of an
+  /// element reused. Null for what keeps an answer of its own
+  /// (placesItsBox: a line or a path, text on a line, something on a 3D
+  /// stage, a camera, a team on a pitch).
+  List<List<Offset>>? outlines(CanvasElement e) {
+    if (!placesItsBox(e, document, frame)) return null;
+    List<Offset> one(int? i) {
+      var on = placed(e, instance: i);
+      return on.place.corners(on.box);
+    }
+
+    var set = e.base.motion.instances;
+    if (set == null || set.count == 0) return [one(null)];
+    return [for (var i = 0; i < set.count; i++) one(i)];
+  }
+
+  /// reaches is the upright box round each of [outlines]: what a move snaps
+  /// to and by. Null for what keeps an answer of its own.
+  List<Rect>? reaches(CanvasElement e) => outlines(e)?.map(_round).toList();
+
+  /// reach is the upright box round all of [e] as drawn now, every copy
+  /// (see [reaches]): what several selected are boxed round. Null for what
+  /// keeps an answer of its own.
+  Rect? reach(CanvasElement e) =>
+      reaches(e)?.reduce((a, b) => a.expandToInclude(b));
+
+  /// meets is whether [e] as drawn now overlaps [box]: any copy's outline
+  /// (see [outlines]) sharing more than an edge with it, or for what keeps
+  /// an answer of its own, [posed]. What a marquee takes.
+  bool meets(CanvasElement e, Rect box) {
+    var quads = outlines(e);
+    if (quads == null) return box.overlaps(posed(e));
+    return quads.any((q) => _quadMeets(q, box));
+  }
+
+  /// _quadMeets is whether convex [quad] and [box] overlap: no line square
+  /// to one of their sides has them apart along it, touching counting as
+  /// apart as Rect.overlaps has it.
+  static bool _quadMeets(List<Offset> quad, Rect box) {
+    var corners = [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft];
+    var axes = <Offset>[
+      const Offset(1, 0),
+      const Offset(0, 1),
+      for (var i = 0; i < 4; i++)
+        Offset(-(quad[(i + 1) % 4] - quad[i]).dy,
+            (quad[(i + 1) % 4] - quad[i]).dx),
+    ];
+    for (var axis in axes) {
+      if (axis == Offset.zero) continue;
+      double lo(List<Offset> ps) =>
+          ps.map((p) => p.dx * axis.dx + p.dy * axis.dy).reduce(math.min);
+      double hi(List<Offset> ps) =>
+          ps.map((p) => p.dx * axis.dx + p.dy * axis.dy).reduce(math.max);
+      if (hi(quad) <= lo(corners) || hi(corners) <= lo(quad)) return false;
+    }
+    return true;
+  }
+
+  static Rect _round(List<Offset> corners) {
+    var left = corners[0].dx, right = left;
+    var top = corners[0].dy, bottom = top;
+    for (var p in corners.skip(1)) {
+      left = math.min(left, p.dx);
+      right = math.max(right, p.dx);
+      top = math.min(top, p.dy);
+      bottom = math.max(bottom, p.dy);
+    }
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
   /// copyAt is which copy of reused [e] is under document point [at], the
   /// last drawn first, each pressed where it is drawn as [contains] presses
   /// an element; null where none is, or [e] is not reused.

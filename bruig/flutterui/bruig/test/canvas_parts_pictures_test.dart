@@ -864,6 +864,17 @@ List<_State> _cameraStates() {
   }
   out.add(_state("camera-blur-focus-on-element",
       _cameraPage(_camera(whole).copyWith(blur: 6, focusOn: "near"))));
+  // A long thin bar turned on its diagonal, far from the focus: softened
+  // whole, its ends past the box it rests in not cut off.
+  out.add(_state(
+      "camera-blur-turned-bar",
+      _page(_cameraW, _cameraH, [
+        ShapeElement(
+            _at(const Rect.fromLTWH(60, 82, 200, 16), id: "bar")
+                .copyWith(rotation: 45, depth: 1),
+            fill: _red),
+        _camera(whole).copyWith(blur: 6),
+      ])));
   out.add(_state(
       "camera-blur-keyed",
       _cameraPage(_camera(whole).withBase(

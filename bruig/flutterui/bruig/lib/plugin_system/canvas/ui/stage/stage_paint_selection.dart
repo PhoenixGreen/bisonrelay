@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_hit_test.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_paint_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter_inputs.dart';
 
@@ -109,14 +110,29 @@ void paintChosenBoxes(Canvas canvas, Set<String> ids, StageShown shown,
     ..color = stageBlue.withAlpha(0x99);
 
   for (var element in chosenOutlines(document, ids)) {
-    var box = element.movedBoundsAt(shown.frame, document, live: motion);
-    var corners =
-        BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
-            .corners(box);
-    canvas.drawPath(
-        Path()..addPolygon([for (var p in corners) p * scale + origin], true),
-        paint);
+    for (var corners in outlinesOnPage(element, shown, motion)) {
+      canvas.drawPath(
+          Path()..addPolygon([for (var p in corners) p * scale + origin], true),
+          paint);
+    }
   }
+}
+
+/// outlinesOnPage is [element]'s outline as drawn on the frame [shown]
+/// (StageHitTest.outlines), each copy of one reused by its own, so a turn
+/// about any anchor, a slant, a squash or a loop's swing is outlined as
+/// drawn. What keeps an answer of its own is its moved box turned and
+/// slanted as it rests.
+List<List<Offset>> outlinesOnPage(
+    CanvasElement element, StageShown shown, LiveMotion? motion) {
+  var hits = StageHitTest(
+      document: shown.document, frame: shown.frame, live: motion, scale: 1);
+  if (hits.outlines(element) case var quads?) return quads;
+  var box = element.movedBoundsAt(shown.frame, shown.document, live: motion);
+  return [
+    BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
+        .corners(box)
+  ];
 }
 
 /// paintWholeChain draws the element previewed from a chain join faintly
@@ -228,9 +244,23 @@ void paintCopies(Canvas canvas, StageSelectionMarks selection, StageShown shown,
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2
     ..color = const Color(0xFFE2B04A);
+  // Each copy where it is drawn, its box laid on the page by its own place,
+  // so a turned copy is ringed turned. A line or a path keeps its box.
+  var placed = placesItsBox(e, document, shown.frame);
+  (Rect, BoxFrame) copyBox(int i) {
+    if (!placed) {
+      return (
+        e.boundsWith(poseWithMotion(e, shown.frame, document,
+            live: motion, instance: i)),
+        BoxFrame(0, 0, 0)
+      );
+    }
+    var on = placeOnPage(e, shown.frame, document, motion, instance: i);
+    return on.place.boxOnPage(on.box);
+  }
+
   for (var (i, copy) in set.items.indexed) {
-    var box = e.boundsWith(
-        poseWithMotion(e, shown.frame, document, live: motion, instance: i));
+    var (box, turn) = copyBox(i);
     var r = Rect.fromLTRB(
         box.left * scale + origin.dx,
         box.top * scale + origin.dy,
@@ -241,12 +271,17 @@ void paintCopies(Canvas canvas, StageSelectionMarks selection, StageShown shown,
     // _oneCopy), so only its number.
     var boxed = picked && selection.pickedCopies.length == 1;
     if (!boxed) {
+      canvas.save();
+      turn.applyTo(canvas, r.center);
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               r.inflate(picked ? 3 : 1), const Radius.circular(3)),
           picked ? ring : faint);
+      canvas.restore();
     }
     if (!picked) continue;
+    // Its number above the top-left of the upright box round it.
+    if (!turn.upright) r = _roundCorners(turn.corners(r));
     var tp = TextPainter(
         text: TextSpan(
             text: "#${i + 1}",
@@ -262,6 +297,12 @@ void paintCopies(Canvas canvas, StageSelectionMarks selection, StageShown shown,
         Paint()..color = const Color(0xFFE2B04A));
     tp.paint(canvas, tag.topLeft + const Offset(4, 1.5));
   }
+}
+
+Rect _roundCorners(List<Offset> corners) {
+  var xs = corners.map((p) => p.dx), ys = corners.map((p) => p.dy);
+  return Rect.fromLTRB(xs.reduce(math.min), ys.reduce(math.min),
+      xs.reduce(math.max), ys.reduce(math.max));
 }
 
 /// paintAnchors draws each anchor as a ring and cross, grey where locked.

@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_geometry.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_paint_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage/stage_paint_selection.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/stage_painter_inputs.dart';
 
 // stage_paint_elements.dart is what the stage marks on elements other than
@@ -34,14 +35,12 @@ void paintKeptBoxes(Canvas canvas, bool showAllBounds, Set<String> selected,
     if (!element.visible) continue;
     if (selected.contains(element.id)) continue;
 
-    // Its box as laid on the page, turned and slanted.
-    var box = element.movedBoundsAt(shown.frame, document, live: motion);
-    var corners =
-        BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
-            .corners(box);
-    canvas.drawPath(
-        Path()..addPolygon([for (var p in corners) p * scale + origin], true),
-        paint);
+    // Its box as laid on the page, turned and slanted as drawn.
+    for (var corners in outlinesOnPage(element, shown, motion)) {
+      canvas.drawPath(
+          Path()..addPolygon([for (var p in corners) p * scale + origin], true),
+          paint);
+    }
   }
 }
 

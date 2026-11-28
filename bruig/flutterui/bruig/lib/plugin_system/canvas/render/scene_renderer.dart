@@ -518,7 +518,12 @@ class _Lens {
     }
     var sigma = look.blurAt(depth);
     if (sigma > 0.25) {
-      var bounds = e.movedBoundsAt(frame, doc, live: live).inflate(sigma * 3);
+      // The layer bounds what is softened, so it is round the element as it
+      // is drawn, turned, slanted, squashed or swung: its resting box would
+      // cut a turned one's ends off.
+      var drawn = reachOnPage(e, frame, doc, live: live) ??
+          e.movedBoundsAt(frame, doc, live: live);
+      var bounds = drawn.inflate(sigma * 3);
       canvas.saveLayer(
           bounds,
           Paint()

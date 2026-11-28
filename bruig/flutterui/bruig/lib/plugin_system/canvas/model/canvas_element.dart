@@ -1288,6 +1288,32 @@ class ElementPlace {
     return q;
   }
 
+  /// corners is [box]'s corners where they land on the page, in order round
+  /// it: every step is straight lines kept straight, so that four-sided
+  /// figure is exactly where the box is drawn, its outline.
+  List<Offset> corners(Rect box) => [
+        place(box.topLeft),
+        place(box.topRight),
+        place(box.bottomRight),
+        place(box.bottomLeft),
+      ];
+
+  /// reach is the upright box round [box] as it lands on the page: round its
+  /// [corners]. What is lined up, snapped to or taken by a marquee where an
+  /// upright box is needed.
+  Rect reach(Rect box) {
+    if (leavesAlone) return box;
+    var c = corners(box);
+    var left = c[0].dx, right = left, top = c[0].dy, bottom = top;
+    for (var p in c.skip(1)) {
+      left = math.min(left, p.dx);
+      right = math.max(right, p.dx);
+      top = math.min(top, p.dy);
+      bottom = math.max(bottom, p.dy);
+    }
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
   /// placePath is [path], drawn in the box, laid on the page as [applyTo]
   /// lays the canvas out: an outline that must land where the element is
   /// drawn on this frame, for something drawn through it (a docked element's

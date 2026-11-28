@@ -6,8 +6,28 @@ part of '../canvas_controller.dart';
 // fields and lifecycle are in canvas_controller.dart.
 
 extension CanvasMovement on CanvasController {
-  /// movedTo is the stage's drag: where [element]'s top-left should now be.
-  /// Absolute rather than a delta, since deltas drift and compound on a pose.
+  /// moveOrigin is the top-left [movedTo] leaves [element] as it is: where
+  /// it stands on a 3D stage on this frame; its rest moved by its keys'
+  /// move here where a drag poses it; else its rest. Not where it is drawn:
+  /// a clip, a device, a loop or a size about its anchor move what is drawn
+  /// as well, and handed back to [movedTo] they would be written in and so
+  /// added twice. A drag hands [movedTo] this, taken at its start, plus how
+  /// far it has gone, so what is drawn goes exactly as far as the pointer.
+  Offset moveOrigin(CanvasElement element) {
+    if (element.base.spot != null) {
+      if (stagedIn(_document, element, _frame) case var at?) {
+        return at.box.topLeft;
+      }
+    }
+    var rest = Offset(element.x, element.y);
+    if (!posesRatherThanMoves(element)) return rest;
+    var pose = element.poseAt(_frame);
+    return rest + Offset(pose.dx, pose.dy);
+  }
+
+  /// movedTo is the stage's drag: where [element]'s top-left should now be,
+  /// in [moveOrigin]'s terms. Absolute rather than a delta, since deltas
+  /// drift and compound on a pose.
   /// [free] is a drag Alt frees from snapping, which the stage tells it: it
   /// is put off a 3D stage's steps however its snap is set.
   CanvasElement movedTo(CanvasElement element, Offset topLeft,

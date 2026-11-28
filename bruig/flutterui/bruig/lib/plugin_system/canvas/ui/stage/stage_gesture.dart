@@ -472,6 +472,7 @@ class _BoxStart {
     required this.bounds,
     required this.elements,
     required this.posed,
+    required this.from,
     required this.visual,
     required this.seen,
     required this.rotation,
@@ -488,6 +489,10 @@ class _BoxStart {
   /// posed is where each element is drawn on this frame, which a move works
   /// from.
   final Map<String, Rect> posed;
+
+  /// from is each element's top-left in CanvasController.movedTo's terms
+  /// (moveOrigin), which a move adds its travel to.
+  final Map<String, Offset> from;
 
   /// visual is the box each element's handles are on: see _visualBounds.
   final Map<String, Rect> visual;

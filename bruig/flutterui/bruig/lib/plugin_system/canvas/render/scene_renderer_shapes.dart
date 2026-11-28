@@ -84,6 +84,44 @@ bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
         doc != null &&
         stagedIn(doc, element, frame) != null);
 
+/// placesItsBox is whether [element] is drawn as its box laid on the page by
+/// its place (placeOnPage), so that its outline is that box's corners laid
+/// so (ElementPlace.corners) and the upright box round it is round them
+/// (reachOnPage).
+/// Not a line or a path (round its curve), text on a line or something
+/// standing on a 3D stage (see hasOwnGeometry), a camera (its frame) or a
+/// team on a pitch (the pitch places it), which keep answers of their own.
+bool placesItsBox(CanvasElement element, CanvasDocument? doc, int frame) =>
+    element is! StrokedElement &&
+    element is! CameraElement &&
+    !(element is TeamElement && element.linked) &&
+    hasOwnGeometry(element, doc, frame);
+
+/// reachOnPage is the upright box round [element] as it is drawn on
+/// [frame], round its box's corners laid on the page: for one reused and no [instance] named,
+/// round every copy's. What a marquee takes, what a move snaps to and by,
+/// several selected and align and spread measure. Null where it does not
+/// place its box (placesItsBox), whose own answer stands.
+Rect? reachOnPage(CanvasElement element, int frame, CanvasDocument doc,
+    {LiveMotion? live, int? instance}) {
+  if (!placesItsBox(element, doc, frame)) return null;
+  Rect one(int? i) {
+    var on = placeOnPage(element, frame, doc, live, instance: i);
+    return on.place.reach(on.box);
+  }
+
+  if (instance == null) {
+    if (element.base.motion.instances case var set? when set.count > 0) {
+      var all = one(0);
+      for (var i = 1; i < set.count; i++) {
+        all = all.expandToInclude(one(i));
+      }
+      return all;
+    }
+  }
+  return one(instance);
+}
+
 /// StrokeOnPage is a line or a path as paintElement draws it on a frame:
 /// [shaped] by its pose (a line bowed as the pose keys it), its box laid on
 /// the page by [place], and its curve there, as points along it, [curve].
