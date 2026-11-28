@@ -76,17 +76,10 @@ class StageHitTest {
     this.cameras = true,
   });
 
-  /// posed is where [e] is drawn now: its resting box moved by its motion.
+  /// posed is [e]'s resting box moved and sized by its motion, upright
+  /// (movedBoundsAt): a camera's frame, and the box of what keeps an answer
+  /// of its own. An element's own parts are pressed through [inBox].
   Rect posed(CanvasElement e) => e.movedBoundsAt(frame, document, live: live);
-
-  /// drawn is [posed] where the page draws it: a mirrored page number on a
-  /// left-hand page is drawn across the page (CounterElement.drawnBox), and
-  /// pressed there.
-  Rect drawn(CanvasElement e) => switch (e) {
-        CounterElement c => c.drawnBox(posed(e),
-            page: document.size.rect, leftHand: document.pageIsLeftHand),
-        _ => posed(e),
-      };
 
   /// placed is [e], or its copy [instance], as the painter lays it out now
   /// (placeOnPage). An element nothing moves but its own keys is laid out by
@@ -103,6 +96,22 @@ class StageHitTest {
       _ => e.bounds,
     };
     return ElementOnPage(e, pose, e.placedIn(box, pose), box: box);
+  }
+
+  /// inBox is document point [at] taken into [e]'s box as the painter lays
+  /// it out now ([placed]), with that layout: a press on one of the
+  /// element's own parts (a counter's button, a chart's key, a table's
+  /// cell) is tested against the part's rectangle laid out in that box
+  /// (on.box), which is where the painter draws it before laying the box
+  /// on the page. A drag on a part measures its travel there too. Of an
+  /// element reused, the copy under the point, or [instance]. Null where the
+  /// place draws the box flat, to a line or a point, so no point of the
+  /// page is in it.
+  ({ElementOnPage on, Offset point})? inBox(CanvasElement e, Offset at,
+      {int? instance}) {
+    var on = placed(e, instance: instance ?? copyAt(e, at));
+    if (on.place.flattens) return null;
+    return (on: on, point: on.place.unplace(at));
   }
 
   /// outlines is [e]'s outline as drawn now: its box's four corners laid on

@@ -145,7 +145,7 @@ extension StageHitTesting on CanvasStageState {
     if (_gesture case _FlowLinkDrag(:var fromId, :var at)) {
       var box = document.elementById(fromId);
       if (box == null) return null;
-      return FlowLine(_toStage(_flowPointOf(_hit.posed(box), top: false)), at);
+      return FlowLine(_toStage(_flowPointOf(box, top: false)), at);
     }
     return null;
   }
@@ -178,17 +178,24 @@ extension StageHitTesting on CanvasStageState {
           e, document, inner, drawnTextSpec(e, e.bounds, doc: document),
           frame: controller.frame);
       out.add(FlowLine(
-        _toStage(_flowPointOf(_hit.posed(e), top: false)),
-        _toStage(_flowPointOf(_hit.posed(into), top: true)),
+        _toStage(_flowPointOf(e, top: false)),
+        _toStage(_flowPointOf(into, top: true)),
         overflowing: flow.overflows,
       ));
     }
     return out;
   }
 
-  Offset _flowPointOf(Rect bounds, {required bool top}) => top
-      ? Offset(bounds.left, bounds.top + bounds.height / 4)
-      : Offset(bounds.right, bounds.bottom - bounds.height / 4);
+  /// _flowPointOf is where a link leaves text box [e], low on its right
+  /// side, or with [top] comes into it, high on its left: on its box as the
+  /// painter lays it out, so the line meets the box where it is drawn.
+  Offset _flowPointOf(CanvasElement e, {required bool top}) {
+    var on = _hit.placed(e);
+    var b = on.box;
+    return on.place.place(top
+        ? Offset(b.left, b.top + b.height / 4)
+        : Offset(b.right, b.bottom - b.height / 4));
+  }
 
   /// _gripPosition puts a flow grip between two resize handles, in at upper
   /// left and out at lower right, clear of the corners.
@@ -221,7 +228,10 @@ extension StageHitTesting on CanvasStageState {
   TextElement? _looseTextPiece(Offset doc) {
     var owner = _textPieceOwner(doc);
     if (owner == null) return null;
-    return _hit.posed(owner).contains(doc) ? null : owner;
+    var inside = _hit.inBox(owner, doc);
+    return inside != null && inside.on.box.contains(inside.point)
+        ? null
+        : owner;
   }
 
   /// _textItemAt is [e]'s extra piece at a document point, or null, from
@@ -231,14 +241,16 @@ extension StageHitTesting on CanvasStageState {
   TextItem? _textItemAt(TextElement e, Offset doc, {bool locked = false}) {
     if (!e.showsPiecesIn(document)) return null;
     // Where it is drawn, its fields filled in.
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return null;
+    var (:on, :point) = inside;
     e = textWithFields(e, document);
-    var bounds = _hit.posed(e);
-    var rects = textItemRects(e, bounds, doc: document);
+    var rects = textItemRects(e, on.box, doc: document);
     // Backwards: the last drawn is on top.
     for (var i = e.items.length - 1; i >= 0; i--) {
       // Hidden or locked in the Layers, it cannot be pressed.
       if (e.items[i].hidden || (e.items[i].locked && !locked)) continue;
-      if (!rects[i].isEmpty && rects[i].inflate(2).contains(doc)) {
+      if (!rects[i].isEmpty && rects[i].inflate(2).contains(point)) {
         return e.items[i];
       }
     }
@@ -279,11 +291,12 @@ extension StageHitTesting on CanvasStageState {
     return null;
   }
 
-  /// _counterLaidOut is [e] laid out where it is drawn, showing what it
-  /// shows: what the painter draws it from (counterLaidOut).
-  CounterLaidOut? _counterLaidOut(CounterElement e) => counterLaidOut(
+  /// _counterLaidOut is [e] laid out in [box], the box the painter draws it
+  /// in, showing what it shows: what the painter draws it from
+  /// (counterLaidOut).
+  CounterLaidOut? _counterLaidOut(CounterElement e, Rect box) => counterLaidOut(
       e,
-      _hit.drawn(e),
+      box,
       e.shownValue(
           page: document.pageNumber,
           pose: poseWithMotion(e, controller.frame, document,
@@ -293,9 +306,11 @@ extension StageHitTesting on CanvasStageState {
   /// _counterPieceUnder is the loosely placed piece of [e] at document
   /// point [doc], where it is drawn, if any.
   CounterPiece? _counterPieceUnder(CounterElement e, Offset doc) {
-    for (var (piece, rect)
-        in _counterLaidOut(e)?.pieces(e) ?? const <(CounterPiece, Rect)>[]) {
-      if (rect.contains(doc)) return piece;
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return null;
+    for (var (piece, rect) in _counterLaidOut(e, inside.on.box)?.pieces(e) ??
+        const <(CounterPiece, Rect)>[]) {
+      if (rect.contains(inside.point)) return piece;
     }
     return null;
   }
@@ -306,9 +321,11 @@ extension StageHitTesting on CanvasStageState {
   (String, int)? _codePaneAt(Offset doc) {
     var e = _hitElement(doc);
     if (e is CodeElement && controller.codeEditing == null) {
-      if (codeHitAt(e, doc, box: _hit.posed(e))
-          case CodePaneHit(:var pane, inTabs: false)) {
-        return (e.id, pane);
+      if (_hit.inBox(e, doc) case (:var on, :var point)?) {
+        if (codeHitAt(e, point, box: on.box)
+            case CodePaneHit(:var pane, inTabs: false)) {
+          return (e.id, pane);
+        }
       }
     }
     return null;
@@ -317,8 +334,10 @@ extension StageHitTesting on CanvasStageState {
   /// _legendSeriesAt is the series whose key entry is at a document point,
   /// from the painter, or -1.
   int _legendSeriesAt(ChartElement e, Offset doc) {
-    for (var (series, box) in chartLegendRects(e, _hit.posed(e))) {
-      if (box.contains(doc)) return series;
+    if (_hit.inBox(e, doc) case (:var on, :var point)?) {
+      for (var (series, box) in chartLegendRects(e, on.box)) {
+        if (box.contains(point)) return series;
+      }
     }
     return -1;
   }
@@ -326,12 +345,17 @@ extension StageHitTesting on CanvasStageState {
   /// _audioPartAt is the speaker control at a document point, or null (see
   /// audioParts).
   AudioControl? _audioPartAt(AudioElement e, Offset doc) {
-    var parts = audioParts(e, _hit.posed(e));
-    if (parts.volume case var v? when v.contains(doc)) {
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return null;
+    var (:on, :point) = inside;
+    var parts = audioParts(e, on.box);
+    if (parts.volume case var v? when v.contains(point)) {
       return AudioControl.volume;
     }
-    if (parts.mute case var m? when m.contains(doc)) return AudioControl.mute;
-    if (e.has(AudioControl.playPause) && parts.icon.contains(doc)) {
+    if (parts.mute case var m? when m.contains(point)) {
+      return AudioControl.mute;
+    }
+    if (e.has(AudioControl.playPause) && parts.icon.contains(point)) {
       return AudioControl.playPause;
     }
     return null;
@@ -352,10 +376,13 @@ extension StageHitTesting on CanvasStageState {
 
   /// _videoPartAt is the video part at a document point. A link answers
   /// anywhere on it.
-  VideoPart? _videoPartAt(VideoElement e, Offset doc) =>
-      videoPartAt(videoParts(e, _hit.posed(e)), doc,
-          clickable:
-              e.isLink || (e.has(VideoControl.clickToggle) && !e.clip.timed));
+  VideoPart? _videoPartAt(VideoElement e, Offset doc) {
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return null;
+    return videoPartAt(videoParts(e, inside.on.box), inside.point,
+        clickable:
+            e.isLink || (e.has(VideoControl.clickToggle) && !e.clip.timed));
+  }
 
   /// _masterVideoAt is a master video under a document point.
   (VideoElement, VideoPart)? _masterVideoAt(Offset doc) {
@@ -385,9 +412,11 @@ extension StageHitTesting on CanvasStageState {
 
   /// _counterButtonAt is the counter button at a document point, or -1.
   int _counterButtonAt(CounterElement e, Offset doc) {
-    var rects = counterButtonRects(e, _hit.drawn(e));
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return -1;
+    var rects = counterButtonRects(e, inside.on.box);
     for (var i = 0; i < rects.length; i++) {
-      if (rects[i].contains(doc)) return i;
+      if (rects[i].contains(inside.point)) return i;
     }
     return -1;
   }

@@ -439,6 +439,33 @@ standing on a 3D stage (its quad through the stage's view) keep presses of
 their own. A played canvas's click (`canvas_file_player.dart`) is the same
 press, a camera there taken anywhere in what it frames.
 
+An element's own parts are laid out in its box and drawn there before the
+box is laid on the page, so a press on one (a counter's buttons and loose
+words, a chart's key and placed labels, a table's cells and column rules,
+a Code panel's tabs, dividers and playbar, a Run panel's button, a
+speaker's and a video's controls, a sheet's playbar, an instrument's keys,
+a metronome's buttons, a play, code or synth task's steps, a text's
+pieces) takes the point into that box first: `StageHitTest.inBox` is the
+point through the place `placed` lays the element out by, with that
+layout, and the part's rectangle is laid out in `on.box` as the painter
+lays it out. A drag on a part (a column rule, a label, a loose word, a
+volume or a seek) measures its travel there too, so a rule on a turned
+table goes as far along the table as the pointer goes, and under a size
+the parts are not laid out in a sized box but sized with the drawing. The
+marks over parts (a chart's label boxes, a table's rule grips: `partsPlace`
+in the painter's inputs; a text's flow links) are laid on the page by the
+same place, and a picked picture piece's box is its square laid on the page
+by it (`_pieceBox`, by `ElementPlace.boxOnPage`), its own turn added. The
+text editor, a table's cell editor and a counter's Set field are laid out
+at the rectangle they edit in the box and laid over the page by the place
+as one matrix (`ElementPlace.matrix`, made a matrix of the stage's points
+by `_onStage`), so the field sits on the words or the cell as drawn,
+turned, slanted, sized and moved with them (text on a line keeps its own
+box, turned about its middle). A Code panel's open editor and a Run
+panel's live preview are still laid upright where the panel's box is moved
+and sized to (`StageHitTest.posed`). `test/canvas_parts_on_page_test.dart`
+holds each part to it under each motion.
+
 A lone element's selection box, or one picked copy's, is its own box laid on
 the page by that place (`_placedBox`, by `ElementPlace.boxOnPage`): a box
 and a turn and slant about its middle, which is what any place makes of a

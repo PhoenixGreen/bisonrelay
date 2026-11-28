@@ -326,6 +326,24 @@ void main() {
           }
         }
       });
+
+      // The place as one matrix, which lays a widget over the element where
+      // it is drawn (the text editor, a cell's), takes each point of the box
+      // where place does.
+      test("$name: one matrix", () {
+        var e = _line(base);
+        var place = e.placedBy(pose);
+        for (var p in [
+          e.bounds.topLeft,
+          e.bounds.bottomRight,
+          e.bounds.center,
+          const Offset(-30, 500),
+        ]) {
+          var mapped = MatrixUtils.transformPoint(place.matrix, p);
+          expect((mapped - place.place(p)).distance, lessThan(1e-6),
+              reason: "$p: by the matrix $mapped, placed ${place.place(p)}");
+        }
+      });
     }
   });
 

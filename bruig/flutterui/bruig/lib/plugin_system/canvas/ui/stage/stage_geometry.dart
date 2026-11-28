@@ -43,11 +43,17 @@ const double anchorReach = 10;
 /// tableColumnGrips is where the two grips of a table's column rule are
 /// drawn, for a rule from [top] to [bottom], all on screen: a short bar
 /// just inside each end.
-List<Rect> tableColumnGrips(Offset top, Offset bottom) => [
-      Rect.fromCenter(center: top + const Offset(0, 5), width: 4, height: 12),
-      Rect.fromCenter(
-          center: bottom - const Offset(0, 5), width: 4, height: 12),
-    ];
+List<Rect> tableColumnGrips(Offset top, Offset bottom) {
+  // In from each end along the rule, which a turned table draws aslant.
+  var along = bottom - top;
+  var inward = along.dx == 0 && along.dy >= 0
+      ? const Offset(0, 5)
+      : Offset(along.dx / along.distance, along.dy / along.distance) * 5;
+  return [
+    Rect.fromCenter(center: top + inward, width: 4, height: 12),
+    Rect.fromCenter(center: bottom - inward, width: 4, height: 12),
+  ];
+}
 
 /// turnStepDegrees is the step a turn takes with Shift held.
 const double turnStepDegrees = 15;

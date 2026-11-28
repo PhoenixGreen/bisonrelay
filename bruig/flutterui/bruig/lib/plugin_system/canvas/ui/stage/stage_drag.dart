@@ -17,7 +17,11 @@ extension StageDrag on CanvasStageState {
   void _applyChartLabel(ChartLabelGrab grab, Offset doc) {
     var element = controller.selected;
     if (element is! ChartElement) return;
-    var next = chartLabelDragged(element, _hit.posed(element), grab, doc);
+    // Measured in the chart's box as it is drawn, so the label follows the
+    // pointer however the chart is turned or sized on this frame.
+    var inside = _hit.inBox(element, doc);
+    if (inside == null) return;
+    var next = chartLabelDragged(element, inside.on.box, grab, inside.point);
     if (next != null) controller.replaceElement(next, transient: true);
   }
 
@@ -27,7 +31,11 @@ extension StageDrag on CanvasStageState {
   void _applyTableColumn(int column, Offset doc) {
     var element = controller.selected;
     if (element is! TableElement) return;
-    var next = tableColumnDragged(element, _hit.posed(element), column, doc);
+    // Measured along the table as it is drawn: on a turned table the rule
+    // goes as far along it as the pointer does.
+    var inside = _hit.inBox(element, doc);
+    if (inside == null) return;
+    var next = tableColumnDragged(element, inside.on.box, column, inside.point);
     if (next != null) controller.replaceElement(next, transient: true);
   }
 

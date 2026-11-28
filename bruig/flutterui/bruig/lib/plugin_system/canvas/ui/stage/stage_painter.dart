@@ -153,9 +153,11 @@ class StagePainter extends CustomPainter {
     paintFlowLines(canvas, inputs.elements.flowLines);
     paintTouchAreas(canvas, inputs.elements.touchAreas, _scale, _origin);
 
-    paintChartLabels(canvas, inputs.elements.chartLabels, _scale, _origin);
+    paintChartLabels(canvas, inputs.elements.chartLabels,
+        inputs.elements.partsPlace, _scale, _origin);
     paintLayoutMarks(canvas, inputs.elements.layout, _scale, _origin);
-    paintTableColumns(canvas, inputs.elements.tableColumns, _scale, _origin);
+    paintTableColumns(canvas, inputs.elements.tableColumns,
+        inputs.elements.partsPlace, _scale, _origin);
     // A path shows points and handles, not a box: the box round a curve
     // cannot be usefully dragged.
     var path = inputs.elements.selectedPath;

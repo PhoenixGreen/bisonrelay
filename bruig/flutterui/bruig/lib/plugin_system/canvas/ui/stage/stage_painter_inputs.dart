@@ -269,18 +269,24 @@ typedef StageElementMarks = ({
   /// flowDrag is the link being dragged, from its box to the pointer.
   FlowLine? flowDrag,
 
-  /// chartLabels is the boxes of the selected chart's placed labels, in
-  /// document units, outlined to show they can be taken hold of, each with
-  /// whether it has a resize grip (see chartLabelResizes).
+  /// chartLabels is the boxes of the selected chart's placed labels, in its
+  /// box (laid on the page by [partsPlace]), outlined to show they can be
+  /// taken hold of, each with whether it has a resize grip (see
+  /// chartLabelResizes).
   EqualList<({Rect rect, bool grip})> chartLabels,
 
   /// layout is the selected Layout's picked cell and the lines that can be
   /// dragged, in document units (stage_layouts.dart).
   LayoutMarks? layout,
 
-  /// tableColumns is where a selected table's column rules are, in document
-  /// units, each given a drag grip.
+  /// tableColumns is where a selected table's column rules are, in its box
+  /// (laid on the page by [partsPlace]), each given a drag grip.
   EqualList<(double, double, double)> tableColumns,
+
+  /// partsPlace is where the painter lays out the chart or table whose
+  /// [chartLabels] or [tableColumns] are shown (ElementPlace), so their
+  /// marks sit on the parts as drawn; null for neither.
+  ElementPlace? partsPlace,
 
   /// selectedPath is the selected path, drawn with points and handles.
   /// Compared by identity: the document keeps the element it holds.

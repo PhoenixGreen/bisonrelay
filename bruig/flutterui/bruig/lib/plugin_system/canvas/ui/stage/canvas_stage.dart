@@ -23,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/render/synth_module_painter.dart';
 import 'package:clock/clock.dart';
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data' show Float64List;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/ui/stage/orbit_pad.dart';
@@ -925,6 +926,7 @@ class CanvasStageState extends State<CanvasStage>
         chartLabels: EqualList(_selectedChartLabels()),
         layout: _layoutMarks(),
         tableColumns: EqualList(_selectedTableColumns()),
+        partsPlace: _partsPlace,
         selectedPath: _selectedPath(),
         pathPlace: switch (_selectedPath()) {
           var path? => _pathPlace(path),
@@ -1193,14 +1195,27 @@ class CanvasStageState extends State<CanvasStage>
     var element = document.elementById(id);
     if (element is! TableElement) return null;
 
-    var box = tableCellRect(element, _hit.posed(element), row, col);
+    // The cell in the table's box, laid on the page as the table is drawn.
+    var on = _hit.placed(element);
+    var box = tableCellRect(element, on.box, row, col);
     var topLeft = _toStage(box.topLeft);
     return Positioned(
       left: topLeft.dx,
       top: topLeft.dy,
       width: math.max(40, box.width * _scale),
       height: math.max(20, box.height * _scale),
-      child: CanvasCellEditor(
+      child: Transform(
+        transform: _onStage(on.place),
+        origin: -topLeft,
+        child: _cellEditorField(element, id, row, col),
+      ),
+    );
+  }
+
+  /// _cellEditorField is the field typed into for [element]'s cell at [row]
+  /// and [col].
+  Widget _cellEditorField(TableElement element, String id, int row, int col) =>
+      CanvasCellEditor(
         key: ValueKey("cell-$id-$row-$col"),
         value: element.cell(row, col),
         fontSize: math.max(9, element.cellSpec.fontSize * _scale),
@@ -1222,9 +1237,7 @@ class CanvasStageState extends State<CanvasStage>
           controller.endInteraction();
           setState(_endCellEdit);
         },
-      ),
-    );
-  }
+      );
 
   /// _editorFor is the text editor overlay, if open: built here because it
   /// sits in the painting's coordinates, which only the stage knows.
@@ -1247,7 +1260,11 @@ class CanvasStageState extends State<CanvasStage>
     // Where the words are laid out, worked out again on every keystroke as
     // the painter does, so the field stays on them -- except text on a line,
     // whose box is frozen where it opened (the letters move as they come).
-    var bounds = _hit.posed(element);
+    // In the box the painter draws the words in, then laid on the page as
+    // it lays that box out on this frame.
+    var on = _hit.placed(element);
+    var bounds = on.box;
+    var onLine = element.wordsSetIn(document) == WordsSet.onLine;
     var box = switch (element.wordsSetIn(document)) {
       WordsSet.onLine => _frozenBox(edit, element),
       WordsSet.wrapped || WordsSet.inColumns || WordsSet.inBox => item != null
@@ -1262,12 +1279,16 @@ class CanvasStageState extends State<CanvasStage>
       document: document,
       item: item,
       rect: _toStageRect(box),
-      pivot: _toStage(bounds.center),
-      // Turned as it is drawn on this frame, keys and clips and all.
-      turn: element.movedRotationAt(controller.frame, document,
-              live: controller.liveMotion) *
-          math.pi /
-          180,
+      // Text on a line keeps its own answer: its frozen box turned with it
+      // about the middle of where it is.
+      transform: onLine
+          ? _turnedOnStage(
+              _toStage(_hit.posed(element).center),
+              element.movedRotationAt(controller.frame, document,
+                      live: controller.liveMotion) *
+                  math.pi /
+                  180)
+          : _onStage(on.place),
       scale: _scale,
       showWords: shows,
       clickAt: edit.click,

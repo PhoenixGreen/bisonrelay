@@ -1169,10 +1169,6 @@ extension MovedElement on CanvasElement {
       !base.motion.moves
           ? rotationAt(frame)
           : rotation + poseWithMotion(this, frame, doc, live: live).rotate;
-
-  /// movedFrameAt is frameAt with the clips' turn added.
-  BoxFrame movedFrameAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
-      BoxFrame(movedRotationAt(frame, doc, live: live), base.skewX, base.skewY);
 }
 
 /// cameraOf is [doc]'s camera: the first one shown, if there is one.

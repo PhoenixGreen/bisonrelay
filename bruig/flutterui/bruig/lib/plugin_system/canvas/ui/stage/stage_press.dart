@@ -469,11 +469,14 @@ extension StagePress on CanvasStageState {
     // A synth module's controls answer a press picked or not, as a rack's
     // do; its panel picks and moves it.
     if (element is SynthModuleElement && _pressSynth(element, doc)) return true;
-    // Each of these is pressed where it is drawn now (StageHitTest.posed),
-    // which its motion may have taken away from its resting place.
+    // Each of these is pressed where it is drawn now, in its box as the
+    // painter lays it out (StageHitTest.inBox), however its motion turns,
+    // sizes or moves it on this frame.
+    var inside = _hit.inBox(element, doc);
+    if (inside == null) return false;
+    var (:on, :point) = inside;
     if (element is MetronomeElement) {
-      if (metronomePartAt(element, doc, box: _hit.posed(element))
-          case var part?) {
+      if (metronomePartAt(element, point, box: on.box) case var part?) {
         _pressMetronome(element, part);
         _mode = _DragMode.none;
         return true;
@@ -482,21 +485,22 @@ extension StagePress on CanvasStageState {
     // A Code panel's tabs, files and pane dividers, and a Run panel's Run
     // button, answer a press picked or not.
     if (element is CodeElement && _pressCode(press, element)) return true;
-    if (element is CodeRunElement && _pressCodeRun(element, doc)) return true;
+    if (element is CodeRunElement && _pressCodeRun(element, on, point)) {
+      return true;
+    }
     // A play task's own steps, ticked by the student, and its Start again.
     if (element is PlayTaskElement && _pressPlayTask(element, doc)) {
       return true;
     }
     if (element is CodeTaskElement &&
-        codeTaskButtonAt(element, doc, box: _hit.posed(element))) {
+        codeTaskButtonAt(element, point, box: on.box)) {
       controller.selectAlone(element.id);
       controller.checkCodeTask(element);
       _mode = _DragMode.none;
       return true;
     }
     if (element is SynthTaskElement) {
-      if (synthTaskButtonAt(element, doc, box: _hit.posed(element))
-          case var b?) {
+      if (synthTaskButtonAt(element, point, box: on.box) case var b?) {
         _pressSynthTask(element, b);
         _mode = _DragMode.none;
         return true;
@@ -536,7 +540,11 @@ extension StagePress on CanvasStageState {
     // playhead to the note there; one that travels moves the sheet. Its
     // playbar takes a press picked or not.
     var onBar = element is SheetElement &&
-        (sheetBarRect(element, _hit.posed(element))?.contains(doc) ?? false);
+        switch (_hit.inBox(element, doc)) {
+          (:var on, :var point)? =>
+            sheetBarRect(element, on.box)?.contains(point) ?? false,
+          null => false,
+        };
     if (onBar) controller.selectAlone(element.id);
     if (element is SheetElement &&
         element.score.isNotEmpty &&
@@ -551,13 +559,16 @@ extension StagePress on CanvasStageState {
     if (element is AudioElement &&
         element.instrument != null &&
         controller.isOnlySelected(element.id)) {
-      var keys = keyboardLayout(element.instrument!, _hit.posed(element));
-      if (keys.keyAt(doc) case (var key, var depth)?) {
-        controller.noteOn(element, key,
-            velocity: (50 + depth * 77).round(),
-            place: neckPlaceAt(keys, element.instrument!, doc));
-        _gesture = _BoxMove(_beginTransform(), click: _KeyHeld(element, key));
-        return true;
+      // Its keys in its box as it is drawn.
+      if (_hit.inBox(element, doc) case (:var on, :var point)?) {
+        var keys = keyboardLayout(element.instrument!, on.box);
+        if (keys.keyAt(point) case (var key, var depth)?) {
+          controller.noteOn(element, key,
+              velocity: (50 + depth * 77).round(),
+              place: neckPlaceAt(keys, element.instrument!, point));
+          _gesture = _BoxMove(_beginTransform(), click: _KeyHeld(element, key));
+          return true;
+        }
       }
     }
 
@@ -642,7 +653,10 @@ extension StagePress on CanvasStageState {
 
     // A second click on a selected table's cell opens it for typing.
     if (element is TableElement && !element.locked && _secondClickOn(element)) {
-      var at = tableCellAt(element, _hit.posed(element), doc);
+      var inside = _hit.inBox(element, doc);
+      var at = inside == null
+          ? null
+          : tableCellAt(element, inside.on.box, inside.point);
       if (at != null) {
         setState(
             () => _editing = CellEdit(element.id, row: at.$1, column: at.$2));

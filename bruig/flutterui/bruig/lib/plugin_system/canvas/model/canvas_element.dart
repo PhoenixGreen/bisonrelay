@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 // Every element reads its saved fields with the readers in json_read.dart,
 // so whatever imports an element has them.
@@ -847,11 +848,6 @@ abstract class CanvasElement {
   Offset anchorIn(Rect box) => Offset(
       box.left + box.width * base.anchorX, box.top + box.height * base.anchorY);
 
-  /// anchorAt is the anchor on the page at [frame], as its keys lay it out:
-  /// moved with the pose, turned and slanted with the box about its centre.
-  /// A keyframe's turn and size are about the anchor, so they leave it put.
-  Offset anchorAt(int frame) => placedBy(poseAt(frame)).place(anchorIn(bounds));
-
   /// turnedAboutCentre is [p] turned as the element is, about [centre].
   Offset turnedAboutCentre(Offset p, Offset centre) {
     var r = rotationRadians;
@@ -859,14 +855,6 @@ abstract class CanvasElement {
     var d = p - centre;
     var c = math.cos(r), s = math.sin(r);
     return centre + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
-  }
-
-  /// withAnchorAt moves the anchor to [page] on [frame], as its keys lay it
-  /// out: see [anchorDrawnAt].
-  CanvasElement withAnchorAt(Offset page, int frame) {
-    var (ax, ay, shift) = anchorDrawnAt(page, poseAt(frame), bounds);
-    return withBase(
-        anchorX: ax, anchorY: ay, x: base.x + shift.dx, y: base.y + shift.dy);
   }
 
   /// anchorDrawnAt is the anchor, as shares of the box across and down, that
@@ -1398,6 +1386,20 @@ class ElementPlace {
       Rect.fromCenter(center: middle, width: u.distance * 2, height: height),
       BoxFrame(angle * 180 / math.pi, slant, 0)
     );
+  }
+
+  /// matrix is [place] as one matrix: what lays a widget over the page where
+  /// the element is drawn on this frame (the text editor, a table's cell
+  /// editor), the box's points landing where [place] puts them.
+  Matrix4 get matrix {
+    var m = _matrix;
+    // By columns, as Matrix4 is kept.
+    return Matrix4.fromFloat64List(Float64List.fromList([
+      m.a, m.c, 0, 0, //
+      m.b, m.d, 0, 0, //
+      0, 0, 1, 0, //
+      m.e, m.f, 0, 1,
+    ]));
   }
 
   /// _matrix is [place] as one affine map, its steps composed in its order.

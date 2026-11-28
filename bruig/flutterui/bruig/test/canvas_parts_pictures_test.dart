@@ -1009,7 +1009,7 @@ void _counterNumbers(StringBuffer out, CounterElement e, CanvasDocument doc,
   out.writeln("${e.id} shows ${_n(value)} as \"${e.textFor(value)}\"");
   var bounds =
       e.drawnBox(e.bounds, page: doc.size.rect, leftHand: doc.pageIsLeftHand);
-  var pressedIn = hits.drawn(e);
+  var pressedIn = hits.placed(e).box;
   out.writeln("${e.id} drawn in ${_rect(bounds)}, pressed in "
       "${_rect(pressedIn)}");
 

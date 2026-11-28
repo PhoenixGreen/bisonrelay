@@ -67,18 +67,17 @@ class CanvasTextEditor extends StatefulWidget {
   /// paragraph.
   final TextItem? item;
 
-  /// rect is where the words are laid out on the stage, unrotated: the
-  /// element's box for a paragraph that fills it (padded here by the box's
-  /// padding), else the words' own block, as wide as they may grow.
+  /// rect is where the words are laid out on the stage before [transform]
+  /// lays them on the page: the element's box for a paragraph that fills it
+  /// (padded here by the box's padding), else the words' own block, as wide
+  /// as they may grow.
   final Rect rect;
 
-  /// pivot is the stage point the element turns about, or null for the
-  /// middle of [rect].
-  final Offset? pivot;
-
-  /// turn is how far the element is turned where it is drawn, in radians:
-  /// with its keys and clips on this frame. Null is its resting turn.
-  final double? turn;
+  /// transform takes a point of the stage in [rect] to where the element is
+  /// drawn on this frame, turned, slanted, sized and moved as the painter
+  /// lays it out, so the field sits on the words it edits. Null leaves it
+  /// where [rect] is.
+  final Matrix4? transform;
 
   /// scale is document units to stage pixels.
   final double scale;
@@ -102,8 +101,7 @@ class CanvasTextEditor extends StatefulWidget {
     this.item,
     required this.rect,
     required this.scale,
-    this.pivot,
-    this.turn,
+    this.transform,
     this.showWords = true,
     this.clickAt,
     required this.onChanged,
@@ -216,7 +214,6 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
           style.copyWith(decoration: TextDecoration.none, shadows: const []);
     }
     var rect = widget.rect;
-    var pivot = widget.pivot;
     var caret = spec.color.withValues(alpha: 1);
 
     Widget field = TextSelectionTheme(
@@ -302,9 +299,10 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
       // The caret's room on the right: the words wrap where they are drawn.
       width: rect.width + _caretRoom,
       height: fills ? rect.height : null,
-      child: Transform.rotate(
-        angle: widget.turn ?? e.rotationRadians,
-        origin: pivot == null ? null : pivot - rect.center,
+      // The matrix is the stage's, so its origin is the stage's top left.
+      child: Transform(
+        transform: widget.transform ?? Matrix4.identity(),
+        origin: -rect.topLeft,
         child: field,
       ),
     );

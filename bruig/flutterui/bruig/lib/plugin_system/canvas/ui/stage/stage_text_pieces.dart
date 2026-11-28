@@ -12,28 +12,24 @@ part of 'canvas_stage.dart';
 extension StageTextPieces on CanvasStageState {
   (TextElement, int)? get _onePiece => pickedPiece(controller);
 
-  /// _pieceBounds is the picture's square on the page, upright: its middle
-  /// turned with the element, its own turn left to _rotationOfSelection.
-  Rect _pieceBounds(TextElement e, int i) {
-    var bounds = _hit.posed(e);
-    var rect = e.items[i].box.inner(textItemRects(e, bounds)[i]);
-    var turn = _pieceElementTurn(e) * math.pi / 180;
-    var d = rect.center - bounds.center;
-    var c = math.cos(turn), s = math.sin(turn);
-    var centre =
-        bounds.center + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
-    return Rect.fromCenter(
-        center: centre, width: rect.width, height: rect.height);
+  /// _pieceBox is the picture's square on the page and the turn and slant
+  /// it is drawn with there: its square in the text's box, turned by its own
+  /// turn, laid on the page as the painter lays the text out on this frame
+  /// (ElementPlace.boxOnPage), so its handles sit on its corners however
+  /// the text is turned, slanted, sized or moved.
+  (Rect, BoxFrame) _pieceBox(TextElement e, int i) {
+    var on = _hit.placed(e);
+    var rect = e.items[i].box.inner(textItemRects(e, on.box)[i]);
+    return on.place.boxOnPage(rect, turn: e.items[i].icon?.turn ?? 0);
   }
 
-  double _pieceElementTurn(TextElement e) =>
-      e.movedRotationAt(controller.frame, controller.document,
-          live: controller.liveMotion);
+  /// _pieceBounds is the picture's square on the page before its turn and
+  /// slant (see _pieceBox).
+  Rect _pieceBounds(TextElement e, int i) => _pieceBox(e, i).$1;
 
-  /// _pieceTurn is the picture's turn on the page, in degrees: the element's
-  /// and its own.
-  double _pieceTurn(TextElement e, int i) =>
-      _pieceElementTurn(e) + (e.items[i].icon?.turn ?? 0);
+  /// _pieceTurn is the picture's turn on the page, in degrees: the text's
+  /// as drawn, and its own.
+  double _pieceTurn(TextElement e, int i) => _pieceBox(e, i).$2.rotation;
 
   /// _pressPiece starts on the picked picture piece's box, if the press is
   /// on it: a handle sizes or turns it, inside moves it. A press elsewhere
@@ -42,7 +38,8 @@ extension StageTextPieces on CanvasStageState {
     var piece = _onePiece;
     if (piece == null) return false;
     var (e, i) = piece;
-    var start = e.items[i], box = _pieceBounds(e, i);
+    var start = e.items[i];
+    var (box, frame) = _pieceBox(e, i);
     var handle = _hitHandle(stage);
     if (handle != null) {
       _beginPiece(handle == StageHandle.rotate
@@ -50,7 +47,7 @@ extension StageTextPieces on CanvasStageState {
           : _PieceSize(start, box.center));
       return true;
     }
-    var local = BoxFrame(_pieceTurn(e, i), 0, 0).invert(doc - box.center);
+    var local = frame.invert(doc - box.center);
     if (local.dx.abs() <= box.width / 2 && local.dy.abs() <= box.height / 2) {
       _beginPiece(_PieceMove(start, box.center));
       return true;
@@ -141,19 +138,23 @@ sealed class _PieceDrag extends StageGesture {
 }
 
 /// _PieceMove is the picture moved by the drag in the element's own frame,
-/// along one axis with Shift.
+/// along one of its sides with Shift.
 class _PieceMove extends _PieceDrag {
   _PieceMove(super.start, super.middle);
 
   @override
   TextItem _moved(CanvasStageState stage, TextElement e, int i, Offset doc) {
-    var delta = doc - stage._dragStart;
+    // The travel in the text's box as it is drawn: a piece's side and down
+    // are in its units, so it goes as far as the pointer however the text
+    // is turned, slanted or sized on this frame.
+    var place = stage._hit.placed(e).place;
+    var delta = place.unplace(doc) - place.unplace(stage._dragStart);
     if (stage._shiftHeld) {
       delta = delta.dx.abs() >= delta.dy.abs()
           ? Offset(delta.dx, 0)
           : Offset(0, delta.dy);
     }
-    return start.movedBy(delta, stage._pieceElementTurn(e));
+    return start.movedBy(delta, 0);
   }
 }
 
@@ -165,7 +166,11 @@ class _PieceSize extends _PieceDrag {
   @override
   TextItem? _moved(CanvasStageState stage, TextElement e, int i, Offset doc) {
     var icon = start.icon!;
-    var from = stage._dragStart - middle, to = doc - middle;
+    // In the text's box as it is drawn, where the picture's size is.
+    var place = stage._hit.placed(e).place;
+    var mid = place.unplace(middle);
+    var from = place.unplace(stage._dragStart) - mid;
+    var to = place.unplace(doc) - mid;
     var along = from.distanceSquared;
     if (along < 1e-6) return null;
     var f = (to.dx * from.dx + to.dy * from.dy) / along;

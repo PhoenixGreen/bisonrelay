@@ -17,7 +17,9 @@ extension StageCodeControls on CanvasStageState {
   /// Each part is where it is drawn now, which a motion may have moved, as
   /// in the other steps here.
   bool _pressCode(_Press press, CodeElement e) {
-    var hit = codeHitAt(e, press.doc, box: _hit.posed(e));
+    var inside = _hit.inBox(e, press.doc);
+    if (inside == null) return false;
+    var hit = codeHitAt(e, inside.point, box: inside.on.box);
     if (hit == null) return false;
     switch (hit) {
       // Its playbar works picked or not, and leaves the selection as it is,
@@ -74,15 +76,15 @@ extension StageCodeControls on CanvasStageState {
   }
 
   /// _pressCodeRun answers a Run panel's Run button, and opens a picked
-  /// panel's preview live.
-  bool _pressCodeRun(CodeRunElement e, Offset doc) {
+  /// panel's preview live: pressed at [point] of its box laid out as [on].
+  bool _pressCodeRun(CodeRunElement e, ElementOnPage on, Offset point) {
     var code = document.elementById(e.code);
     var runner = runnerOf(e, code is CodeElement ? code : null);
-    var boxes = codeRunBoxes(e, _hit.posed(e), runner: runner);
+    var boxes = codeRunBoxes(e, on.box, runner: runner);
     var picked = controller.isOnlySelected(e.id);
     if (picked &&
         !_shiftHeld &&
-        (boxes.preview?.contains(doc) ?? false) &&
+        (boxes.preview?.contains(point) ?? false) &&
         e.result != null &&
         (runner == CodeRunner.web || runner == CodeRunner.flutter)) {
       controller.liveCode(e);
@@ -91,7 +93,7 @@ extension StageCodeControls on CanvasStageState {
       _mode = _DragMode.none;
       return true;
     }
-    if (!boxes.runButton.contains(doc)) {
+    if (!boxes.runButton.contains(point)) {
       return false;
     }
     controller.selectAlone(e.id);
@@ -128,7 +130,10 @@ extension StageCodeControls on CanvasStageState {
   /// [doc] is.
   void _scrubCode(String id, Offset doc) {
     if (document.elementById(id) case CodeElement e) {
-      controller.seekCode(codeTrackSeconds(e, doc, box: _hit.posed(e)));
+      // Along the track as it is drawn.
+      if (_hit.inBox(e, doc) case (:var on, :var point)?) {
+        controller.seekCode(codeTrackSeconds(e, point, box: on.box));
+      }
     }
   }
 
@@ -136,9 +141,12 @@ extension StageCodeControls on CanvasStageState {
   /// Transient: the drag is one undo step.
   void _dragCodeDivider(String id, CodeDividerBox divider, Offset doc) {
     if (document.elementById(id) case CodeElement e) {
-      controller.replaceElement(
-          codeDividerDragged(e, divider, doc, box: _hit.posed(e)),
-          transient: true);
+      // Across the panel as it is drawn.
+      if (_hit.inBox(e, doc) case (:var on, :var point)?) {
+        controller.replaceElement(
+            codeDividerDragged(e, divider, point, box: on.box),
+            transient: true);
+      }
     }
   }
 
@@ -163,7 +171,10 @@ extension StageCodeControls on CanvasStageState {
       controller.showCodeTab(e, tab.pane, tab.file);
       return;
     }
-    if (codeTabDrop(e, at, box: _hit.posed(e)) case (var to, var index)?) {
+    var inside = _hit.inBox(e, at);
+    if (inside == null) return;
+    if (codeTabDrop(e, inside.point, box: inside.on.box)
+        case (var to, var index)?) {
       controller.moveCodeTab(e, tab.file, tab.pane, to, index);
     }
   }
@@ -181,15 +192,19 @@ extension StageCodeControls on CanvasStageState {
     if (f == null) return const [];
     var theme = Theme.of(context);
     var out = <Widget>[];
-    var box = _hit.posed(e);
-    if (codeTabDrop(e, at, box: box) case (var pane, var index)?) {
-      var b = codeBoxes(e, box).panes[pane];
+    // Where it would drop, in the panel's box as it is drawn.
+    var inside = _hit.inBox(e, at);
+    if (inside == null) return const [];
+    var (:on, :point) = inside;
+    if (codeTabDrop(e, point, box: on.box) case (var pane, var index)?) {
+      var b = codeBoxes(e, on.box).panes[pane];
       var x = b.tabs.isEmpty
           ? b.tabRow.left + e.fontSize * 0.3
           : index < b.tabs.length
               ? b.tabs[index].rect.left
               : b.tabs.last.rect.right;
-      var top = _toStage(Offset(x, b.tabRow.top + e.fontSize * 0.3));
+      var top =
+          _toStage(on.place.place(Offset(x, b.tabRow.top + e.fontSize * 0.3)));
       out.add(Positioned(
           left: top.dx - 2,
           top: top.dy,

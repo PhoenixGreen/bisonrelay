@@ -19,23 +19,35 @@ extension StageElementControls on CanvasStageState {
   }
 
   /// _selectedChartLabels are the placed labels of the chart whose labels
-  /// are shown (see _labelledChart), each with whether it has a resize grip.
+  /// are shown (see _labelledChart), each with whether it has a resize grip:
+  /// in its box, which the painter lays on the page by _partsPlace.
   List<({Rect rect, bool grip})> _selectedChartLabels() {
     var element = _labelledChart;
     if (element == null) return const [];
     return [
       for (var MapEntry(key: part, value: rect)
-          in chartLabelPlaces(element, _hit.posed(element)).entries)
+          in chartLabelPlaces(element, _hit.placed(element).box).entries)
         if (!rect.isEmpty) (rect: rect, grip: chartLabelResizes(part)),
     ];
   }
+
+  /// _partsPlace is where the painter lays out the chart whose labels, or
+  /// the table whose column rules, are shown (see _labelledChart and
+  /// _columnedTable): their marks are drawn on the page by it, so they sit
+  /// on the parts as drawn. Null when neither is.
+  ElementPlace? get _partsPlace => switch (_labelledChart ?? _columnedTable) {
+        var e? => _hit.placed(e).place,
+        null => null,
+      };
 
   /// _chartLabelAt is the placed label of the labelled chart at [doc], and
   /// how it is taken, or null.
   ChartLabelGrab? _chartLabelAt(Offset doc) {
     var chart = _labelledChart;
     if (chart == null) return null;
-    return chartLabelGrabAt(chart, _hit.posed(chart), doc, _docSlop);
+    var inside = _hit.inBox(chart, doc);
+    if (inside == null) return null;
+    return chartLabelGrabAt(chart, inside.on.box, inside.point, _docSlop);
   }
 
   /// _columnedTable is the lone selected table whose column rules have
@@ -49,11 +61,11 @@ extension StageElementControls on CanvasStageState {
 
   /// _selectedTableColumns are the inner column rules of the table whose
   /// rules can be taken (see _columnedTable), as (x, top, bottom), for
-  /// grips.
+  /// grips: in its box, which the painter lays on the page by _partsPlace.
   List<(double, double, double)> _selectedTableColumns() {
     var element = _columnedTable;
     if (element == null) return const [];
-    var bounds = _hit.posed(element);
+    var bounds = _hit.placed(element).box;
     return [
       for (var x in tableColumnDividers(element, bounds))
         (x, bounds.top, bounds.bottom),
@@ -64,16 +76,20 @@ extension StageElementControls on CanvasStageState {
   int? _tableColumnAt(Offset doc) {
     var table = _columnedTable;
     if (table == null) return null;
-    return tableColumnAt(table, _hit.posed(table), doc, _docSlop);
+    var inside = _hit.inBox(table, doc);
+    if (inside == null) return null;
+    return tableColumnAt(table, inside.on.box, inside.point, _docSlop);
   }
 
   /// _onTableColumnGrip is whether a press at [stage] is on one of the grips
   /// drawn at the ends of a column rule, and takes the rule.
   bool _onTableColumnGrip(Offset stage, Offset doc) {
     if (_tableColumnAt(doc) == null) return false;
+    var place = _partsPlace;
+    if (place == null) return false;
     for (var (x, top, bottom) in _selectedTableColumns()) {
-      for (var grip in tableColumnGrips(
-          _toStage(Offset(x, top)), _toStage(Offset(x, bottom)))) {
+      for (var grip in tableColumnGrips(_toStage(place.place(Offset(x, top))),
+          _toStage(place.place(Offset(x, bottom))))) {
         if (grip.inflate(handleHitSlop).contains(stage)) return true;
       }
     }
@@ -115,7 +131,8 @@ extension StageElementControls on CanvasStageState {
     var id = setting.elementId;
     var element = document.elementById(id);
     if (element is! CounterElement) return null;
-    var rects = counterButtonRects(element, _hit.drawn(element));
+    var on = _hit.placed(element);
+    var rects = counterButtonRects(element, on.box);
     if (setting.at < 0 || setting.at >= rects.length) return null;
 
     var box = rects[setting.at];
@@ -136,14 +153,19 @@ extension StageElementControls on CanvasStageState {
       top: topLeft.dy,
       width: box.width * _scale,
       height: box.height * _scale,
-      child: CounterInput(
-        key: ValueKey("set-$id"),
-        value: controller.counterValue(element),
-        decimals: element.decimals,
-        onDone: (typed) {
-          if (typed != null) controller.setCounterValue(element, typed);
-          close();
-        },
+      // On the button as it is drawn on this frame.
+      child: Transform(
+        transform: _onStage(on.place),
+        origin: -topLeft,
+        child: CounterInput(
+          key: ValueKey("set-$id"),
+          value: controller.counterValue(element),
+          decimals: element.decimals,
+          onDone: (typed) {
+            if (typed != null) controller.setCounterValue(element, typed);
+            close();
+          },
+        ),
       ),
     );
   }
@@ -153,12 +175,16 @@ extension StageElementControls on CanvasStageState {
     var element = document.elementById(id);
     if (element is! CounterElement) return;
 
-    var inner = element.box.inner(_hit.drawn(element));
+    // Where the pointer is in the box as it is drawn on this frame.
+    var inside = _hit.inBox(element, doc);
+    if (inside == null) return;
+    var (:on, :point) = inside;
+    var inner = element.box.inner(on.box);
     if (inner.width <= 0 || inner.height <= 0) return;
     // A fraction of the box from its middle, so it stays put on resize.
     var at = Offset(
-      ((doc.dx - inner.center.dx) / inner.width).clamp(-1.0, 1.0),
-      ((doc.dy - inner.center.dy) / inner.height).clamp(-1.0, 1.0),
+      ((point.dx - inner.center.dx) / inner.width).clamp(-1.0, 1.0),
+      ((point.dy - inner.center.dy) / inner.height).clamp(-1.0, 1.0),
     );
     controller.replaceElement(element.withPieceAt(piece, at), transient: true);
   }
@@ -181,7 +207,11 @@ extension StageElementControls on CanvasStageState {
   void _holdLegend(ChartElement e) {
     var current = document.elementById(e.id);
     if (current is! ChartElement || current.locked) return;
-    var bounds = _hit.posed(current);
+    // Where the press is in the chart's box as it is drawn on this frame.
+    var inside = _hit.inBox(current, _toDocument(_pressedAt));
+    if (inside == null) return;
+    var (:on, :point) = inside;
+    var bounds = on.box;
     if (bounds.width <= 0 || bounds.height <= 0) return;
     var block = chartLegendBlock(current, bounds);
     if (block.isEmpty) return;
@@ -199,15 +229,19 @@ extension StageElementControls on CanvasStageState {
     // The press is the key's now: the move it began, and the switch it
     // armed, give way to a drag of the key, in the move's undo step.
     _handOver(_ChartLabelDrag(ChartLabelGrab(
-        ChartLabelPart.legend, _toDocument(_pressedAt) - block.topLeft,
+        ChartLabelPart.legend, point - block.topLeft,
         resizing: false)));
   }
 
   void _pressVideo(VideoElement e, VideoPart part, Offset doc) {
-    var parts = videoParts(e, _hit.posed(e));
+    // How far along a bar is measured along it as it is drawn.
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return;
+    var parts = videoParts(e, inside.on.box);
+    var x = inside.point.dx;
     var along = switch (part) {
-      VideoPart.track => alongBar(parts.track!, doc.dx),
-      VideoPart.volume => alongBar(parts.volume!, doc.dx),
+      VideoPart.track => alongBar(parts.track!, x),
+      VideoPart.volume => alongBar(parts.volume!, x),
       _ => 0.0,
     };
     var url = controller.pressVideo(e, part, along: along);
@@ -218,8 +252,11 @@ extension StageElementControls on CanvasStageState {
   void _pressAudio(AudioElement e, AudioControl part, Offset doc) {
     double? volume;
     if (part == AudioControl.volume) {
-      var bar = audioParts(e, _hit.posed(e)).volume;
-      if (bar != null) volume = volumeAt(bar, doc.dx);
+      // Along the bar as it is drawn.
+      if (_hit.inBox(e, doc) case (:var on, :var point)?) {
+        var bar = audioParts(e, on.box).volume;
+        if (bar != null) volume = volumeAt(bar, point.dx);
+      }
     }
     controller.pressAudio(e, part, volume: volume);
   }
@@ -257,7 +294,9 @@ extension StageElementControls on CanvasStageState {
   /// again, if the press is on one. Answers whether it was taken.
   bool _pressPlayTask(PlayTaskElement e, Offset doc) {
     // From where it is drawn now, which its motion may have moved.
-    var at = doc - _hit.posed(e).topLeft;
+    var inside = _hit.inBox(e, doc);
+    if (inside == null) return false;
+    var at = inside.point - inside.on.box.topLeft;
     var show = controller.playTaskShowFor(e);
     if (playTaskAgainAt(e, at, show)) {
       controller.startPlayTaskAgain(e);

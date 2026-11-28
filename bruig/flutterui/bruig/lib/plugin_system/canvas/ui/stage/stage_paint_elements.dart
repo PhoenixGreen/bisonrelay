@@ -253,7 +253,7 @@ void paintTouchAreas(
 /// not read as design, with a resize grip on the corner of each that
 /// resizes.
 void paintChartLabels(Canvas canvas, List<({Rect rect, bool grip})> labels,
-    double scale, Offset origin) {
+    ElementPlace? place, double scale, Offset origin) {
   if (labels.isEmpty) return;
   var line = Paint()
     ..style = PaintingStyle.stroke
@@ -261,18 +261,22 @@ void paintChartLabels(Canvas canvas, List<({Rect rect, bool grip})> labels,
     ..color = stageBlue.withAlpha(0x88);
 
   for (var (:rect, :grip) in labels) {
-    var box = onScreen(rect, scale, origin);
+    // Each corner where the chart is drawn, on screen.
+    var [topLeft, topRight, bottomRight, bottomLeft] = [
+      for (var p in place?.corners(rect) ??
+          [rect.topLeft, rect.topRight, rect.bottomRight, rect.bottomLeft])
+        p * scale + origin,
+    ];
     for (var (from, to) in [
-      (box.topLeft, box.topRight),
-      (box.bottomLeft, box.bottomRight),
-      (box.topLeft, box.bottomLeft),
-      (box.topRight, box.bottomRight),
+      (topLeft, topRight),
+      (bottomLeft, bottomRight),
+      (topLeft, bottomLeft),
+      (topRight, bottomRight),
     ]) {
       drawDashedLine(canvas, from, to, line, dash: 5, gap: 4);
     }
     if (!grip) continue;
-    canvas.drawRect(
-        Rect.fromCenter(center: box.bottomRight, width: 7, height: 7),
+    canvas.drawRect(Rect.fromCenter(center: bottomRight, width: 7, height: 7),
         Paint()..color = stageBlue);
   }
 }
@@ -280,13 +284,15 @@ void paintChartLabels(Canvas canvas, List<({Rect rect, bool grip})> labels,
 /// paintTableColumns puts a short bar at the top and bottom of each inner
 /// column rule, which the table draws itself.
 void paintTableColumns(Canvas canvas, List<(double, double, double)> columns,
-    double scale, Offset origin) {
+    ElementPlace? place, double scale, Offset origin) {
   if (columns.isEmpty) return;
   var paint = Paint()..color = stageBlue;
+  // A rule's ends where the table is drawn.
+  Offset drawn(Offset p) => (place?.place(p) ?? p) * scale + origin;
 
   for (var (x, top, bottom) in columns) {
-    for (var grip in tableColumnGrips(
-        Offset(x, top) * scale + origin, Offset(x, bottom) * scale + origin)) {
+    for (var grip
+        in tableColumnGrips(drawn(Offset(x, top)), drawn(Offset(x, bottom)))) {
       canvas.drawRRect(
           RRect.fromRectAndRadius(grip, const Radius.circular(2)), paint);
     }

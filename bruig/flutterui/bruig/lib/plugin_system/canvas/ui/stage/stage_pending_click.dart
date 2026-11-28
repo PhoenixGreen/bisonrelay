@@ -87,8 +87,12 @@ class _SheetClick extends PendingClick {
   final Offset at;
 
   @override
-  void click(CanvasStageState stage) =>
-      stage.controller.sheetPressed(sheet, stage._hit.posed(sheet), at);
+  void click(CanvasStageState stage) {
+    // In the sheet's box as it is drawn on this frame.
+    if (stage._hit.inBox(sheet, at) case (:var on, :var point)?) {
+      stage.controller.sheetPressed(sheet, on.box, point);
+    }
+  }
 }
 
 /// _AudioClick is a selected speaker's control pressed: clicked, it plays,

@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage/canvas_stage.dart';
@@ -63,6 +64,23 @@ Rect inked(List<int> px) {
   return Rect.fromLTRB(l.toDouble(), t.toDouble(), r + 1.0, b + 1.0);
 }
 
+/// anchorOnPage is [e]'s anchor where the painter draws it on [frame] of
+/// [doc] (placeOnPage).
+Offset anchorOnPage(CanvasElement e, int frame, [CanvasDocument? doc]) {
+  var on = placeOnPage(e, frame, doc, null);
+  return on.place.place(on.drawn.anchorIn(on.box));
+}
+
+/// anchorMovedTo is [e] with its anchor put at [page] on [frame], what is
+/// drawn there left where it is: what the stage's anchor drag writes
+/// (CanvasElement.anchorDrawnAt).
+CanvasElement anchorMovedTo(CanvasElement e, Offset page, int frame) {
+  var on = placeOnPage(e, frame, null, null);
+  var (ax, ay, shift) = e.anchorDrawnAt(page, on.pose, on.box);
+  return e.withBase(
+      anchorX: ax, anchorY: ay, x: e.x + shift.dx, y: e.y + shift.dy);
+}
+
 void main() {
   group("what the anchor does", () {
     test("kept with the element, and centred unless moved", () {
@@ -100,10 +118,10 @@ void main() {
 
     test("turning it leaves the anchor where it is on the page", () {
       var e = square(ax: 0, ay: 0);
-      var before = e.anchorAt(0);
+      var before = anchorOnPage(e, 0);
       var turned = e.turnedTo(90);
       expect(turned.rotation, 90);
-      expect((turned.anchorAt(0) - before).distance, lessThan(1e-9));
+      expect((anchorOnPage(turned, 0) - before).distance, lessThan(1e-9));
       expect(turned.bounds, isNot(e.bounds), reason: "moved to keep it");
       expect(square().turnedTo(90).bounds, square().bounds,
           reason: "centred: a plain turn");
@@ -122,9 +140,9 @@ void main() {
       var track = ElementTrack(const [Keyframe(frame: 0, rotate: 50)]);
       var e = square(track: track).withBase(skewX: 20);
       var place = e.placedBy(e.poseAt(0));
-      var moved = e.withAnchorAt(const Offset(110, 105), 0);
-      expect(
-          (moved.anchorAt(0) - const Offset(110, 105)).distance, lessThan(1e-9),
+      var moved = anchorMovedTo(e, const Offset(110, 105), 0);
+      expect((anchorOnPage(moved, 0) - const Offset(110, 105)).distance,
+          lessThan(1e-9),
           reason: "the anchor is under the point, slant and all");
       var now = moved.placedBy(moved.poseAt(0));
       for (var corner in [e.bounds.topLeft, e.bounds.bottomRight]) {
@@ -140,8 +158,8 @@ void main() {
 
     test("moved to a point on the page, through its turn", () {
       var e = square(rotation: 90);
-      var moved = e.withAnchorAt(const Offset(140, 140), 0);
-      expect((moved.anchorAt(0) - const Offset(140, 140)).distance,
+      var moved = anchorMovedTo(e, const Offset(140, 140), 0);
+      expect((anchorOnPage(moved, 0) - const Offset(140, 140)).distance,
           lessThan(1e-9));
       expect(moved.bounds, e.bounds, reason: "the element stays put");
     });
@@ -218,7 +236,7 @@ void main() {
             doc * scale;
       }
 
-      var from = onScreen(now().anchorAt(0));
+      var from = onScreen(anchorOnPage(now(), 0, c.document));
       var to = onScreen(const Offset(100, 100));
 
       // Hidden: a drag there moves the element.
@@ -270,7 +288,7 @@ void main() {
             doc * scale;
       }
 
-      var from = onScreen(now().anchorAt(0));
+      var from = onScreen(anchorOnPage(now(), 0, c.document));
       var to = onScreen(const Offset(100, 100));
 
       for (var cancel in [false, true]) {

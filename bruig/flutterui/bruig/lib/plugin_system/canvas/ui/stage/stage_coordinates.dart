@@ -116,6 +116,33 @@ extension StageCoordinates on CanvasStageState {
   /// _toStage is document point [doc] in stage space.
   Offset _toStage(Offset doc) => _view.toStage(doc);
 
+  /// _onStage is [place] as a matrix of the stage's points: a widget laid
+  /// at a part's rectangle on the stage (_toStageRect) and transformed by it
+  /// about the stage's top left lands where the painter draws that part on
+  /// this frame. The same turn, slant and size; the move scaled with the
+  /// page. An element at rest leaves it as it is.
+  Matrix4 _onStage(ElementPlace place) {
+    var m = place.matrix.storage;
+    var o = _toStage(Offset.zero);
+    var (a, b, c, d) = (m[0], m[4], m[1], m[5]);
+    // By columns, as Matrix4 is kept.
+    return Matrix4.fromFloat64List(Float64List.fromList([
+      a, c, 0, 0, //
+      b, d, 0, 0, //
+      0, 0, 1, 0, //
+      m[12] * _scale + o.dx - (a * o.dx + b * o.dy),
+      m[13] * _scale + o.dy - (c * o.dx + d * o.dy),
+      0, 1,
+    ]));
+  }
+
+  /// _turnedOnStage is a turn of [radians] about stage point [pivot], as a
+  /// matrix of the stage's points.
+  Matrix4 _turnedOnStage(Offset pivot, double radians) =>
+      Matrix4.translationValues(pivot.dx, pivot.dy, 0)
+        ..rotateZ(radians)
+        ..translateByDouble(-pivot.dx, -pivot.dy, 0, 1);
+
   /// _toStageRect is document rect [doc] on the stage.
   Rect _toStageRect(Rect doc) => _view.toStageRect(doc);
 
@@ -306,8 +333,13 @@ extension StageCoordinates on CanvasStageState {
   }
 
   /// _skewOfSelection is the lone selection's slant in degrees, or zero: a
-  /// picked Free cell's as its layout draws it.
+  /// picked picture piece's as its text draws it, a picked Free cell's as
+  /// its layout draws it.
   Offset get _skewOfSelection {
+    if (_onePiece case (var e, var i)?) {
+      var frame = _pieceBox(e, i).$2;
+      return Offset(frame.skewX, frame.skewY);
+    }
     if (_onePiece == null) {
       if (_oneFreeCell case (var e, var c)?) {
         var frame = _freeCellBox(e, c).$2;
