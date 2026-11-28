@@ -216,10 +216,6 @@ extension StageCoordinates on CanvasStageState {
     return i < 0 ? null : (e, i);
   }
 
-  Keyframe _copyPose(CanvasElement e, int i) =>
-      poseWithMotion(e, controller.frame, controller.document,
-          live: controller.liveMotion, instance: i);
-
   /// _placedBox is [e]'s box, or its copy [instance]'s, as the painter lays
   /// it out on this frame: a box the size it is drawn, about where its middle
   /// lands, and the turn and slant it is drawn with there

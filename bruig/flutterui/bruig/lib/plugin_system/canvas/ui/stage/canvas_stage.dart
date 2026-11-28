@@ -401,6 +401,11 @@ class CanvasStageState extends State<CanvasStage>
   @visibleForTesting
   bool get gestureUnderWay => _gesture != null || _mode != _DragMode.none;
 
+  /// anchorMarks is where each shown anchor's mark is drawn, in document
+  /// units, for tests.
+  @visibleForTesting
+  List<Offset> get anchorMarks => [for (var a in _anchorsShown()) a.at];
+
   /// _visible is the room on screen the stage was laid out into.
   Size _visible = Size.zero;
 
@@ -664,13 +669,13 @@ class CanvasStageState extends State<CanvasStage>
   Offset _warpPivot = Offset.zero;
   Offset _warpGrab = Offset.zero;
 
-  /// _anchorsShown is each selected element's shown anchor and whether it
-  /// is locked.
+  /// _anchorsShown is each selected element's shown anchor, where it is
+  /// drawn on this frame (_anchorDrawn), and whether it is locked.
   List<({Offset at, bool locked})> _anchorsShown() => [
         for (var id in controller.selection)
           if (controller.anchorShown(id))
             if (document.elementById(id) case var e?)
-              (at: e.anchorAt(controller.frame), locked: e.base.anchorLocked),
+              (at: _anchorDrawn(e), locked: e.base.anchorLocked),
       ];
 
   /// _backgrounds caches generated backgrounds, rasterised once while the

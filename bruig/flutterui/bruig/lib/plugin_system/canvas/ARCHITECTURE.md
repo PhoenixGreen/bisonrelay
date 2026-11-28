@@ -479,6 +479,36 @@ is drawn, which holds whatever else moves it on the frame (a clip, a
 device, a loop, a size about its anchor) and written back would add it
 twice; so what is drawn follows the pointer exactly.
 
+A resize, slant or turn of a lone element works from it as the painter laid
+it out at the press (`_BoxStart.placed`, from `_lonePlaced`), on a frame
+where more than its own turn and slant place it (its keys, a clip, a
+device or its loop move, turn, size or squash it): the handle and the
+pointer are taken back into its box through that place (`unplace`), its
+resting box is changed there, and it is moved so what is held is drawn
+where it was, since a place moves with its box. A resize
+(`_resizeAsDrawn`) keeps the corner or side opposite where it is drawn and
+draws the one pulled under the pointer; squashed, or stretched unevenly by
+a loop, the box still grows along its own sides, so the side pulled moves
+further on the page than the box grows. A slant (`_skewAsDrawn`) keeps the
+side opposite and takes the side held along the one line a slant can: of
+the element's two slants, the one that carries it further, so a side its
+loop has spun upright leans along itself. A turn (`_turnAsDrawn`) sweeps
+the element about its anchor as drawn, which stays there; under a squash
+the angle is swept as it was before the squash. Each writes the resting
+box, size, slant or turn, never a pose. An element as it rests, turned or
+slanted or neither, is resized, slanted and turned by the arithmetic it
+always was (`turnedTo` keeps its anchor where its turn and slant draw it).
+One copy of several is sized and turned by its own values about its
+anchor as that copy is drawn (`_beginCopyBox`).
+
+The anchor's mark is drawn, and pressed, where the place draws the anchor
+(`_anchorDrawn`), and a drag puts it under the pointer through the place
+(`CanvasElement.anchorDrawnAt`). What is drawn on that frame does not
+move: where a pose's or a loop's turn or size is about the anchor, the
+resting box moves to make up for it, so on every other frame the element
+rests, and is turned and sized by its keys from, somewhere else by as
+much.
+
 A lone line's or path's selection box is the box round its curve as drawn on
 the frame, so the stage lays it out upright (`_boxIsDrawn`), not turned and
 slanted a second time. A straight line's ends are at two of that box's

@@ -780,9 +780,12 @@ extension StagePress on CanvasStageState {
   /// [e] by its own box, and opens the undo step the gesture's end closes.
   _CopyBoxDrag _beginCopyBox(CanvasElement e, int i, {required bool turning}) {
     var set = e.base.motion.instances!;
+    // Its anchor as the copy is drawn on this frame, turned and slanted as
+    // the element rests and moved by whatever moves the copy.
+    var on = _hit.placed(e, instance: i);
     var drag = _CopyBoxDrag(
         turning: turning,
-        pivot: e.anchorIn(e.boundsWith(_copyPose(e, i))),
+        pivot: on.place.place(on.drawn.anchorIn(on.box)),
         size: set.sizeOf(i),
         turn: set.turnOf(i));
     controller.beginInteraction();

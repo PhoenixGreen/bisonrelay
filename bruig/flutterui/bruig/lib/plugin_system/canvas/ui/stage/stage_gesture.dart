@@ -476,6 +476,7 @@ class _BoxStart {
     required this.visual,
     required this.seen,
     required this.rotation,
+    this.placed,
     required this.snapper,
   });
 
@@ -503,6 +504,11 @@ class _BoxStart {
 
   /// rotation is each element's turn, in degrees.
   final Map<String, double> rotation;
+
+  /// placed is the lone element selected as the painter laid it out on this
+  /// frame, which a resize, slant or turn of it works from; null for several
+  /// and for what keeps a box of its own (see _lonePlaced).
+  final ElementOnPage? placed;
 
   /// snapper is what a move or a resize lands on: the page, the grid, the
   /// guides and everything not selected, as they were at the press.

@@ -847,14 +847,10 @@ abstract class CanvasElement {
   Offset anchorIn(Rect box) => Offset(
       box.left + box.width * base.anchorX, box.top + box.height * base.anchorY);
 
-  /// anchorAt is the anchor on the page at [frame]: moved with the pose and
-  /// turned with the box about its centre. A keyframe's turn and size are
-  /// about the anchor, so they leave it put.
-  Offset anchorAt(int frame) {
-    var pose = poseAt(frame);
-    var box = bounds.shift(Offset(pose.dx, pose.dy));
-    return turnedAboutCentre(anchorIn(box), box.center);
-  }
+  /// anchorAt is the anchor on the page at [frame], as its keys lay it out:
+  /// moved with the pose, turned and slanted with the box about its centre.
+  /// A keyframe's turn and size are about the anchor, so they leave it put.
+  Offset anchorAt(int frame) => placedBy(poseAt(frame)).place(anchorIn(bounds));
 
   /// turnedAboutCentre is [p] turned as the element is, about [centre].
   Offset turnedAboutCentre(Offset p, Offset centre) {
@@ -865,31 +861,38 @@ abstract class CanvasElement {
     return centre + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
   }
 
-  /// withAnchorAt moves the anchor to [page] at [frame], turned back into
-  /// the box. The element does not move: it rests turned about its centre,
-  /// and the anchor is only what animation turns and grows about.
+  /// withAnchorAt moves the anchor to [page] on [frame], as its keys lay it
+  /// out: see [anchorDrawnAt].
   CanvasElement withAnchorAt(Offset page, int frame) {
-    var pose = poseAt(frame);
-    var box = bounds.shift(Offset(pose.dx, pose.dy));
-    var r = -rotationRadians;
-    var d = page - box.center;
-    var c = math.cos(r), s = math.sin(r);
-    var local = box.center + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
+    var (ax, ay, shift) = anchorDrawnAt(page, poseAt(frame), bounds);
     return withBase(
-      anchorX: box.width <= 0 ? 0.5 : (local.dx - box.left) / box.width,
-      anchorY: box.height <= 0 ? 0.5 : (local.dy - box.top) / box.height,
-    );
+        anchorX: ax, anchorY: ay, x: base.x + shift.dx, y: base.y + shift.dy);
+  }
+
+  /// anchorDrawnAt is the anchor, as shares of the box across and down, that
+  /// puts it at [page] where [pose] lays the box [box] out, and how far the
+  /// box must move for the element to stay where it is drawn there. The
+  /// anchor is what a pose's turn and size, and a loop that turns about it,
+  /// are about: moved alone on a frame that turns or sizes the element, it
+  /// would move what is drawn, so the box moves the other way. Where nothing
+  /// turns or sizes about it (the element as it rests) the box stays put.
+  (double, double, Offset) anchorDrawnAt(Offset page, Keyframe pose, Rect box) {
+    var place = placedIn(box, pose);
+    var local = place.unplace(page);
+    var ax = box.width <= 0 ? 0.5 : (local.dx - box.left) / box.width;
+    var ay = box.height <= 0 ? 0.5 : (local.dy - box.top) / box.height;
+    var moved = withBase(anchorX: ax, anchorY: ay).placedIn(box, pose);
+    return (ax, ay, place.place(box.center) - moved.place(box.center));
   }
 
   /// turnedTo turns to [degrees] about the anchor rather than the centre,
-  /// moving as well so the anchor stays put on the page.
+  /// moving as well so the anchor stays put on the page, where the element's
+  /// turn and slant lay it as it rests.
   CanvasElement turnedTo(double degrees) {
     if (anchorCentred) return withBase(rotation: degrees);
-    var box = bounds;
-    var before = turnedAboutCentre(anchorIn(box), box.center);
+    var a = anchorIn(bounds);
     var turned = withBase(rotation: degrees);
-    var after = turned.turnedAboutCentre(anchorIn(box), box.center);
-    var shift = before - after;
+    var shift = onPage(a) - turned.onPage(a);
     return turned.withBase(x: base.x + shift.dx, y: base.y + shift.dy);
   }
 
@@ -1216,6 +1219,25 @@ class ElementPlace {
       !_posed &&
       !_looped &&
       frame.upright;
+
+  /// turnsAndSlantsOnly is whether the element's own turn and slant are all
+  /// that lay its box out: the element as it rests.
+  bool get turnsAndSlantsOnly =>
+      shift == Offset.zero && !_squashed && !_posed && !_looped;
+
+  /// flattens is whether the box is drawn flat, to a line or a point, so a
+  /// point on the page cannot be taken back into it.
+  bool get flattens =>
+      (_posed && size == 0) || (_looped && (loopSx == 0 || loopSy == 0));
+
+  /// unsquashed is [v], a way across the page, as it lay before the squash
+  /// stretched it: what the element's own turn turns, the squash laid over
+  /// it after.
+  Offset unsquashed(Offset v) {
+    if (!_squashed) return v;
+    var d = _turned(v, _back(_squashTurn));
+    return _turned(Offset(d.dx / squash, d.dy * squash), _squashTurn);
+  }
 
   /// stretch is the most the pose and the loop lengthen anything drawn,
   /// before the turn and slant the element rests in: what a stroke's width is

@@ -31,14 +31,38 @@ extension StageDrag on CanvasStageState {
     if (next != null) controller.replaceElement(next, transient: true);
   }
 
-  /// _applyAnchor puts element [id]'s anchor point at [doc]. Transient: the
-  /// drag is one undo step.
+  /// _applyAnchor puts element [id]'s anchor point at [doc], where it is
+  /// laid out on this frame, and leaves what is drawn there where it is: on
+  /// a frame its keys or its loop turn or size it about the anchor, its
+  /// resting box moves to make up for the anchor's move
+  /// (CanvasElement.anchorDrawnAt), so where it rests, and where its keys
+  /// turn it from, move with it. Transient: the drag is one undo step.
   void _applyAnchor(String id, Offset doc) {
     if (document.elementById(id) case var e?) {
-      controller.replaceElement(e.withAnchorAt(doc, controller.frame),
+      var on = _hit.placed(e);
+      var (ax, ay, shift) = on.drawn.anchorDrawnAt(doc, on.pose, on.box);
+      var rest = _restOfDrawn(e, on.box.shift(shift));
+      controller.replaceElement(
+          e.withBase(anchorX: ax, anchorY: ay, x: rest.left, y: rest.top),
           transient: true);
     }
   }
+
+  /// _anchorDrawn is where [e]'s anchor is drawn on this frame, which its
+  /// mark shows and a press takes.
+  Offset _anchorDrawn(CanvasElement e) {
+    var on = _hit.placed(e);
+    return on.place.place(on.drawn.anchorIn(on.box));
+  }
+
+  /// _restOfDrawn is the box [e] rests in for its box to be laid out from
+  /// [drawn]: the same box, but for a page number mirrored onto a left-hand
+  /// page, which rests across the page from where it is drawn
+  /// (CounterElement.drawnBox).
+  Rect _restOfDrawn(CanvasElement e, Rect drawn) => e is CounterElement
+      ? e.drawnBox(drawn,
+          page: document.size.rect, leftHand: document.pageIsLeftHand)
+      : drawn;
 
   /// _dragMarkerNote moves the held marker's label for [drag], or sizes it
   /// by the pointer's distance from its middle.
@@ -230,11 +254,23 @@ extension StageDrag on CanvasStageState {
       rotation: {
         for (var e in controller.selectedElements) e.id: e.rotation,
       },
+      placed: _lonePlaced(),
       snapper: Snapper(document.guides, document.size.size,
           others: _otherBounds(moving)),
     );
     controller.beginInteraction();
     return start;
+  }
+
+  /// _lonePlaced is the lone selection as the painter lays it out on this
+  /// frame, where its box is laid out by that place (_loneBox): what a resize,
+  /// slant or turn of it works from. Null for several, one copy of several
+  /// (sized and turned by its own values: _beginCopyBox), and whatever keeps
+  /// a box of its own.
+  ElementOnPage? _lonePlaced() {
+    if (_oneCopy != null || _loneBox == null) return null;
+    var e = _chosen.single;
+    return _hit.placed(e, instance: e.base.motion.instances == null ? null : 0);
   }
 
   /// _otherBounds is everything not dragged, locked included, to snap to:
@@ -410,6 +446,10 @@ extension StageDrag on CanvasStageState {
     if (from.elements.length != 1) return;
     var start = from.elements.values.first;
     if (start.locked) return;
+    if (from.placed case var on? when !on.place.turnsAndSlantsOnly) {
+      _skewAsDrawn(delta, handle, start, on);
+      return;
+    }
     var box = start.bounds;
     // The drag in the element's turned frame but not its slanted one: the
     // slant is what changes.
@@ -443,12 +483,73 @@ extension StageDrag on CanvasStageState {
         transient: true);
   }
 
+  /// _skewAsDrawn slants [start], laid out by [on] on a frame where more than
+  /// its own turn and slant place it (its keys or its loop turn, size or
+  /// squash it, or something moves it), by a side handle dragged [delta]:
+  /// the side opposite stays where it is drawn and the side pulled follows
+  /// the pointer as far as a slant can take it. A slant shears along the
+  /// element's own across (or down), as it rests, applied after what its keys
+  /// and loop turn, so the side pulled travels along one line on the page for
+  /// each; of its own slant and the other, the one that takes it further is
+  /// changed, so a side its loop has spun upright still leans along itself.
+  void _skewAsDrawn(
+      Offset delta, StageHandle handle, CanvasElement start, ElementOnPage on) {
+    var box = on.box;
+    var (pulled, kept, across) = switch (handle) {
+      StageHandle.topCenter => (box.topCenter, box.bottomCenter, true),
+      StageHandle.bottomCenter => (box.bottomCenter, box.topCenter, true),
+      StageHandle.centerLeft => (box.centerLeft, box.centerRight, false),
+      StageHandle.centerRight => (box.centerRight, box.centerLeft, false),
+      _ => (null, null, true),
+    };
+    if (pulled == null || kept == null || on.place.flattens) return;
+    double tanOf(double deg) => math.tan(deg * math.pi / 180);
+    double degOf(double t) => math.atan(t) * 180 / math.pi;
+    var base = on.drawn.base;
+    ElementPlace slanted(double x, double y) =>
+        on.drawn.withBase(skewX: x, skewY: y).placedIn(box, on.pose);
+    Offset span(ElementPlace p) => p.place(pulled) - p.place(kept);
+    // How far the side pulled moves, the other kept still, for one more of
+    // each slant's tangent: a slant is a shear, so it goes as far again for
+    // each one more.
+    var was = span(on.place);
+    var tx = tanOf(base.skewX), ty = tanOf(base.skewY);
+    var byX = span(slanted(degOf(tx + 1), base.skewY)) - was;
+    var byY = span(slanted(base.skewX, degOf(ty + 1))) - was;
+    var useX = across
+        ? byX.distanceSquared >= byY.distanceSquared
+        : byX.distanceSquared > byY.distanceSquared;
+    var travel = useX ? byX : byY;
+    if (travel.distanceSquared < 1e-12) return;
+    var more =
+        (delta.dx * travel.dx + delta.dy * travel.dy) / travel.distanceSquared;
+    double clamped(double t) => degOf(t).clamp(-maxSkew, maxSkew);
+    var skewX = useX ? clamped(tx + more) : base.skewX;
+    var skewY = useX ? base.skewY : clamped(ty + more);
+    // The box moved so the side opposite is drawn where it was.
+    var shift = on.place.place(kept) - slanted(skewX, skewY).place(kept);
+    var rest = _restOfDrawn(start, box.shift(shift));
+    controller.replaceElement(
+        start.withBase(skewX: skewX, skewY: skewY, x: rest.left, y: rest.top),
+        transient: true);
+  }
+
   /// _applyResize resizes the selection by [handle] dragged [delta] from
   /// where [start] found it, and says which lines the dragged edge is
   /// caught on.
   SnapLines _applyResize(Offset delta, StageHandle handle, _BoxStart start) {
     if (_applyLineEnd(handle, delta, start)) return SnapLines.none;
     if (_applyCameraZoom(handle, delta, start)) return SnapLines.none;
+    // A lone element turned, slanted or moved on this frame is sized where
+    // it is drawn. Several, an upright element nothing moves, and what keeps
+    // a box of its own are sized by their boxes as they rest.
+    if (start.placed case var on?
+        when !on.place.turnsAndSlantsOnly ||
+            on.drawn.rotation != 0 ||
+            on.drawn.base.skewX != 0 ||
+            on.drawn.base.skewY != 0) {
+      return _resizeAsDrawn(delta, handle, start, on);
+    }
 
     // One box for the whole drag, so things resized together keep their sizes
     // and gaps in proportion.
@@ -474,48 +575,16 @@ extension StageDrag on CanvasStageState {
     delta = _frameOfSelection.invert(delta);
 
     var several = start.visual.length > 1;
-
-    var left = group.left + (handle.movesLeft ? delta.dx : 0);
-    var right = group.right + (handle.movesRight ? delta.dx : 0);
-    var top = group.top + (handle.movesTop ? delta.dy : 0);
-    var bottom = group.bottom + (handle.movesBottom ? delta.dy : 0);
-
-    // Shift keeps proportions, by whichever axis moved further. A picture
-    // keeps them without the key, Shift freeing it (see
-    // CanvasElement.keepsAspect), as does a group: pulled out of shape, every
-    // gap would be.
     var first = document.elementById(start.visual.keys.first);
-    var keep = several
-        ? !_shiftHeld
-        : ((first?.keepsAspect ?? false) ? !_shiftHeld : _shiftHeld);
-    // A hold the person asks for scales what is inside. One its kind keeps
-    // (a square or a circle) Shift cannot let go, so there Shift is the
-    // other thing a held resize could do: scale the inside, or not.
-    var inside = keep;
-    if (!several && (first?.keepsAspectByKind ?? false)) {
-      keep = true;
-      inside = first!.base.lockAspect != _shiftHeld;
-    }
-    if (keep && group.height > 0) {
-      var aspect = group.width / group.height;
-      if ((right - left).abs() > (bottom - top).abs() * aspect) {
-        var height = (right - left).abs() / aspect;
-        handle.movesTop ? top = bottom - height : bottom = top + height;
-      } else {
-        var width = (bottom - top).abs() * aspect;
-        handle.movesLeft ? left = right - width : right = left + width;
-      }
-    }
-
-    // A minimum size, not a selection turned inside out: a negative width
-    // draws nothing and cannot be grabbed again.
-    const minimum = 8.0;
-    if (right - left < minimum) {
-      handle.movesLeft ? left = right - minimum : right = left + minimum;
-    }
-    if (bottom - top < minimum) {
-      handle.movesTop ? top = bottom - minimum : bottom = top + minimum;
-    }
+    var (keep, inside) = _resizeHolds(first, several: several);
+    var (left, top, right, bottom) = _resizedEdges(
+        group,
+        handle,
+        group.left + (handle.movesLeft ? delta.dx : 0),
+        group.top + (handle.movesTop ? delta.dy : 0),
+        group.right + (handle.movesRight ? delta.dx : 0),
+        group.bottom + (handle.movesBottom ? delta.dy : 0),
+        keep: keep);
 
     var sx = group.width == 0 ? 1.0 : (right - left) / group.width;
     var sy = group.height == 0 ? 1.0 : (bottom - top) / group.height;
@@ -550,6 +619,129 @@ extension StageDrag on CanvasStageState {
       ));
     }
     controller.apply(next, transient: true);
+    return caught;
+  }
+
+  /// _resizeHolds is whether a resize keeps the proportions, and whether it
+  /// scales what is inside, for the selection whose first element is
+  /// [first]. Shift keeps proportions; a picture keeps them without the key,
+  /// Shift freeing it (see CanvasElement.keepsAspect), as does a group:
+  /// pulled out of shape, every gap would be. A hold the person asks for
+  /// scales the inside. One its kind keeps (a square or a circle) Shift
+  /// cannot let go, so there Shift is the other thing a held resize could
+  /// do: scale the inside, or not.
+  (bool, bool) _resizeHolds(CanvasElement? first, {required bool several}) {
+    var keep = several
+        ? !_shiftHeld
+        : ((first?.keepsAspect ?? false) ? !_shiftHeld : _shiftHeld);
+    var inside = keep;
+    if (!several && (first?.keepsAspectByKind ?? false)) {
+      keep = true;
+      inside = first!.base.lockAspect != _shiftHeld;
+    }
+    return (keep, inside);
+  }
+
+  /// _resizedEdges is [box] pulled by [handle] to [left], [top], [right] and
+  /// [bottom], kept in its proportions by whichever way it moved further if
+  /// [keep], and no smaller than a minimum: the sides the handle does not
+  /// move stay where they are.
+  (double, double, double, double) _resizedEdges(Rect box, StageHandle handle,
+      double left, double top, double right, double bottom,
+      {required bool keep}) {
+    if (keep && box.height > 0) {
+      var aspect = box.width / box.height;
+      if ((right - left).abs() > (bottom - top).abs() * aspect) {
+        var height = (right - left).abs() / aspect;
+        handle.movesTop ? top = bottom - height : bottom = top + height;
+      } else {
+        var width = (bottom - top).abs() * aspect;
+        handle.movesLeft ? left = right - width : right = left + width;
+      }
+    }
+
+    // A minimum size, not a selection turned inside out: a negative width
+    // draws nothing and cannot be grabbed again.
+    const minimum = 8.0;
+    if (right - left < minimum) {
+      handle.movesLeft ? left = right - minimum : right = left + minimum;
+    }
+    if (bottom - top < minimum) {
+      handle.movesTop ? top = bottom - minimum : bottom = top + minimum;
+    }
+    return (left, top, right, bottom);
+  }
+
+  /// _resizeAsDrawn resizes the lone element, laid out by [on] on a frame
+  /// where more than its own turn and slant place it, by [handle] dragged
+  /// [delta]. The handle and the pointer are taken back into the element's
+  /// own box through that place, the box is sized there, and moved so the
+  /// corner or side held is drawn where it was: a place moves with its box,
+  /// and a resize changes nothing else of it, so the side pulled is drawn
+  /// under the pointer. Squashed, or stretched unevenly by its loop, the box
+  /// still changes along its own sides, so the side pulled may move further
+  /// on the page than its box grows: it is drawn stretched. A resize writes
+  /// the resting box, never a pose.
+  SnapLines _resizeAsDrawn(
+      Offset delta, StageHandle handle, _BoxStart start, ElementOnPage on) {
+    var element = document.elementById(on.drawn.id);
+    var place = on.place;
+    if (element == null || element.locked || place.flattens) {
+      return SnapLines.none;
+    }
+    var box = on.box;
+
+    // As a move snaps, where the box is drawn upright.
+    var caught = SnapLines.none;
+    var (drawn, frame) = place.boxOnPage(box);
+    if (_snapReach case var reach? when frame.upright) {
+      var snap = start.snapper.edges(drawn.shift(delta),
+          left: handle.movesLeft,
+          top: handle.movesTop,
+          right: handle.movesRight,
+          bottom: handle.movesBottom,
+          reach: reach);
+      delta += snap.nudge;
+      caught = snap.lines;
+    }
+
+    var grip = Offset(
+        handle.movesLeft
+            ? box.left
+            : handle.movesRight
+                ? box.right
+                : box.center.dx,
+        handle.movesTop
+            ? box.top
+            : handle.movesBottom
+                ? box.bottom
+                : box.center.dy);
+    var to = place.unplace(place.place(grip) + delta);
+    var (keep, inside) = _resizeHolds(element, several: false);
+    var (left, top, right, bottom) = _resizedEdges(
+        box,
+        handle,
+        handle.movesLeft ? to.dx : box.left,
+        handle.movesTop ? to.dy : box.top,
+        handle.movesRight ? to.dx : box.right,
+        handle.movesBottom ? to.dy : box.bottom,
+        keep: keep);
+    var sized = Rect.fromLTRB(left, top, right, bottom);
+    var held = Offset(handle.movesLeft ? box.right : box.left,
+        handle.movesTop ? box.bottom : box.top);
+    var shift =
+        place.place(held) - on.drawn.placedIn(sized, on.pose).place(held);
+    var rest = _restOfDrawn(element, sized.shift(shift));
+    var sx = box.width == 0 ? 1.0 : sized.width / box.width;
+    var from = start.elements[element.id] ?? element;
+    var next = (inside ? from.scaledBy(sx) : element).withBase(
+      x: rest.left,
+      y: rest.top,
+      width: rest.width,
+      height: rest.height,
+      typeScale: inside ? from.base.typeScale * sx : null,
+    );
+    controller.apply(document.withElement(next), transient: true);
     return caught;
   }
 
@@ -595,6 +787,10 @@ extension StageDrag on CanvasStageState {
   }
 
   void _applyRotate(Offset doc, _BoxStart start) {
+    if (start.placed case var on? when !on.place.turnsAndSlantsOnly) {
+      _turnAsDrawn(doc, start, on);
+      return;
+    }
     var bounds = _selectionBounds;
     if (bounds == null) return;
     var centre = bounds.center;
@@ -620,5 +816,33 @@ extension StageDrag on CanvasStageState {
       next = next.withElement(element.turnedTo(rotation));
     }
     controller.apply(next, transient: true);
+  }
+
+  /// _turnAsDrawn turns the lone element, laid out by [on] on a frame where
+  /// more than its own turn and slant place it, as the turning handle is
+  /// dragged to [doc]: about its anchor as drawn, which stays there, by the
+  /// angle swept about it. The turn is the element's own, as it rests, so
+  /// under a squash, laid over it after, the angle is swept as the squash
+  /// found it, and the point pressed stays on the line to the pointer.
+  void _turnAsDrawn(Offset doc, _BoxStart start, ElementOnPage on) {
+    var element = document.elementById(on.drawn.id);
+    if (element == null || element.locked) return;
+    var anchor = on.drawn.anchorIn(on.box);
+    var pivot = on.place.place(anchor);
+    var from = on.place.unsquashed(_dragStart - pivot);
+    var to = on.place.unsquashed(doc - pivot);
+    var degrees = (math.atan2(to.dy, to.dx) - math.atan2(from.dy, from.dx)) *
+        180 /
+        math.pi;
+    var rotation = (start.rotation[element.id] ?? element.rotation) + degrees;
+    if (_shiftHeld) rotation = steppedTurn(rotation);
+    var turned =
+        on.drawn.withBase(rotation: rotation).placedIn(on.box, on.pose);
+    var rest =
+        _restOfDrawn(element, on.box.shift(pivot - turned.place(anchor)));
+    controller.apply(
+        document.withElement(
+            element.withBase(rotation: rotation, x: rest.left, y: rest.top)),
+        transient: true);
   }
 }

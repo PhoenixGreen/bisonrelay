@@ -376,8 +376,7 @@ extension StageHitTesting on CanvasStageState {
       if (!controller.anchorShown(id)) continue;
       var e = document.elementById(id);
       if (e == null || e.base.anchorLocked || e.locked) continue;
-      if ((_toStage(e.anchorAt(controller.frame)) - stage).distance <=
-          anchorReach) {
+      if ((_toStage(_anchorDrawn(e)) - stage).distance <= anchorReach) {
         return id;
       }
     }

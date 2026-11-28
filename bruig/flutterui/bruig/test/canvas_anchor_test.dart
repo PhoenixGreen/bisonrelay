@@ -109,6 +109,35 @@ void main() {
           reason: "centred: a plain turn");
     });
 
+    test("turning a slanted one leaves the anchor where it is drawn", () {
+      var e = square(ax: 0, ay: 0).withBase(skewX: 30);
+      Offset drawn(CanvasElement e) =>
+          e.placedBy(Keyframe.rest).place(e.anchorIn(e.bounds));
+      var turned = e.turnedTo(60);
+      expect(turned.rotation, 60);
+      expect((drawn(turned) - drawn(e)).distance, lessThan(1e-9));
+    });
+
+    test("moved on a frame its keys turn it, what is drawn stays", () {
+      var track = ElementTrack(const [Keyframe(frame: 0, rotate: 50)]);
+      var e = square(track: track).withBase(skewX: 20);
+      var place = e.placedBy(e.poseAt(0));
+      var moved = e.withAnchorAt(const Offset(110, 105), 0);
+      expect(
+          (moved.anchorAt(0) - const Offset(110, 105)).distance, lessThan(1e-9),
+          reason: "the anchor is under the point, slant and all");
+      var now = moved.placedBy(moved.poseAt(0));
+      for (var corner in [e.bounds.topLeft, e.bounds.bottomRight]) {
+        var was = place.place(corner);
+        var drawn =
+            now.place(corner + (moved.bounds.topLeft - e.bounds.topLeft));
+        expect((drawn - was).distance, lessThan(1e-9),
+            reason: "the corner drawn at $was stays");
+      }
+      expect(moved.bounds, isNot(e.bounds),
+          reason: "it rests elsewhere to stay where it is drawn");
+    });
+
     test("moved to a point on the page, through its turn", () {
       var e = square(rotation: 90);
       var moved = e.withAnchorAt(const Offset(140, 140), 0);
